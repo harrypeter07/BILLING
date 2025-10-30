@@ -104,9 +104,9 @@ export default function TestExcelPage() {
     async function checkFiles() {
       const statuses: {[key:string]:boolean} = {}
       for (const fname of fileNames) {
-        // For local dev, use fetch to /tmp/ if static exposed, or simulate
+        // Now use /excel-test/<fname>
         try {
-          const res = await fetch(`/tmp/${fname}`, { method: 'HEAD' })
+          const res = await fetch(`/excel-test/${fname}`, { method: 'HEAD' })
           statuses[fname] = res.ok
         } catch {
           statuses[fname] = false
@@ -144,7 +144,7 @@ export default function TestExcelPage() {
             <div>Excel Mode: {String(excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive())}</div>
           </div>
           <div className="mb-4">
-            <strong>Excel file status in tmp/</strong>:
+            <strong>Excel file status in public/excel-test/</strong>:
             <ul>
               {fileNames.map(fname => (<li key={fname}>{fname}: {fileStatus[fname] ? '✅ Exists' : '❌ Missing'}</li>))}
             </ul>

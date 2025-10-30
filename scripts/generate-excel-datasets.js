@@ -7,8 +7,9 @@ const XLSX = require('xlsx');
 const fs = require('fs');
 const path = require('path');
 
-const outDir = path.join(__dirname, '../tmp');
-if (!fs.existsSync(outDir)) fs.mkdirSync(outDir);
+// Change from tmp to public/excel-test
+const outDir = path.join(__dirname, '../public/excel-test');
+if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
 // Mock data for each type
 const mockProducts = [
