@@ -11,17 +11,35 @@ function log(...args: any[]) { console.log("[EXCEL:invoices]", ...args); }
 function ensureDataDir() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 }
+function atomicWriteWorkbook(filePath: string, wb: XLSX.WorkBook) {
+  const tmp = filePath + ".tmp";
+  XLSX.writeFile(wb, tmp);
+  fs.renameSync(tmp, filePath);
+}
 function ensureFileAndSheet(forceReset = false) {
   ensureDataDir();
+  const bak = invoicesFile + ".bak";
   if (forceReset && fs.existsSync(invoicesFile)) {
-    fs.unlinkSync(invoicesFile);
-    log('Deleted corrupt Invoices.xlsx');
+    try {
+      if (fs.existsSync(bak)) fs.unlinkSync(bak);
+      fs.renameSync(invoicesFile, bak);
+      log('Backed up Invoices.xlsx to', bak);
+    } catch (e: any) { log('Backup failed:', e?.message); }
   }
   if (!fs.existsSync(invoicesFile)) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([]), SHEET);
-    XLSX.writeFile(wb, invoicesFile);
-    log('Initialized missing Invoices file:', invoicesFile);
+    try {
+      atomicWriteWorkbook(invoicesFile, wb);
+      log('Initialized Invoices file:', invoicesFile);
+      if (fs.existsSync(bak)) fs.unlinkSync(bak);
+    } catch (e: any) {
+      log('Initialize write failed:', e?.message);
+      if (fs.existsSync(bak)) { try { fs.renameSync(bak, invoicesFile); log('Restored backup'); } catch {} }
+      throw e;
+    }
+  } else if (forceReset && fs.existsSync(bak)) {
+    try { fs.unlinkSync(bak); } catch {}
   }
 }
 function tryLoadInvoices(): any[] {
@@ -47,7 +65,7 @@ function trySaveInvoices(invoices: any[]) {
   try {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(invoices), SHEET);
-    XLSX.writeFile(wb, invoicesFile);
+    atomicWriteWorkbook(invoicesFile, wb);
     log('Invoices saved:', invoices.length, 'total');
   } catch(e: any) {
     log('Save failed (locked?):', e?.message);
