@@ -10,7 +10,13 @@ export default async function InvoicesPage() {
   if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
     // Prefer fetching via API so we reflect files saved in /data
     let invoices: any[] = []
-    try { invoices = await fetchInvoices() } catch { invoices = excelSheetManager.getList("invoices") }
+    try {
+      invoices = await fetchInvoices()
+      console.log('[InvoicesPage][Excel] fetched', invoices?.length || 0, 'invoices from /api/excel/invoices')
+    } catch (e) {
+      console.error('[InvoicesPage][Excel] fetch failed:', e)
+      invoices = excelSheetManager.getList("invoices")
+    }
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
@@ -25,6 +31,11 @@ export default async function InvoicesPage() {
             </Link>
           </Button>
         </div>
+        {(!invoices || invoices.length === 0) && (
+          <div className="rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-900">
+            No invoices found in data/Invoices.xlsx
+          </div>
+        )}
         <InvoicesTable invoices={invoices || []} />
       </div>
     );

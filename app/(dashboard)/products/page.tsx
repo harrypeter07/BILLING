@@ -21,8 +21,14 @@ export default function ProductsPage() {
         try {
           setIsLoading(true)
           const list = await fetchProducts()
+          console.log('[ProductsPage][Excel] fetched', list?.length || 0, 'products from /api/excel/products')
+          if (!list || list.length === 0) {
+            toast.warning('No products found in data/Products.xlsx')
+          }
           setProducts(list)
         } catch (e) {
+          console.error('[ProductsPage][Excel] fetch failed:', e)
+          toast.error('Failed to load products from Excel API')
           // Fallback to in-memory manager if API fails
           setProducts([...excelSheetManager.getList('products')])
         } finally {
@@ -30,7 +36,14 @@ export default function ProductsPage() {
         }
       })()
       const unsub = excelSheetManager.subscribe(async () => {
-        try { setProducts(await fetchProducts()) } catch { setProducts([...excelSheetManager.getList('products')]) }
+        try {
+          const list = await fetchProducts()
+          console.log('[ProductsPage][Excel][sub] fetched', list?.length || 0)
+          setProducts(list)
+        } catch (e) {
+          console.error('[ProductsPage][Excel][sub] fetch failed:', e)
+          setProducts([...excelSheetManager.getList('products')])
+        }
       })
       return unsub
     } else {
