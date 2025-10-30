@@ -3,11 +3,16 @@ import fs from "fs";
 import path from "path";
 import * as XLSX from "xlsx";
 
-const customersFile = path.join(process.cwd(), "public/excel-test/Customers.xlsx");
+const dataDir = path.join(process.cwd(), "data");
+const customersFile = path.join(dataDir, "Customers.xlsx");
 const SHEET = "Customers";
 
 function log(...args: any[]) { console.log("[EXCEL:customers]", ...args); }
+function ensureDataDir() {
+  if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+}
 function ensureFileAndSheet(forceReset = false) {
+  ensureDataDir();
   if (forceReset && fs.existsSync(customersFile)) {
     fs.unlinkSync(customersFile);
     log('Deleted corrupt Customers.xlsx');
