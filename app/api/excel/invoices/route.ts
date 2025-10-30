@@ -1,3 +1,4 @@
+export const runtime = 'nodejs'
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
@@ -10,6 +11,10 @@ const SHEET = "Invoices";
 function log(...args: any[]) { console.log("[EXCEL:invoices]", ...args); }
 function ensureDataDir() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+}
+function checkAccess(filePath: string) {
+  try { fs.accessSync(filePath, fs.constants.R_OK | fs.constants.W_OK); return { ok: true }; }
+  catch(e: any) { return { ok: false, error: e?.message || String(e) }; }
 }
 function atomicWriteWorkbook(filePath: string, wb: XLSX.WorkBook) {
   const tmp = filePath + ".tmp";
@@ -45,6 +50,8 @@ function ensureFileAndSheet(forceReset = false) {
 function tryLoadInvoices(): any[] {
   try {
     ensureFileAndSheet();
+    const access = checkAccess(invoicesFile);
+    if (!access.ok) throw new Error('Access denied: ' + access.error);
     const wb = XLSX.readFile(invoicesFile);
     const ws = wb.Sheets[SHEET];
     return ws ? XLSX.utils.sheet_to_json(ws, { defval: "" }) : [];
@@ -52,24 +59,28 @@ function tryLoadInvoices(): any[] {
     log('Load failed, possibly locked/corrupt. Retrying with reset.', e?.message);
     try {
       ensureFileAndSheet(true);
+      const access = checkAccess(invoicesFile);
+      if (!access.ok) throw new Error('Access denied after reset: ' + access.error);
       const wb = XLSX.readFile(invoicesFile);
       const ws = wb.Sheets[SHEET];
       return ws ? XLSX.utils.sheet_to_json(ws, { defval: "" }) : [];
     } catch (final) {
-      log('Failed after reset attempt:', final?.message);
-      throw new Error('Excel file locked or not accessible. Please close it in Excel and try again.');
+      log('Failed after reset attempt:', (final as any)?.message);
+      throw final instanceof Error ? final : new Error(String(final));
     }
   }
 }
 function trySaveInvoices(invoices: any[]) {
   try {
+    const access = checkAccess(invoicesFile);
+    if (!access.ok) throw new Error('Cannot write: ' + access.error);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(invoices), SHEET);
     atomicWriteWorkbook(invoicesFile, wb);
     log('Invoices saved:', invoices.length, 'total');
   } catch(e: any) {
     log('Save failed (locked?):', e?.message);
-    throw new Error('Excel file locked for write. Please close it in Excel.');
+    throw e instanceof Error ? e : new Error(String(e));
   }
 }
 export async function GET() {
@@ -77,9 +88,9 @@ export async function GET() {
     const invoices = tryLoadInvoices();
     log('Fetched invoices:', invoices.length);
     return NextResponse.json({ invoices });
-  } catch (e) {
-    log('GET error:', e);
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) }, { status: 500 });
+  } catch (e: any) {
+    log('GET error:', e?.message || e);
+    return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });
   }
 }
 export async function POST(request: NextRequest) {
@@ -94,9 +105,9 @@ export async function POST(request: NextRequest) {
     trySaveInvoices(invoices);
     log('Invoice added:', id);
     return NextResponse.json({ invoice: newInv, invoices });
-  } catch (e) {
-    log('POST error:', e);
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) }, { status: 500 });
+  } catch (e: any) {
+    log('POST error:', e?.message || e);
+    return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });
   }
 }
 export async function PUT(request: NextRequest) {
@@ -111,9 +122,9 @@ export async function PUT(request: NextRequest) {
     trySaveInvoices(invoices);
     log('Invoice updated:', data.id);
     return NextResponse.json({ invoice: invoices[idx], invoices });
-  } catch (e) {
-    log('PUT error:', e);
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) }, { status: 500 });
+  } catch (e: any) {
+    log('PUT error:', e?.message || e);
+    return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });
   }
 }
 export async function DELETE(request: NextRequest) {
@@ -127,8 +138,8 @@ export async function DELETE(request: NextRequest) {
     trySaveInvoices(invoices);
     log('Invoice deleted:', data.id, 'remaining:', invoices.length);
     return NextResponse.json({ success: true, deleted: data.id, count: before - invoices.length, invoices });
-  } catch (e) {
-    log('DELETE error:', e);
-    return NextResponse.json({ error: (e instanceof Error ? e.message : String(e)) }, { status: 500 });
+  } catch (e: any) {
+    log('DELETE error:', e?.message || e);
+    return NextResponse.json({ error: e?.message || String(e) }, { status: 500 });
   }
 }
