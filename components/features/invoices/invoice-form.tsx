@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast"
 import { calculateLineItem, roundToTwo } from "@/lib/utils/gst-calculator"
 import { Switch } from "@/components/ui/switch"
 import { db } from "@/lib/db/dexie"
+import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 
 interface Customer {
   id: string
@@ -172,23 +173,52 @@ export function InvoiceForm({ customers, products, settings }: InvoiceFormProps)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-
-    const supabase = createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      toast({
-        title: "Error",
-        description: "You must be logged in",
-        variant: "destructive",
-      })
-      setIsLoading(false)
-      return
-    }
-
     try {
+      if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+        // Add invoice to Excel; nest lineItems into invoice object for this mode
+        const id = crypto.randomUUID()
+        const invoicePayload = {
+          id,
+          customer_id: customerId,
+          invoice_number: invoiceNumber,
+          invoice_date: invoiceDate,
+          due_date: dueDate,
+          status: "draft",
+          is_gst_invoice: isGstInvoice,
+          subtotal: totals.subtotal,
+          cgst_amount: totals.cgst,
+          sgst_amount: totals.sgst,
+          igst_amount: totals.igst,
+          total_amount: totals.total,
+          notes,
+          terms,
+          items: lineItems, // << store array directly in cell
+        }
+        excelSheetManager.add('invoices', invoicePayload)
+        toast({
+          title: "Success",
+          description: "Invoice created in Excel file",
+        })
+        router.push(`/invoices`)
+        router.refresh()
+        return
+      }
+
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in",
+          variant: "destructive",
+        })
+        setIsLoading(false)
+        return
+      }
+
       // Offline-first: if offline, persist to IndexedDB and queue sync
       if (!navigator.onLine) {
         const id = crypto.randomUUID()

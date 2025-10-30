@@ -3,19 +3,26 @@ import { Button } from "@/components/ui/button"
 import { Plus, FileSpreadsheet } from "lucide-react"
 import Link from "next/link"
 import { CustomersTable } from "@/components/features/customers/customers-table"
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { toast } from "sonner"
+import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
+
 export default async function CustomersPage() {
   const supabase = await createClient()
   const {
     data: { user },
   } = await supabase.auth.getUser()
 
-  const { data: customers } = await supabase
-    .from("customers")
-    .select("*")
-    .eq("user_id", user!.id)
-    .order("created_at", { ascending: false })
+  const [customers, setCustomers] = useState([])
+
+  useEffect(() => {
+    if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+      setCustomers([...excelSheetManager.getList('customers')])
+      const unsub = excelSheetManager.subscribe(() => setCustomers([...excelSheetManager.getList('customers')]))
+      return unsub
+    }
+    // else: fetch and set with existing Supabase method (could be SSR or useEffect used for DB mode)
+  }, [])
 
   // Excel import logic
   function ExcelImport() {

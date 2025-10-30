@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { db } from "@/lib/db/dexie"
+import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 
 interface Customer {
   id?: string
@@ -47,49 +48,35 @@ export function CustomerForm({ customer }: CustomerFormProps) {
     e.preventDefault()
     setIsLoading(true)
 
-    const supabase = createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      toast({
-        title: "Error",
-        description: "You must be logged in",
-        variant: "destructive",
-      })
-      setIsLoading(false)
-      return
-    }
-
     try {
-      // Offline-first: if offline, write to IndexedDB and queue sync
-      if (!navigator.onLine) {
+      if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
         const id = customer?.id || crypto.randomUUID()
-        const now = new Date().toISOString()
-        const payload = {
-          id,
-          user_id: user.id,
-          ...formData,
-          created_at: customer?.id ? (customer as any).created_at : now,
-          updated_at: now,
-          is_synced: false,
-          deleted: false,
-        } as any
-
-        await db.customers.put(payload)
-        await db.sync_queue.add({
-          entity_type: "customer",
-          entity_id: id,
-          action: customer?.id ? "update" : "create",
-          data: payload,
-          created_at: now,
-          retry_count: 0,
+        if (customer?.id) {
+          excelSheetManager.update('customers', id, { ...formData, id })
+        } else {
+          excelSheetManager.add('customers', { ...formData, id })
+        }
+        toast({
+          title: "Success",
+          description: `Customer ${customer?.id ? "updated" : "created"} in Excel`,
         })
-
-        toast({ title: "Saved offline", description: "Will sync when you're back online." })
         router.push(customer?.id ? `/customers/${id}` : "/customers")
         router.refresh()
+        return
+      }
+
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+
+      if (!user) {
+        toast({
+          title: "Error",
+          description: "You must be logged in",
+          variant: "destructive",
+        })
+        setIsLoading(false)
         return
       }
 

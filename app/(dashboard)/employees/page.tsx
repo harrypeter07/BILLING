@@ -10,6 +10,7 @@ import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 
 interface Employee {
   id: string
@@ -29,10 +30,20 @@ export default function EmployeesPage() {
   const { toast } = useToast()
 
   useEffect(() => {
-    fetchEmployees()
+    if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+      setEmployees([...excelSheetManager.getList('employees')])
+      const unsub = excelSheetManager.subscribe(() => setEmployees([...excelSheetManager.getList('employees')]))
+      return unsub
+    }
+    // else: fetch and set with existing Supabase method for DB mode
   }, [])
 
   const fetchEmployees = async () => {
+    if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+      setEmployees([...excelSheetManager.getList('employees')])
+      setIsLoading(false)
+      return
+    }
     try {
       const supabase = createClient()
       const { data, error } = await supabase.from("employees").select("*").order("created_at", { ascending: false })
@@ -51,6 +62,12 @@ export default function EmployeesPage() {
   }
 
   const handleDelete = async (id: string) => {
+    if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+      excelSheetManager.remove('employees', id)
+      setEmployees(employees.filter(e => e.id !== id))
+      toast({ title: "Success", description: "Employee removed from Excel" })
+      return
+    }
     if (!confirm("Are you sure?")) return
 
     try {

@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { db } from "@/lib/db/dexie"
+import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 
 interface Product {
   id?: string
@@ -71,31 +72,18 @@ export function ProductForm({ product }: ProductFormProps) {
     }
 
     try {
-      // Offline-first: if offline, write to IndexedDB and queue sync
-      if (!navigator.onLine) {
+      if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
+        // In Excel Mode, update in-memory Excel cache and persist to file
         const id = product?.id || crypto.randomUUID()
-        const now = new Date().toISOString()
-        const payload = {
-          id,
-          user_id: user.id,
-          ...formData,
-          created_at: product?.id ? product.created_at : now,
-          updated_at: now,
-          is_synced: false,
-          deleted: false,
-        } as any
-
-        await db.products.put(payload)
-        await db.sync_queue.add({
-          entity_type: "product",
-          entity_id: id,
-          action: product?.id ? "update" : "create",
-          data: payload,
-          created_at: now,
-          retry_count: 0,
+        if (product?.id) {
+          excelSheetManager.update('products', id, { ...formData, id })
+        } else {
+          excelSheetManager.add('products', { ...formData, id })
+        }
+        toast({
+          title: "Success",
+          description: `Product ${product?.id ? "updated" : "created"} in Excel`,
         })
-
-        toast({ title: "Saved offline", description: "Will sync when you're back online." })
         router.push("/products")
         router.refresh()
         return
