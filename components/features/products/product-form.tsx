@@ -73,12 +73,24 @@ export function ProductForm({ product }: ProductFormProps) {
 
     try {
       if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-        // In Excel Mode, update in-memory Excel cache and persist to file
-        const id = product?.id || crypto.randomUUID()
-        if (product?.id) {
-          excelSheetManager.update('products', id, { ...formData, id })
-        } else {
-          excelSheetManager.add('products', { ...formData, id })
+        const id = product?.id || crypto.randomUUID();
+        let excelResult = null;
+        try {
+          if (product?.id) {
+            excelResult = excelSheetManager.update('products', id, { ...formData, id })
+          } else {
+            excelResult = excelSheetManager.add('products', { ...formData, id })
+          }
+          if (!excelSheetManager.workbook || !excelSheetManager.workbook.Sheets["Products"]) {
+            window.alert("Excel sheet 'Products' was not created or writable. Click 'Check Excel Integrity' or allow pop-up/download.");
+            throw new Error("Excel sheet missing after save.")
+          }
+        } catch (excelError) {
+          window.alert(
+            'Excel Save Failed: ' +
+            (excelError instanceof Error && excelError.message ? excelError.message : JSON.stringify(excelError))
+          );
+          throw excelError;
         }
         toast({
           title: "Success",
@@ -86,7 +98,7 @@ export function ProductForm({ product }: ProductFormProps) {
         })
         router.push("/products")
         router.refresh()
-        return
+        return;
       }
 
       if (product?.id) {

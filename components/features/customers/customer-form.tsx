@@ -58,6 +58,11 @@ export function CustomerForm({ customer }: CustomerFormProps) {
           } else {
             excelResult = excelSheetManager.add('customers', { ...formData, id })
           }
+          // After Excel save, ensure the workbook and sheet actually exist now
+          if (!excelSheetManager.workbook || !excelSheetManager.workbook.Sheets["Customers"]) {
+            window.alert("Excel sheet was not created or writable. Click 'Check Excel Integrity' first, or allow pop-up/download if prompted.");
+            throw new Error("Excel sheet missing after save")
+          }
         } catch (excelError) {
           console.error('[CustomerForm] Excel add/update threw error:', excelError);
           window.alert(
