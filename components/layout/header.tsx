@@ -23,9 +23,8 @@ export function Header({ title }: HeaderProps) {
   const router = useRouter()
   const [userEmail, setUserEmail] = useState<string>("")
   const [initials, setInitials] = useState<string>("U")
-  const [storageMode, setStorageMode] = useState<"database" | "excel">(
-    (typeof window !== "undefined" && (localStorage.getItem("storageMode") as any)) || "database",
-  )
+  const [storageMode, setStorageMode] = useState<"database" | "excel">("database");
+  const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -40,6 +39,16 @@ export function Header({ title }: HeaderProps) {
     }
     fetchUser()
   }, [])
+
+  useEffect(() => {
+    setHasMounted(true);
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("storageMode");
+      if (stored === "database" || stored === "excel") {
+        setStorageMode(stored);
+      }
+    }
+  }, []);
 
   const handleLogout = async () => {
     const supabase = createClient()
@@ -66,16 +75,19 @@ export function Header({ title }: HeaderProps) {
       <div className="flex items-center gap-4">{title && <h1 className="text-2xl font-bold">{title}</h1>}</div>
 
       <div className="flex items-center gap-4">
+        {/* DropdownMenu for storage mode */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="bg-transparent">
-              Storage: {storageMode === "database" ? "Database" : "Excel"}
+              {hasMounted ? `Storage: ${storageMode === "database" ? "Database" : "Excel"}` : "Storage: ..."}
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setStorageMode("database")}>Use Database</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setStorageMode("excel")}>Use Excel</DropdownMenuItem>
-          </DropdownMenuContent>
+          {hasMounted && (
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setStorageMode("database")}>Use Database</DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setStorageMode("excel")}>Use Excel</DropdownMenuItem>
+            </DropdownMenuContent>
+          )}
         </DropdownMenu>
 
         <Button variant="outline" className="bg-transparent" onClick={handleSyncNow}>
