@@ -22,12 +22,33 @@ class ExcelSheetManager {
     for (const fn of this.subscribers) fn()
   }
 
+  ensureWorkbookIfNeeded(createSheets = true) {
+    let createdAny = false;
+    if (!this.workbook) {
+      this.workbook = XLSX.utils.book_new();
+      createdAny = true;
+    }
+    const mainSheets = ["Products","Customers","Employees","Invoices"];
+    for(const sheetName of mainSheets) {
+      if (!this.workbook.Sheets[sheetName]) {
+        this.workbook.SheetNames.push(sheetName);
+        this.workbook.Sheets[sheetName] = XLSX.utils.json_to_sheet([]);
+        createdAny = true;
+      }
+    }
+    if (createSheets && createdAny) console.log('[excelSheetManager] One or more sheets auto-created:', this.workbook.SheetNames);
+    if (!this.products) this.products = [];
+    if (!this.customers) this.customers = [];
+    if (!this.employees) this.employees = [];
+    if (!this.invoices) this.invoices = [];
+  }
+
   setExcelMode(active: boolean) {
     this.isExcelMode = active
+    if (active) this.ensureWorkbookIfNeeded();
     this.notify()
     console.log(`[excelSheetManager] Excel mode set:`, active)
   }
-
   get isActive() { return this.isExcelMode }
 
   async initializeExcelMode() {
@@ -68,6 +89,7 @@ class ExcelSheetManager {
       throw new Error("[excelSheetManager] No Excel file to load")
     }
     this.workbook = XLSX.read(arrayBuffer, { type: "array" })
+    this.ensureWorkbookIfNeeded(true)
     this.products = XLSX.utils.sheet_to_json(this.workbook.Sheets["Products"] || [], { defval: "" })
     this.customers = XLSX.utils.sheet_to_json(this.workbook.Sheets["Customers"] || [], { defval: "" })
     this.employees = XLSX.utils.sheet_to_json(this.workbook.Sheets["Employees"] || [], { defval: "" })
@@ -80,6 +102,7 @@ class ExcelSheetManager {
 
   async persistAllToExcel() {
     try {
+      this.ensureWorkbookIfNeeded(true);
       const wb = XLSX.utils.book_new()
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(this.products), "Products")
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(this.customers), "Customers")
@@ -101,29 +124,14 @@ class ExcelSheetManager {
     }
   }
 
-  ensureWorkbookIfNeeded() {
-    if (!this.workbook) {
-      console.log("[excelSheetManager] No workbook in memory: creating a new in-memory Excel workbook.")
-      const wb = XLSX.utils.book_new()
-      wb.SheetNames = ["Products", "Customers", "Employees", "Invoices"]
-      wb.Sheets = {}
-      wb.Sheets["Products"] = XLSX.utils.json_to_sheet([])
-      wb.Sheets["Customers"] = XLSX.utils.json_to_sheet([])
-      wb.Sheets["Employees"] = XLSX.utils.json_to_sheet([])
-      wb.Sheets["Invoices"] = XLSX.utils.json_to_sheet([])
-      this.workbook = wb
-      this.products = []
-      this.customers = []
-      this.employees = []
-      this.invoices = []
-    }
+  getList(type: "products" | "customers" | "employees" | "invoices") {
+    this.ensureWorkbookIfNeeded(true);
+    return this[type]
   }
 
-  // CRUD Generic methods for each entity
-  getList(type: "products" | "customers" | "employees" | "invoices") { return this[type] }
   add(type: "products" | "customers" | "employees" | "invoices", item: any) {
     try {
-      if (!this.workbook) this.ensureWorkbookIfNeeded()
+      this.ensureWorkbookIfNeeded(true);
       this[type].push(item)
       this.persistAllToExcel()
       this.notify()
@@ -134,7 +142,7 @@ class ExcelSheetManager {
   }
   update(type: "products" | "customers" | "employees" | "invoices", id: any, patch: any) {
     try {
-      if (!this.workbook) this.ensureWorkbookIfNeeded()
+      this.ensureWorkbookIfNeeded(true);
       const arr = this[type]
       const idx = arr.findIndex((x: any) => x.id === id)
       if (idx !== -1) {
@@ -149,7 +157,7 @@ class ExcelSheetManager {
   }
   remove(type: "products" | "customers" | "employees" | "invoices", id: any) {
     try {
-      if (!this.workbook) this.ensureWorkbookIfNeeded()
+      this.ensureWorkbookIfNeeded(true);
       const arr = this[type]
       const idx = arr.findIndex((x: any) => x.id === id)
       if (idx !== -1) {
@@ -162,7 +170,6 @@ class ExcelSheetManager {
       console.error(`[excelSheetManager] Remove error on ${type}:`, e)
     }
   }
-  // For UI to check if we're in excel mode
   isExcelModeActive() {
     return this.isExcelMode
   }

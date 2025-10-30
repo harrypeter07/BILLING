@@ -14,6 +14,7 @@ import {
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useEffect, useState } from "react"
+import { excelSheetManager } from "@/lib/utils/excel-sheet-manager";
 
 interface HeaderProps {
   title?: string
@@ -93,6 +94,28 @@ export function Header({ title }: HeaderProps) {
         <Button variant="outline" className="bg-transparent" onClick={handleSyncNow}>
           Sync Now
         </Button>
+
+        <Button variant="outline" className="bg-transparent" onClick={() => {
+          if (storageMode === 'excel') {
+            const before = {
+              workbook: !!excelSheetManager.workbook,
+              sheets: excelSheetManager.workbook?.SheetNames ?? [],
+            }
+            excelSheetManager.ensureWorkbookIfNeeded(true)
+            const after = {
+              workbook: !!excelSheetManager.workbook,
+              sheets: excelSheetManager.workbook?.SheetNames ?? [],
+            }
+            console.log('[ExcelIntegrity][Check] Before:', before, 'After:', after)
+            if (after.workbook && after.sheets.length === 4) {
+              window.alert('Excel workbook integrity OK: all required sheets present!')
+            } else {
+              window.alert('Excel workbook auto-repaired. See console logs for details.')
+            }
+          } else {
+            window.alert('Excel Integrity: Switch to Excel mode to check and repair sheets.')
+          }
+        }}>Check Excel Integrity</Button>
 
         {/* Notifications */}
         <Button variant="ghost" size="icon" className="relative">

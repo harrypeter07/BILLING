@@ -51,10 +51,13 @@ export function CustomerForm({ customer }: CustomerFormProps) {
     try {
       if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
         const id = customer?.id || crypto.randomUUID()
+        console.log('[CustomerForm] Excel mode enabled. Workbook present:', !!excelSheetManager.workbook, 'Current sheets:', excelSheetManager.workbook?.SheetNames)
         if (customer?.id) {
           excelSheetManager.update('customers', id, { ...formData, id })
+          console.log('[CustomerForm] Updated customer in Excel:', { ...formData, id })
         } else {
           excelSheetManager.add('customers', { ...formData, id })
+          console.log('[CustomerForm] Added customer in Excel:', { ...formData, id })
         }
         toast({
           title: "Success",
@@ -115,6 +118,7 @@ export function CustomerForm({ customer }: CustomerFormProps) {
 
       router.refresh()
     } catch (error) {
+      console.error('[CustomerForm] Error in Excel/DB add/update:', error)
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save customer",
