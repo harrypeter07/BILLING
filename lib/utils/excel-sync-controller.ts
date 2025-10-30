@@ -138,6 +138,68 @@ class ExcelSheetManager {
     }
   }
 
+  // Ensures workbook exists, sheets exist, and (optionally) fills with starter mock data
+  async ensureWorkbookAndSheetsWithData(fillMock = false) {
+    // If no workbook or file handle, optionally prompt/auto-create
+    if (!this.workbook || !this.fh) {
+      // Try to create and prompt user to save a file
+      if ('showSaveFilePicker' in window) {
+        const defaultSheetNames = ["Products","Customers","Employees","Invoices"];
+        const options = {
+          suggestedName: "BillingData.xlsx",
+          types: [{ description: "Excel Workbook", accept: { "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"] } }]
+        };
+        const fileHandle = await (window as any).showSaveFilePicker(options);
+        this.fh = fileHandle;
+        this.workbook = XLSX.utils.book_new();
+        // Add empty or mock sheets, if required
+        for (const sheetName of defaultSheetNames) {
+          let data = [];
+          if (fillMock) {
+            if (sheetName === "Products") data = [{ id: crypto.randomUUID(), name: "Demo Widget", sku: "WM-1", category: "Demo", price: 45.5, cost_price: 20, stock_quantity: 10, unit: "piece", hsn_code: "9999", gst_rate: 18, is_active: true }];
+            if (sheetName === "Customers") data = [{ id: crypto.randomUUID(), name: "Demo Customer", email: "demo@example.com", phone: "1234567890", gstin: "", address: "123 Main Road" }];
+            if (sheetName === "Employees") data = [{ id: crypto.randomUUID(), name: "Demo Employee", title: "Owner", salary: 10000 }];
+            if (sheetName === "Invoices") data = [{ id: crypto.randomUUID(), customer_id: "", total: 90.5, created_at: new Date().toISOString(), items: "[]" }];
+          }
+          XLSX.utils.book_append_sheet(this.workbook, XLSX.utils.json_to_sheet(data), sheetName);
+        }
+        await this.persistAllToExcel();
+        await this.loadAllFromExcel();
+        this.setExcelMode(true);
+        this.notify();
+        return { created: true, repaired: false, filled: fillMock };
+      } else {
+        // fallback: user must import/upload
+        alert("File System Access API not available. Please use Upload/Import.");
+        return { created: false, repaired: false, filled: false };
+      }
+    }
+    // If workbook open, ensure all standard sheets exist with mock/filler if desired
+    let repaired = false, filled = false;
+    const sheetNames = ["Products","Customers","Employees","Invoices"];
+    for (const sheetName of sheetNames) {
+      if (!this.workbook.Sheets[sheetName]) {
+        XLSX.utils.book_append_sheet(this.workbook, XLSX.utils.json_to_sheet([]), sheetName);
+        repaired = true;
+      }
+      // Optionally add mock data if sheet empty
+      const rows = XLSX.utils.sheet_to_json(this.workbook.Sheets[sheetName]);
+      if (fillMock && (!rows || rows.length === 0)) {
+        let data = [];
+        if (sheetName === "Products") data = [{ id: crypto.randomUUID(), name: "Demo Widget", sku: "WM-1", category: "Demo", price: 45.5, cost_price: 20, stock_quantity: 10, unit: "piece", hsn_code: "9999", gst_rate: 18, is_active: true }];
+        if (sheetName === "Customers") data = [{ id: crypto.randomUUID(), name: "Demo Customer", email: "demo@example.com", phone: "1234567890", gstin: "", address: "123 Main Road" }];
+        if (sheetName === "Employees") data = [{ id: crypto.randomUUID(), name: "Demo Employee", title: "Owner", salary: 10000 }];
+        if (sheetName === "Invoices") data = [{ id: crypto.randomUUID(), customer_id: "", total: 90.5, created_at: new Date().toISOString(), items: "[]" }];
+        XLSX.utils.book_append_sheet(this.workbook, XLSX.utils.json_to_sheet(data), sheetName);
+        filled = true;
+      }
+    }
+    await this.persistAllToExcel();
+    await this.loadAllFromExcel();
+    this.notify();
+    return { created: false, repaired, filled };
+  }
+
   getList(type: "products" | "customers" | "employees" | "invoices") {
     this.ensureWorkbookIfNeeded(true);
     return this[type]

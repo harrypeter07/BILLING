@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -29,14 +29,15 @@ export default function TestExcelPage() {
     }
   }
 
-  const checkIntegrity = () => {
+  const checkIntegrity = async () => {
+    setStatus("Checking and repairing integrity...");
     try {
-      const wb = excelSheetManager.workbook
-      const ok = !!(wb && wb.Sheets && wb.Sheets["Products"]) 
-      setStatus(ok ? "Integrity OK" : "Integrity FAILED (Products sheet missing)")
-      refreshCounts()
+      // true: fill with mock data if file or structure missing
+      const result = await excelSheetManager.ensureWorkbookAndSheetsWithData(true);
+      setStatus("Check done: " + JSON.stringify(result));
+      refreshCounts();
     } catch (e: any) {
-      setStatus("Integrity check error: " + (e?.message || String(e)))
+      setStatus("Integrity check error: " + (e?.message || String(e)));
     }
   }
 
@@ -95,6 +96,27 @@ export default function TestExcelPage() {
     }
   }
 
+  const fileNames = ["Products.xlsx","Customers.xlsx","Employees.xlsx","Invoices.xlsx"];
+  const [fileStatus, setFileStatus] = useState<{[key:string]:boolean}>({})
+
+  // uses a public file endpoint in dev or simulate available files
+  useEffect(() => {
+    async function checkFiles() {
+      const statuses: {[key:string]:boolean} = {}
+      for (const fname of fileNames) {
+        // For local dev, use fetch to /tmp/ if static exposed, or simulate
+        try {
+          const res = await fetch(`/tmp/${fname}`, { method: 'HEAD' })
+          statuses[fname] = res.ok
+        } catch {
+          statuses[fname] = false
+        }
+      }
+      setFileStatus(statuses)
+    }
+    checkFiles()
+  }, [])
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -120,6 +142,12 @@ export default function TestExcelPage() {
             <div>Status: {status}</div>
             <div>Products Count: {productsCount}</div>
             <div>Excel Mode: {String(excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive())}</div>
+          </div>
+          <div className="mb-4">
+            <strong>Excel file status in tmp/</strong>:
+            <ul>
+              {fileNames.map(fname => (<li key={fname}>{fname}: {fileStatus[fname] ? '✅ Exists' : '❌ Missing'}</li>))}
+            </ul>
           </div>
         </CardContent>
       </Card>
