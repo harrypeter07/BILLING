@@ -146,42 +146,52 @@ class ExcelSheetManager {
   add(type: "products" | "customers" | "employees" | "invoices", item: any) {
     try {
       this.ensureWorkbookIfNeeded(true);
+      console.log(`[excelSheetManager][add] Adding item to ${type}:`, item)
       this[type].push(item)
       this.persistAllToExcel()
       this.notify()
-      console.log(`[excelSheetManager] Added item to ${type}:`, item)
+      console.log(`[excelSheetManager][add] Item added to ${type} array and persisted`, item)
     } catch (e) {
-      console.error(`[excelSheetManager] Add error on ${type}:`, e)
+      console.error(`[excelSheetManager][add] Error on ${type}:`, e, item)
+      throw e;
     }
   }
   update(type: "products" | "customers" | "employees" | "invoices", id: any, patch: any) {
     try {
       this.ensureWorkbookIfNeeded(true);
+      console.log(`[excelSheetManager][update] Updating item in ${type}:`, { id, patch });
       const arr = this[type]
       const idx = arr.findIndex((x: any) => x.id === id)
       if (idx !== -1) {
         arr[idx] = { ...arr[idx], ...patch }
         this.persistAllToExcel()
         this.notify()
-        console.log(`[excelSheetManager] Updated item in ${type}:`, { id, patch })
+        console.log(`[excelSheetManager][update] Item updated in ${type}:`, arr[idx])
+      } else {
+        console.warn(`[excelSheetManager][update] Item with id not found in ${type}:`, id)
       }
     } catch (e) {
-      console.error(`[excelSheetManager] Update error on ${type}:`, e)
+      console.error(`[excelSheetManager][update] Error on ${type}:`, e, id, patch)
+      throw e;
     }
   }
   remove(type: "products" | "customers" | "employees" | "invoices", id: any) {
     try {
       this.ensureWorkbookIfNeeded(true);
+      console.log(`[excelSheetManager][remove] Removing item from ${type}:`, id)
       const arr = this[type]
       const idx = arr.findIndex((x: any) => x.id === id)
       if (idx !== -1) {
         arr.splice(idx, 1)
         this.persistAllToExcel()
         this.notify()
-        console.log(`[excelSheetManager] Removed item from ${type}:`, id)
+        console.log(`[excelSheetManager][remove] Item removed from ${type}:`, id)
+      } else {
+        console.warn(`[excelSheetManager][remove] Item with id not found in ${type}:`, id)
       }
     } catch (e) {
-      console.error(`[excelSheetManager] Remove error on ${type}:`, e)
+      console.error(`[excelSheetManager][remove] Error on ${type}:`, e, id)
+      throw e;
     }
   }
   isExcelModeActive() {
