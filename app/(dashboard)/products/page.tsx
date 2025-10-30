@@ -7,29 +7,38 @@ import { ProductsTable } from "@/components/features/products/products-table"
 import { toast } from "sonner"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 import { createClient } from "@/lib/supabase/client"
+import { fetchProducts } from "@/lib/api/products"
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-      setProducts([...excelSheetManager.getList('products')])
-      setIsLoading(false)
-      const unsub = excelSheetManager.subscribe(() => setProducts([...excelSheetManager.getList('products')]))
+    const isExcel = excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()
+    if (isExcel) {
+      // Prefer the Excel API so we read from the data folder
+      (async () => {
+        try {
+          setIsLoading(true)
+          const list = await fetchProducts()
+          setProducts(list)
+        } catch (e) {
+          // Fallback to in-memory manager if API fails
+          setProducts([...excelSheetManager.getList('products')])
+        } finally {
+          setIsLoading(false)
+        }
+      })()
+      const unsub = excelSheetManager.subscribe(async () => {
+        try { setProducts(await fetchProducts()) } catch { setProducts([...excelSheetManager.getList('products')]) }
+      })
       return unsub
     } else {
       const fetchData = async () => {
         setIsLoading(true)
         const supabase = createClient()
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) {
-          setProducts([])
-          setIsLoading(false)
-          return
-        }
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) { setProducts([]); setIsLoading(false); return }
         const { data: dbProducts } = await supabase
           .from("products")
           .select("*")

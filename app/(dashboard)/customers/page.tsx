@@ -8,6 +8,7 @@ import { toast } from "sonner"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 // Don't import createClient unless needed
 // import { createClient } from "@/lib/supabase/client"
+import { fetchCustomers } from "@/lib/api/customers"
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([])
@@ -16,9 +17,20 @@ export default function CustomersPage() {
 
   useEffect(() => {
     if (isExcel) {
-      setCustomers([...excelSheetManager.getList('customers')])
-      setIsLoading(false)
-      const unsub = excelSheetManager.subscribe(() => setCustomers([...excelSheetManager.getList('customers')]))
+      (async () => {
+        try {
+          setIsLoading(true)
+          const list = await fetchCustomers()
+          setCustomers(list)
+        } catch {
+          setCustomers([...excelSheetManager.getList('customers')])
+        } finally {
+          setIsLoading(false)
+        }
+      })()
+      const unsub = excelSheetManager.subscribe(async () => {
+        try { setCustomers(await fetchCustomers()) } catch { setCustomers([...excelSheetManager.getList('customers')]) }
+      })
       return unsub
     } else {
       // Only import and use Supabase when NOT in Excel mode

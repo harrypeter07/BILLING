@@ -4,37 +4,42 @@ import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle } from "lu
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useEffect, useState } from 'react';
-import { autoLoadAllExcelFilesFromPublic, excelSheetManager } from '@/lib/utils/excel-sync-controller';
 import { createClient } from '@/lib/supabase/client';
 
 // Add this for now. Replace with a real config or store later.
 const getDatabaseType = () => typeof window !== 'undefined' && window.localStorage.getItem('databaseType') === 'supabase' ? 'supabase' : 'excel';
 
 export default function DashboardPage() {
-  // For Excel data
   const [excelStats, setExcelStats] = useState<any>(null);
-  // For Supabase data
   const [sbStats, setSbStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const dbType = getDatabaseType();
 
   useEffect(() => {
     if (dbType === 'excel') {
-      autoLoadAllExcelFilesFromPublic().then(() => {
-        const products = excelSheetManager.getList('products') || [];
-        const customers = excelSheetManager.getList('customers') || [];
-        const invoices = excelSheetManager.getList('invoices') || [];
-        // Simple stats for demo
-        setExcelStats({
-          totalRevenue: invoices.reduce((s, i) => s + Number(i.total || i.total_amount || 0), 0),
-          productsCount: products.length,
-          customersCount: customers.length,
-          invoicesCount: invoices.length,
-          recentInvoices: invoices.slice(-5).reverse(),
-          lowStockProducts: products.filter(p => (p.stock_quantity !== undefined && p.stock_quantity <= 10)),
-        });
-        setLoading(false);
-      }).catch(() => { setLoading(false); });
+      (async () => {
+        try {
+          setLoading(true);
+          const [prodRes, custRes, invRes] = await Promise.all([
+            fetch('/api/excel/products').then(r=>r.json()),
+            fetch('/api/excel/customers').then(r=>r.json()),
+            fetch('/api/excel/invoices').then(r=>r.json()),
+          ]);
+          const products = prodRes.products || [];
+          const customers = custRes.customers || [];
+          const invoices = invRes.invoices || [];
+          setExcelStats({
+            totalRevenue: invoices.reduce((s: number, i: any)=> s + Number(i.total_amount || i.total || 0), 0),
+            productsCount: products.length,
+            customersCount: customers.length,
+            invoicesCount: invoices.length,
+            recentInvoices: invoices.slice(-5).reverse(),
+            lowStockProducts: products.filter((p: any)=> p.stock_quantity !== undefined && Number(p.stock_quantity) <= 10),
+          });
+        } finally {
+          setLoading(false);
+        }
+      })();
     } else if (dbType === 'supabase') {
       (async () => {
         setLoading(true);
@@ -54,27 +59,16 @@ export default function DashboardPage() {
             .eq("user_id", user?.id).order("created_at", { ascending: false }).limit(5);
         const { data: lowStockProducts } = await supabase
           .from("products").select("id, name, stock_quantity").eq("user_id", user?.id).lte("stock_quantity", 10).limit(5);
-        setSbStats({
-          totalRevenue, productsCount, customersCount, invoicesCount, recentInvoices, lowStockProducts
-        });
+        setSbStats({ totalRevenue, productsCount, customersCount, invoicesCount, recentInvoices, lowStockProducts });
         setLoading(false);
       })();
     }
-    // eslint-disable-next-line
   }, [dbType]);
 
   const stats = dbType === 'supabase' ? sbStats : excelStats;
   if (loading || !stats) return <div>Loading...</div>;
 
-  // Use stats variable everywhere below
-  const {
-    totalRevenue = 0,
-    invoicesCount = 0,
-    productsCount = 0,
-    customersCount = 0,
-    recentInvoices = [],
-    lowStockProducts = [],
-  } = stats;
+  const { totalRevenue = 0, invoicesCount = 0, productsCount = 0, customersCount = 0, recentInvoices = [], lowStockProducts = [] } = stats;
 
   return (
     <div className="space-y-6">
@@ -125,7 +119,6 @@ export default function DashboardPage() {
         </Card>
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Recent Invoices */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -137,12 +130,10 @@ export default function DashboardPage() {
             {recentInvoices && recentInvoices.length > 0 ? (
               <div className="space-y-4">
                 {recentInvoices.map((invoice: any) => (
-                  <div key={invoice.id} className="flex items-center justify-between">
+                  <div key={invoice.id || invoice.invoice_number} className="flex items-center justify-between">
                     <div>
                       <p className="font-medium">{invoice.invoice_number || invoice.id}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {invoice.customers ? (invoice.customers as any).name : "No customer"}
-                      </p>
+                      <p className="text-sm text-muted-foreground">{invoice.customer_name || 'Customer'}</p>
                     </div>
                     <div className="text-right">
                       <p className="font-medium">₹{Number(invoice.total_amount || invoice.total).toLocaleString("en-IN")}</p>
@@ -164,7 +155,6 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
-        {/* Low Stock Alert */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -198,7 +188,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-      {/* Quick Actions */}
       <Card>
         <CardHeader>
           <CardTitle>Quick Actions</CardTitle>

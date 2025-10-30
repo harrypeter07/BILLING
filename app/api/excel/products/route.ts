@@ -12,13 +12,22 @@ function log(...args: any[]) { console.log("[EXCEL:products]", ...args); }
 function ensureDataDir() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 }
-function checkAccess(filePath: string) {
-  try { fs.accessSync(filePath, fs.constants.R_OK | fs.constants.W_OK); return { ok: true }; }
+function canReadFile(filePath: string) {
+  try { fs.accessSync(filePath, fs.constants.R_OK); return { ok: true }; }
+  catch (e: any) { return { ok: false, error: e?.message || String(e) }; }
+}
+function canWriteDir(filePath: string) {
+  const dir = path.dirname(filePath);
+  try { fs.accessSync(dir, fs.constants.W_OK); return { ok: true }; }
   catch (e: any) { return { ok: false, error: e?.message || String(e) }; }
 }
 function atomicWriteWorkbook(filePath: string, wb: XLSX.WorkBook) {
-  const tmp = filePath + ".tmp";
-  XLSX.writeFile(wb, tmp);
+  const tmpDir = path.join(process.cwd(), "tmp");
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const tmp = path.join(tmpDir, path.basename(filePath) + "." + Date.now() + ".xlsx");
+  const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'buffer' });
+  fs.writeFileSync(tmp, buf);
+  try { if (fs.existsSync(filePath)) fs.unlinkSync(filePath); } catch {}
   fs.renameSync(tmp, filePath);
 }
 function ensureFileAndSheet(forceReset = false) {
@@ -48,39 +57,49 @@ function ensureFileAndSheet(forceReset = false) {
   }
 }
 function tryLoadProducts(): any[] {
-  try {
-    ensureFileAndSheet();
-    const access = checkAccess(productsFile);
-    if (!access.ok) throw new Error('Access denied: ' + access.error);
-    const wb = XLSX.readFile(productsFile);
+  const readOnce = () => {
+    const buf = fs.readFileSync(productsFile);
+    const wb = XLSX.read(buf, { type: 'buffer' });
     const ws = wb.Sheets[SHEET];
     return ws ? XLSX.utils.sheet_to_json(ws, { defval: "" }) : [];
+  };
+  try {
+    ensureFileAndSheet();
+    const access = canReadFile(productsFile);
+    if (!access.ok) throw new Error('Access denied: ' + access.error);
+    return readOnce();
   } catch (e: any) {
     log('Load failed, possibly locked/corrupt. Retrying with reset.', e?.message);
     try {
       ensureFileAndSheet(true);
-      const access = checkAccess(productsFile);
+      const access = canReadFile(productsFile);
       if (!access.ok) throw new Error('Access denied after reset: ' + access.error);
-      const wb = XLSX.readFile(productsFile);
-      const ws = wb.Sheets[SHEET];
-      return ws ? XLSX.utils.sheet_to_json(ws, { defval: "" }) : [];
+      return readOnce();
     } catch (final) {
       log('Failed after reset attempt:', (final as any)?.message);
       throw final instanceof Error ? final : new Error(String(final));
     }
   }
 }
-function trySaveProducts(products: any[]) {
-  try {
-    const access = checkAccess(productsFile);
-    if (!access.ok) throw new Error('Cannot write: ' + access.error);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(products), SHEET);
-    atomicWriteWorkbook(productsFile, wb);
-    log('Products saved:', products.length, 'total');
-  } catch (e: any) {
-    log('Save failed (locked?):', e?.message);
-    throw e instanceof Error ? e : new Error(String(e));
+function sleep(ms: number) { return new Promise(r => setTimeout(r, ms)); }
+async function trySaveProducts(products: any[]) {
+  const access = canWriteDir(productsFile);
+  if (!access.ok) throw new Error('Cannot write: ' + access.error);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(products), SHEET);
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      atomicWriteWorkbook(productsFile, wb);
+      log('Products saved:', products.length, 'total');
+      return;
+    } catch (e: any) {
+      const msg = e?.message || '';
+      const retryable = /EBUSY|EPERM|access/i.test(msg);
+      log(`Save attempt ${attempt} failed:`, msg);
+      if (attempt === maxAttempts || !retryable) throw e instanceof Error ? e : new Error(String(e));
+      await sleep(200 * attempt);
+    }
   }
 }
 export async function GET() {
@@ -102,7 +121,7 @@ export async function POST(request: NextRequest) {
     const id = data.id || crypto.randomUUID();
     const newProd = { ...data, id };
     products.push(newProd);
-    trySaveProducts(products);
+    await trySaveProducts(products);
     log('Product added:', id);
     return NextResponse.json({ product: newProd, products });
   } catch (e: any) {
@@ -119,7 +138,7 @@ export async function PUT(request: NextRequest) {
     const idx = products.findIndex((p: any) => p.id === data.id);
     if (idx === -1) return NextResponse.json({ error: 'Product not found' }, { status: 404 });
     products[idx] = { ...products[idx], ...data };
-    trySaveProducts(products);
+    await trySaveProducts(products);
     log('Product updated:', data.id);
     return NextResponse.json({ product: products[idx], products });
   } catch (e: any) {
@@ -135,7 +154,7 @@ export async function DELETE(request: NextRequest) {
     if (!data.id) return NextResponse.json({ error: 'Product id required for delete' }, { status: 400 });
     const before = products.length;
     products = products.filter((p: any) => p.id !== data.id);
-    trySaveProducts(products);
+    await trySaveProducts(products);
     log('Product deleted:', data.id, 'remaining:', products.length);
     return NextResponse.json({ success: true, deleted: data.id, count: before - products.length, products });
   } catch (e: any) {
