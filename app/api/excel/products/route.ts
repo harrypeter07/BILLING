@@ -11,17 +11,35 @@ function log(...args: any[]) { console.log("[EXCEL:products]", ...args); }
 function ensureDataDir() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 }
+function atomicWriteWorkbook(filePath: string, wb: XLSX.WorkBook) {
+  const tmp = filePath + ".tmp";
+  XLSX.writeFile(wb, tmp);
+  fs.renameSync(tmp, filePath);
+}
 function ensureFileAndSheet(forceReset = false) {
   ensureDataDir();
+  const bak = productsFile + ".bak";
   if (forceReset && fs.existsSync(productsFile)) {
-    fs.unlinkSync(productsFile);
-    log('Deleted corrupt Products.xlsx');
+    try {
+      if (fs.existsSync(bak)) fs.unlinkSync(bak);
+      fs.renameSync(productsFile, bak);
+      log('Backed up Products.xlsx to', bak);
+    } catch (e: any) { log('Backup failed:', e?.message); }
   }
   if (!fs.existsSync(productsFile)) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([]), SHEET);
-    XLSX.writeFile(wb, productsFile);
-    log('Initialized missing Products file:', productsFile);
+    try {
+      atomicWriteWorkbook(productsFile, wb);
+      log('Initialized Products file:', productsFile);
+      if (fs.existsSync(bak)) fs.unlinkSync(bak);
+    } catch (e: any) {
+      log('Initialize write failed:', e?.message);
+      if (fs.existsSync(bak)) { try { fs.renameSync(bak, productsFile); log('Restored backup'); } catch {} }
+      throw e;
+    }
+  } else if (forceReset && fs.existsSync(bak)) {
+    try { fs.unlinkSync(bak); } catch {}
   }
 }
 function tryLoadProducts(): any[] {
@@ -47,7 +65,7 @@ function trySaveProducts(products: any[]) {
   try {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(products), SHEET);
-    XLSX.writeFile(wb, productsFile);
+    atomicWriteWorkbook(productsFile, wb);
     log('Products saved:', products.length, 'total');
   } catch (e: any) {
     log('Save failed (locked?):', e?.message);
