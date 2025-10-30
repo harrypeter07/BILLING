@@ -11,17 +11,43 @@ function log(...args: any[]) { console.log("[EXCEL:customers]", ...args); }
 function ensureDataDir() {
   if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
 }
+function atomicWriteWorkbook(filePath: string, wb: XLSX.WorkBook) {
+  const tmp = filePath + ".tmp";
+  XLSX.writeFile(wb, tmp);
+  // atomic replace
+  fs.renameSync(tmp, filePath);
+}
 function ensureFileAndSheet(forceReset = false) {
   ensureDataDir();
+  const bak = customersFile + ".bak";
   if (forceReset && fs.existsSync(customersFile)) {
-    fs.unlinkSync(customersFile);
-    log('Deleted corrupt Customers.xlsx');
+    try {
+      // backup instead of deleting
+      if (fs.existsSync(bak)) fs.unlinkSync(bak);
+      fs.renameSync(customersFile, bak);
+      log('Backed up Customers.xlsx to', bak);
+    } catch (e: any) {
+      log('Backup failed:', e?.message);
+    }
   }
   if (!fs.existsSync(customersFile)) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([]), SHEET);
-    XLSX.writeFile(wb, customersFile);
-    log('Initialized missing Customers file:', customersFile);
+    try {
+      atomicWriteWorkbook(customersFile, wb);
+      log('Initialized Customers file:', customersFile);
+      if (fs.existsSync(bak)) fs.unlinkSync(bak);
+    } catch (e: any) {
+      log('Initialize write failed:', e?.message);
+      // restore backup if present
+      if (fs.existsSync(bak)) {
+        try { fs.renameSync(bak, customersFile); log('Restored backup'); } catch {}
+      }
+      throw e;
+    }
+  } else if (forceReset && fs.existsSync(bak)) {
+    // if file existed and we backed it up but new write already exists, cleanup backup
+    try { fs.unlinkSync(bak); } catch {}
   }
 }
 function tryLoadCustomers(): any[] {
@@ -38,7 +64,7 @@ function tryLoadCustomers(): any[] {
       const ws = wb.Sheets[SHEET];
       return ws ? XLSX.utils.sheet_to_json(ws, { defval: "" }) : [];
     } catch (final) {
-      log('Failed after reset attempt:', final?.message);
+      log('Failed after reset attempt:', (final as any)?.message);
       throw new Error('Excel file locked or not accessible. Please close it in Excel and try again.');
     }
   }
@@ -47,7 +73,7 @@ function trySaveCustomers(customers: any[]) {
   try {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(customers), SHEET);
-    XLSX.writeFile(wb, customersFile);
+    atomicWriteWorkbook(customersFile, wb);
     log('Customers saved:', customers.length, 'total');
   } catch (e: any) {
     log('Save failed (locked?):', e?.message);
