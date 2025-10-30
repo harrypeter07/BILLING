@@ -2,73 +2,67 @@ import { createClient } from "@/lib/supabase/client"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 
 export async function fetchProducts() {
-  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-    return excelSheetManager.getList("products")
+  try {
+    const res = await fetch("/api/excel/products");
+    if (!res.ok) throw new Error("Failed to fetch products from Excel API");
+    const { products } = await res.json();
+    return products || [];
+  } catch (e) {
+    console.error("[ExcelAPI] fetchProducts failed:", e);
+    throw e;
   }
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) throw new Error("Not authenticated")
-
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-
-  if (error) throw error
-  return data
 }
 
 export async function createProduct(productData: any) {
-  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-    const id = productData.id || crypto.randomUUID()
-    excelSheetManager.add("products", { ...productData, id })
-    return { ...productData, id }
+  try {
+    const res = await fetch("/api/excel/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(productData),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to create product in Excel");
+    }
+    return (await res.json()).product;
+  } catch (e) {
+    console.error("[ExcelAPI] createProduct failed:", e);
+    throw e;
   }
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-
-  if (!user) throw new Error("Not authenticated")
-
-  const { data, error } = await supabase
-    .from("products")
-    .insert({
-      ...productData,
-      user_id: user.id,
-    })
-    .select()
-    .single()
-
-  if (error) throw error
-  return data
 }
 
 export async function updateProduct(id: string, updates: any) {
-  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-    excelSheetManager.update("products", id, updates)
-    return { ...updates, id }
+  try {
+    const res = await fetch("/api/excel/products", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...updates, id }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to update product in Excel");
+    }
+    return (await res.json()).product;
+  } catch (e) {
+    console.error("[ExcelAPI] updateProduct failed:", e);
+    throw e;
   }
-  const supabase = createClient()
-
-  const { data, error } = await supabase.from("products").update(updates).eq("id", id).select().single()
-
-  if (error) throw error
-  return data
 }
 
 export async function deleteProduct(id: string) {
-  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-    excelSheetManager.remove("products", id)
-    return
+  try {
+    const res = await fetch("/api/excel/products", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to delete product in Excel");
+    }
+    return (await res.json()).success;
+  } catch (e) {
+    console.error("[ExcelAPI] deleteProduct failed:", e);
+    throw e;
   }
-  const supabase = createClient()
-
-  const { error } = await supabase.from("products").delete().eq("id", id)
-
-  if (error) throw error
 }

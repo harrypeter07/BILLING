@@ -56,6 +56,9 @@ export function ProductForm({ product }: ProductFormProps) {
     e.preventDefault()
     setIsLoading(true)
 
+    // Force Excel mode so we always save to Excel if possible
+    excelSheetManager.setExcelMode(true);
+
     const supabase = createClient()
     const {
       data: { user },

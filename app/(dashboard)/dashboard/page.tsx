@@ -4,7 +4,7 @@ import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle } from "lu
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useEffect, useState } from 'react';
-import { autoLoadExcelFromPublic, excelSheetManager } from '@/lib/utils/excel-sync-controller';
+import { autoLoadAllExcelFilesFromPublic, excelSheetManager } from '@/lib/utils/excel-sync-controller';
 import { createClient } from '@/lib/supabase/client';
 
 // Add this for now. Replace with a real config or store later.
@@ -20,7 +20,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (dbType === 'excel') {
-      autoLoadExcelFromPublic().then(() => {
+      autoLoadAllExcelFilesFromPublic().then(() => {
         const products = excelSheetManager.getList('products') || [];
         const customers = excelSheetManager.getList('customers') || [];
         const invoices = excelSheetManager.getList('invoices') || [];

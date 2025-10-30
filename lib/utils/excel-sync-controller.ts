@@ -279,4 +279,30 @@ export async function autoLoadExcelFromPublic() {
   excelSheetManager.setExcelMode(true);
 }
 
+export async function autoLoadAllExcelFilesFromPublic() {
+  const filesToSheets = [
+    { url: "/excel-test/Products.xlsx", key: "products" },
+    { url: "/excel-test/Customers.xlsx", key: "customers" },
+    { url: "/excel-test/Employees.xlsx", key: "employees" },
+    { url: "/excel-test/Invoices.xlsx", key: "invoices" },
+  ];
+  let loadedAny = false;
+  for (const entry of filesToSheets) {
+    try {
+      const res = await fetch(entry.url);
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      const file = new File([blob], entry.url.split("/").pop() || "data.xlsx", { type: blob.type });
+      await excelSheetManager.loadAllFromExcel(file);
+      loadedAny = true;
+    } catch (e) {
+      // ignore, file may not exist
+    }
+  }
+  if (loadedAny) {
+    excelSheetManager.setExcelMode(true);
+    excelSheetManager.notify();
+  }
+}
+
 

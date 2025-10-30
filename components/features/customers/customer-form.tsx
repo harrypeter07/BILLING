@@ -48,6 +48,9 @@ export function CustomerForm({ customer }: CustomerFormProps) {
     e.preventDefault()
     setIsLoading(true)
 
+    // Force Excel mode so we always save to Excel if possible
+    excelSheetManager.setExcelMode(true);
+
     try {
       if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
         const id = customer?.id || crypto.randomUUID();

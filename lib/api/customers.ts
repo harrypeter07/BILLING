@@ -3,66 +3,67 @@ import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 // import { createClient } from "@/lib/supabase/client"
 
 export async function fetchCustomers() {
-  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-    return excelSheetManager.getList("customers")
+  try {
+    const res = await fetch("/api/excel/customers");
+    if (!res.ok) throw new Error("Failed to fetch customers from Excel API");
+    const { customers } = await res.json();
+    return customers || [];
+  } catch (e) {
+    console.error("[ExcelAPI] fetchCustomers failed:", e);
+    throw e;
   }
-  const { createClient } = await import("@/lib/supabase/client")
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
-  const { data, error } = await supabase
-    .from("customers")
-    .select("*")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-  if (error) throw error
-  return data
 }
+
 export async function createCustomer(customerData: any) {
-  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-    const id = customerData.id || crypto.randomUUID()
-    excelSheetManager.add("customers", { ...customerData, id })
-    return { ...customerData, id }
+  try {
+    const res = await fetch("/api/excel/customers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(customerData),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to create customer in Excel");
+    }
+    return (await res.json()).customer;
+  } catch (e) {
+    console.error("[ExcelAPI] createCustomer failed:", e);
+    throw e;
   }
-  const { createClient } = await import("@/lib/supabase/client")
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
-  const { data, error } = await supabase
-    .from("customers")
-    .insert({ ...customerData, user_id: user.id })
-    .select()
-    .single()
-  if (error) throw error
-  return data
 }
+
 export async function updateCustomer(id: string, updates: any) {
-  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-    excelSheetManager.update("customers", id, updates)
-    return { ...updates, id }
+  try {
+    const res = await fetch("/api/excel/customers", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...updates, id }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to update customer in Excel");
+    }
+    return (await res.json()).customer;
+  } catch (e) {
+    console.error("[ExcelAPI] updateCustomer failed:", e);
+    throw e;
   }
-  const { createClient } = await import("@/lib/supabase/client")
-  const supabase = createClient()
-  const { data, error } = await supabase
-    .from("customers")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single()
-  if (error) throw error
-  return data
 }
+
 export async function deleteCustomer(id: string) {
-  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-    excelSheetManager.remove("customers", id)
-    return
+  try {
+    const res = await fetch("/api/excel/customers", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to delete customer in Excel");
+    }
+    return (await res.json()).success;
+  } catch (e) {
+    console.error("[ExcelAPI] deleteCustomer failed:", e);
+    throw e;
   }
-  const { createClient } = await import("@/lib/supabase/client")
-  const supabase = createClient()
-  const { error } = await supabase.from("customers").delete().eq("id", id)
-  if (error) throw error
 }

@@ -216,6 +216,8 @@ export function InvoiceForm({ customers, products, settings }: InvoiceFormProps)
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
+    // Force Excel mode for all saves
+    excelSheetManager.setExcelMode(true)
     try {
       if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
         // Validate required fields (mimic backend validation)
