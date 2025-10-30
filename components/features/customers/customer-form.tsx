@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { db } from "@/lib/db/dexie"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
+import { createCustomer, updateCustomer } from "@/lib/api/customers";
 
 interface Customer {
   id?: string
@@ -45,107 +46,27 @@ export function CustomerForm({ customer }: CustomerFormProps) {
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-
-    // Force Excel mode so we always save to Excel if possible
-    excelSheetManager.setExcelMode(true);
-
+    e.preventDefault();
+    setIsLoading(true);
     try {
-      if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-        const id = customer?.id || crypto.randomUUID();
-        let excelResult = null;
-        try {
-          if (customer?.id) {
-            excelResult = excelSheetManager.update('customers', id, { ...formData, id })
-          } else {
-            excelResult = excelSheetManager.add('customers', { ...formData, id })
-          }
-          // After Excel save, ensure the workbook and sheet actually exist now
-          if (!excelSheetManager.workbook || !excelSheetManager.workbook.Sheets["Customers"]) {
-            window.alert("Excel sheet was not created or writable. Click 'Check Excel Integrity' first, or allow pop-up/download if prompted.");
-            throw new Error("Excel sheet missing after save")
-          }
-        } catch (excelError) {
-          console.error('[CustomerForm] Excel add/update threw error:', excelError);
-          window.alert(
-            'Excel Save Failed: ' +
-            (excelError instanceof Error && excelError.message
-              ? excelError.message
-              : JSON.stringify(excelError))
-          );
-          throw excelError;
-        }
-        console.log('[CustomerForm] Excel add/update result:', excelResult)
-        toast({
-          title: "Success",
-          description: `Customer ${customer?.id ? "updated" : "created"} in Excel`,
-        })
-        router.push(customer?.id ? `/customers/${id}` : "/customers")
-        router.refresh()
-        return
-      }
-
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) {
-        toast({
-          title: "Error",
-          description: "You must be logged in",
-          variant: "destructive",
-        })
-        setIsLoading(false)
-        return
-      }
-
       if (customer?.id) {
-        // Update existing customer
-        const { error } = await supabase
-          .from("customers")
-          .update({
-            ...formData,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", customer.id)
-
-        if (error) throw error
-
-        toast({
-          title: "Success",
-          description: "Customer updated successfully",
-        })
-        router.push(`/customers/${customer.id}`)
+        await updateCustomer(customer.id, formData);
+        toast({ title: "Success", description: "Customer updated in Excel" });
+        router.push(`/customers/${customer.id}`);
       } else {
-        // Create new customer
-        const { error } = await supabase.from("customers").insert({
-          ...formData,
-          user_id: user.id,
-        })
-
-        if (error) throw error
-
-        toast({
-          title: "Success",
-          description: "Customer created successfully",
-        })
-        router.push("/customers")
+        const result = await createCustomer(formData);
+        toast({ title: "Success", description: "Customer created in Excel" });
+        router.push("/customers");
       }
-
-      router.refresh()
+      router.refresh();
     } catch (error) {
-      console.error('[CustomerForm] Error in Excel/DB add/update:', error);
       toast({
         title: "Error",
-        description:
-          (error instanceof Error ? error.message : "Failed to save customer") +
-          (error && typeof error === 'object' ? '\n' + JSON.stringify(error) : ''),
+        description: error instanceof Error ? error.message : "Failed to save customer",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
   }
 

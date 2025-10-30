@@ -2,72 +2,67 @@ import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 // import { createClient } from "@/lib/supabase/client"
 
 export async function fetchInvoices() {
-  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-    return excelSheetManager.getList("invoices")
+  try {
+    const res = await fetch("/api/excel/invoices");
+    if (!res.ok) throw new Error("Failed to fetch invoices from Excel API");
+    const { invoices } = await res.json();
+    return invoices || [];
+  } catch (e) {
+    console.error("[ExcelAPI] fetchInvoices failed:", e);
+    throw e;
   }
-  const { createClient } = await import("@/lib/supabase/client")
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
-  const { data, error } = await supabase
-    .from("invoices")
-    .select("*, customers(*)")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false })
-  if (error) throw error
-  return data
 }
 
 export async function createInvoice(invoiceData: any, items: any[]) {
-  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-    const id = invoiceData.id || crypto.randomUUID()
-    excelSheetManager.add("invoices", { ...invoiceData, id, items });
-    return { ...invoiceData, id }
+  try {
+    const res = await fetch("/api/excel/invoices", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...invoiceData, items }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to create invoice in Excel");
+    }
+    return (await res.json()).invoice;
+  } catch (e) {
+    console.error("[ExcelAPI] createInvoice failed:", e);
+    throw e;
   }
-  const { createClient } = await import("@/lib/supabase/client")
-  const supabase = createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
-  if (!user) throw new Error("Not authenticated")
-  // Create invoice
-  const { data: invoice, error: invoiceError } = await supabase
-    .from("invoices")
-    .insert({ ...invoiceData, user_id: user.id })
-    .select()
-    .single()
-  if (invoiceError) throw invoiceError
-  // Create invoice items
-  const itemsWithInvoiceId = items.map((item) => ({ ...item, invoice_id: invoice.id }))
-  const { error: itemsError } = await supabase.from("invoice_items").insert(itemsWithInvoiceId)
-  if (itemsError) {
-    await supabase.from("invoices").delete().eq("id", invoice.id)
-    throw itemsError
-  }
-  return invoice
 }
 
 export async function updateInvoice(id: string, updates: any) {
-  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-    excelSheetManager.update("invoices", id, updates)
-    return { ...updates, id }
+  try {
+    const res = await fetch("/api/excel/invoices", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...updates, id }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to update invoice in Excel");
+    }
+    return (await res.json()).invoice;
+  } catch (e) {
+    console.error("[ExcelAPI] updateInvoice failed:", e);
+    throw e;
   }
-  const { createClient } = await import("@/lib/supabase/client")
-  const supabase = createClient()
-  const { data, error } = await supabase.from("invoices").update(updates).eq("id", id).select().single()
-  if (error) throw error
-  return data
 }
 
 export async function deleteInvoice(id: string) {
-  if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-    excelSheetManager.remove("invoices", id)
-    return
+  try {
+    const res = await fetch("/api/excel/invoices", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || "Failed to delete invoice in Excel");
+    }
+    return (await res.json()).success;
+  } catch (e) {
+    console.error("[ExcelAPI] deleteInvoice failed:", e);
+    throw e;
   }
-  const { createClient } = await import("@/lib/supabase/client")
-  const supabase = createClient()
-  const { error } = await supabase.from("invoices").delete().eq("id", id)
-  if (error) throw error
 }
