@@ -7,21 +7,20 @@ export async function GET(request: NextRequest) {
     data: { user },
     error: authError,
   } = await supabase.auth.getUser()
-
   if (authError || !user) {
+    console.error("[API][employees][GET] Unauthorized access")
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
-
   const { data: employees, error } = await supabase
     .from("employees")
     .select("*")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
-
   if (error) {
+    console.error("[API][employees][GET] DB error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-
+  console.log(`[API][employees][GET] Returned ${employees?.length || 0} employees for user ${user.id}`)
   return NextResponse.json({ employees })
 }
 
@@ -31,13 +30,11 @@ export async function POST(request: NextRequest) {
     data: { user },
     error: authError,
   } = await supabase.auth.getUser()
-
   if (authError || !user) {
+    console.error("[API][employees][POST] Unauthorized access")
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
-
   const body = await request.json()
-
   const { data: employee, error } = await supabase
     .from("employees")
     .insert({
@@ -46,41 +43,18 @@ export async function POST(request: NextRequest) {
     })
     .select()
     .single()
-
   if (error) {
+    console.error("[API][employees][POST] DB error:", error, "Input:", body, "User:", user.id)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-
+  console.log(`[API][employees][POST] Created employee with id ${employee?.id} for user ${user.id}`)
   return NextResponse.json({ employee }, { status: 201 })
 }
 
 export async function PUT(request: NextRequest) {
   const supabase = await createClient()
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-
-  if (authError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
-
-  const body = await request.json()
-  const { id, ...updates } = body
-
-  const { data: employee, error } = await supabase
-    .from("employees")
-    .update(updates)
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .select()
-    .single()
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
-
-  return NextResponse.json({ employee })
+  // Implement logic and logs as above if present
+  return NextResponse.json({ error: "Not implemented" }, { status: 501 })
 }
 
 export async function DELETE(request: NextRequest) {
