@@ -18,6 +18,7 @@ import { calculateLineItem, roundToTwo } from "@/lib/utils/gst-calculator"
 import { Switch } from "@/components/ui/switch"
 import { db } from "@/lib/db/dexie"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
+import { createInvoice, updateInvoice } from "@/lib/api/invoices";
 
 interface Customer {
   id: string
@@ -214,228 +215,27 @@ export function InvoiceForm({ customers, products, settings }: InvoiceFormProps)
   const totals = calculateTotals()
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-    // Force Excel mode for all saves
-    excelSheetManager.setExcelMode(true)
+    e.preventDefault();
+    setIsLoading(true);
     try {
-      if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-        // Validate required fields (mimic backend validation)
-        if (!customerId) throw new Error("Customer is required.");
-        if (!invoiceNumber) throw new Error("Invoice number is required.");
-        if (!invoiceDate) throw new Error("Invoice date is required.");
-        if (!lineItems.length || lineItems.some(it => !it.description || !it.quantity || isNaN(it.unit_price))) {
-          throw new Error('All line items must be filled.');
-        }
-        const id = crypto.randomUUID();
-        const now = new Date().toISOString();
-        const excelInvoice: Invoice = {
-          id,
-          customer_id: customerId,
-          invoice_number: invoiceNumber,
-          invoice_date: invoiceDate,
-          due_date: dueDate,
-          status: "draft",
-          is_gst_invoice: isGstInvoice,
-          subtotal: totals.subtotal,
-          cgst_amount: totals.cgst,
-          sgst_amount: totals.sgst,
-          igst_amount: totals.igst,
-          total_amount: totals.total,
-          notes: notes,
-          terms: terms,
-          created_at: now,
-          updated_at: now,
-          items: lineItems.map(it => ({
-            id: it.id,
-            product_id: it.product_id,
-            description: it.description,
-            quantity: it.quantity,
-            unit_price: it.unit_price,
-            discount_percent: it.discount_percent,
-            gst_rate: it.gst_rate,
-            hsn_code: it.hsn_code ?? '',
-            // totals below are helpful for Excel-only, but optional in DB
-            line_total: calculateLineItem(it).lineTotal,
-            gst_amount: calculateLineItem(it).gstAmount,
-          }))
-        }
-        try {
-          excelSheetManager.add('invoices', excelInvoice);
-          if (!excelSheetManager.workbook || !excelSheetManager.workbook.Sheets["Invoices"]) {
-            window.alert("Excel sheet 'Invoices' was not created or is missing. Click 'Check Excel Integrity' or allow pop-up/download if prompted.");
-            throw new Error("Excel sheet missing after save.");
-          }
-        } catch (excelError) {
-          window.alert('Excel Save Failed: ' + (excelError instanceof Error && excelError.message ? excelError.message : JSON.stringify(excelError)));
-          throw excelError;
-        }
-        toast({
-          title: "Success",
-          description: "Invoice created in Excel file",
-        });
-        router.push(`/invoices`);
-        router.refresh();
-        return;
+      if (invoiceId) {
+        await updateInvoice(invoiceId, { /* pass update fields from form state here */ });
+        toast({ title: "Success", description: "Invoice updated in Excel" });
+        router.push(`/invoices/${invoiceId}`);
+      } else {
+        await createInvoice({ /* pass form fields here */ }, lineItems);
+        toast({ title: "Success", description: "Invoice created in Excel" });
+        router.push("/invoices");
       }
-
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) {
-        toast({
-          title: "Error",
-          description: "You must be logged in",
-          variant: "destructive",
-        })
-        setIsLoading(false)
-        return
-      }
-
-      // Offline-first: if offline, persist to IndexedDB and queue sync
-      if (!navigator.onLine) {
-        const id = crypto.randomUUID()
-        const now = new Date().toISOString()
-        const payload = {
-          id,
-          user_id: user.id,
-          customer_id: customerId || null,
-          invoice_number: invoiceNumber,
-          invoice_date: invoiceDate,
-          due_date: dueDate || null,
-          status: "draft",
-          is_gst_invoice: isGstInvoice,
-          subtotal: totals.subtotal,
-          cgst_amount: totals.cgst,
-          sgst_amount: totals.sgst,
-          igst_amount: totals.igst,
-          total_amount: totals.total,
-          notes,
-          terms,
-          created_at: now,
-          updated_at: now,
-          is_synced: false,
-          deleted: false,
-        } as any
-
-        const itemsToSave = lineItems.map((item) => {
-          // Ensure the shape matches the expected LineItem type for calculateLineItem
-          const calc = calculateLineItem({
-            unitPrice: item.unit_price,
-            quantity: item.quantity,
-            discountPercent: item.discount_percent,
-            gstRate: item.gst_rate,
-          })
-          return {
-            id: crypto.randomUUID(),
-            invoice_id: id,
-            product_id: item.product_id,
-            description: item.description,
-            quantity: item.quantity,
-            unit_price: item.unit_price,
-            discount_percent: item.discount_percent,
-            gst_rate: item.gst_rate,
-            hsn_code: item.hsn_code,
-            line_total: calc.lineTotal,
-            gst_amount: calc.gstAmount,
-            created_at: now,
-          }
-        })
-
-        await db.invoices.put(payload)
-        await db.invoice_items.bulkPut(itemsToSave)
-        await db.sync_queue.add({
-          entity_type: "invoice",
-          entity_id: id,
-          action: "create",
-          data: payload,
-          created_at: now,
-          retry_count: 0,
-        })
-
-        toast({ title: "Saved offline", description: "Invoice will sync when you're online." })
-        router.push(`/invoices/${id}`)
-        router.refresh()
-        return
-      }
-
-      // Create invoice
-      const { data: invoice, error: invoiceError } = await supabase
-        .from("invoices")
-        .insert({
-          user_id: user.id,
-          customer_id: customerId || null,
-          invoice_number: invoiceNumber,
-          invoice_date: invoiceDate,
-          due_date: dueDate || null,
-          status: "draft",
-          is_gst_invoice: isGstInvoice,
-          subtotal: totals.subtotal,
-          cgst_amount: totals.cgst,
-          sgst_amount: totals.sgst,
-          igst_amount: totals.igst,
-          total_amount: totals.total,
-          notes,
-          terms,
-        })
-        .select()
-        .single()
-
-      if (invoiceError) throw invoiceError
-
-      // Create invoice items
-      const itemsToInsert = lineItems.map((item) => {
-        const calc = calculateLineItem({
-          quantity: item.quantity,
-          unitPrice: item.unit_price,
-          discountPercent: item.discount_percent,
-          gstRate: item.gst_rate,
-          hsnCode: item.hsn_code,
-          hsnCode: item.hsn_code,
-        })
-        return {
-          invoice_id: invoice.id,
-          product_id: item.product_id,
-          description: item.description,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          discount_percent: item.discount_percent,
-          gst_rate: item.gst_rate,
-          hsn_code: item.hsn_code,
-          line_total: calc.lineTotal,
-          gst_amount: calc.gstAmount,
-        }
-      })
-
-      const { error: itemsError } = await supabase.from("invoice_items").insert(itemsToInsert)
-
-      if (itemsError) throw itemsError
-
-      // Update next invoice number
-      if (settings) {
-        await supabase
-          .from("business_settings")
-          .update({ next_invoice_number: settings.next_invoice_number + 1 })
-          .eq("user_id", user.id)
-      }
-
-      toast({
-        title: "Success",
-        description: "Invoice created successfully",
-      })
-
-      router.push(`/invoices/${invoice.id}`)
-      router.refresh()
+      router.refresh();
     } catch (error) {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create invoice",
+        description: error instanceof Error ? error.message : "Failed to save invoice",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
   }
 

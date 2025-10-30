@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { db } from "@/lib/db/dexie"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
+import { createProduct, updateProduct } from "@/lib/api/products";
 
 interface Product {
   id?: string
@@ -53,98 +54,27 @@ export function ProductForm({ product }: ProductFormProps) {
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-
-    // Force Excel mode so we always save to Excel if possible
-    excelSheetManager.setExcelMode(true);
-
-    const supabase = createClient()
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-
-    if (!user) {
-      toast({
-        title: "Error",
-        description: "You must be logged in",
-        variant: "destructive",
-      })
-      setIsLoading(false)
-      return
-    }
-
+    e.preventDefault();
+    setIsLoading(true);
     try {
-      if (excelSheetManager.isExcelModeActive && excelSheetManager.isExcelModeActive()) {
-        const id = product?.id || crypto.randomUUID();
-        let excelResult = null;
-        try {
-          if (product?.id) {
-            excelResult = excelSheetManager.update('products', id, { ...formData, id })
-          } else {
-            excelResult = excelSheetManager.add('products', { ...formData, id })
-          }
-          if (!excelSheetManager.workbook || !excelSheetManager.workbook.Sheets["Products"]) {
-            window.alert("Excel sheet 'Products' was not created or writable. Click 'Check Excel Integrity' or allow pop-up/download.");
-            throw new Error("Excel sheet missing after save.")
-          }
-        } catch (excelError) {
-          window.alert(
-            'Excel Save Failed: ' +
-            (excelError instanceof Error && excelError.message ? excelError.message : JSON.stringify(excelError))
-          );
-          throw excelError;
-        }
-        toast({
-          title: "Success",
-          description: `Product ${product?.id ? "updated" : "created"} in Excel`,
-        })
-        router.push("/products")
-        router.refresh()
-        return;
-      }
-
       if (product?.id) {
-        // Update existing product
-        const { error } = await supabase
-          .from("products")
-          .update({
-            ...formData,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", product.id)
-
-        if (error) throw error
-
-        toast({
-          title: "Success",
-          description: "Product updated successfully",
-        })
+        await updateProduct(product.id, formData);
+        toast({ title: "Success", description: "Product updated in Excel" });
+        router.push("/products");
       } else {
-        // Create new product
-        const { error } = await supabase.from("products").insert({
-          ...formData,
-          user_id: user.id,
-        })
-
-        if (error) throw error
-
-        toast({
-          title: "Success",
-          description: "Product created successfully",
-        })
+        await createProduct(formData);
+        toast({ title: "Success", description: "Product created in Excel" });
+        router.push("/products");
       }
-
-      router.push("/products")
-      router.refresh()
+      router.refresh();
     } catch (error) {
       toast({
         title: "Error",
         description: error instanceof Error ? error.message : "Failed to save product",
         variant: "destructive",
-      })
+      });
     } finally {
-      setIsLoading(false)
+      setIsLoading(false);
     }
   }
 
