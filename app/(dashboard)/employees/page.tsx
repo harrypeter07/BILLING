@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge"
 import { Plus, FileSpreadsheet, Search, Edit2, Trash2 } from "lucide-react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
+import { db } from "@/lib/dexie-client"
+import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 
@@ -27,11 +29,18 @@ export default function EmployeesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const { toast } = useToast()
+  const isExcel = getDatabaseType() === 'excel'
 
-  useEffect(() => { fetchEmployees() }, [])
+  useEffect(() => { fetchEmployees() }, [isExcel])
 
   const fetchEmployees = async () => {
     try {
+      if (isExcel) {
+        setIsLoading(true)
+        const list = await db.employees.toArray()
+        setEmployees(list as any)
+        return
+      }
       const supabase = createClient()
       const { data, error } = await supabase.from("employees").select("*").order("created_at", { ascending: false })
 
@@ -50,6 +59,12 @@ export default function EmployeesPage() {
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure?")) return
+    if (isExcel) {
+      await db.employees.delete(id)
+      setEmployees(employees.filter(e => e.id !== id))
+      toast({ title: "Success", description: "Employee deleted" })
+      return
+    }
 
     try {
       const supabase = createClient()

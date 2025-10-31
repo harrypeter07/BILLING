@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { db } from "@/lib/dexie-client"
+import { getDatabaseType } from "@/lib/utils/db-mode"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, Download } from "lucide-react"
@@ -11,8 +13,21 @@ export default function InventoryReportPage() {
   const [products, setProducts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const supabase = createClient()
+  const isExcel = getDatabaseType() === 'excel'
 
-  useEffect(() => { fetchInventoryData() }, [])
+  useEffect(() => {
+    if (isExcel) {
+      (async () => {
+        try {
+          setLoading(true)
+          const list = await db.products.toArray()
+          setProducts(list || [])
+        } finally { setLoading(false) }
+      })()
+    } else {
+      fetchInventoryData()
+    }
+  }, [isExcel])
 
   const fetchInventoryData = async () => {
     try {
