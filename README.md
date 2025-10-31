@@ -1,251 +1,28 @@
-# Billing Solutions - PWA for Small Businesses
+# Billing Solutions - Data Schema and Excel Import Formats
 
-A production-ready Progressive Web App (PWA) designed for small businesses to manage products, create professional invoices with GST calculations, track customers, and generate reports. Works seamlessly offline with automatic synchronization when online.
+## Schema (Dexie / Offline)
+- Products (`products`): id, name, sku?, category?, price, cost_price?, stock_quantity?, unit?, hsn_code?, gst_rate?, is_active?
+- Customers (`customers`): id, name, email?, phone?, gstin?, billing_address?, shipping_address?, notes?
+- Invoices (`invoices`): id, customer_id, invoice_number, invoice_date (YYYY-MM-DD), status, is_gst_invoice, subtotal, cgst_amount, sgst_amount, igst_amount, total_amount, notes?, terms?, created_at (ISO)
+- Invoice Items (`invoice_items`): id, invoice_id, product_id?, description, quantity, unit_price, discount_percent, gst_rate, hsn_code?, line_total, gst_amount, created_at (ISO)
+- Employees (`employees`): id, name, email, phone, role (admin|employee), salary, joining_date (YYYY-MM-DD or ISO), is_active
+- Settings (`settings`): id, invoice_prefix?, next_invoice_number?
+- FS Handles (`fsHandles`): key (stores File System Access handle)
 
-## Features
+## Excel Export/Sync
+- One workbook with sheets: Products, Customers, Invoices, InvoiceItems, Employees
+- File is fully overwritten on save for MS Excel compatibility
 
-### Core Functionality
-- **Product Management**: Create, edit, and manage product inventory with SKU, pricing, and stock tracking
-- **Customer Management**: Maintain customer database with contact information and purchase history
-- **Invoice Creation**: Generate professional invoices with GST/Non-GST support
-- **GST Calculations**: Automatic CGST, SGST, and IGST calculations based on state
-- **Reports & Analytics**: Sales reports, tax reports, and inventory reports with export functionality
-- **Business Settings**: Configure business information, invoice defaults, and tax settings
+## Excel Import (first sheet of the workbook)
+- Products: columns (case-insensitive)
+  - Product Name/name, SKU/sku?, Category/category?, Price/price, Cost Price/cost_price?, Stock Quantity/stock_quantity?, Unit/unit?, HSN Code/hsn_code?, GST Rate/gst_rate?, Active/is_active (Yes/No)
+- Customers: columns (case-insensitive)
+  - Name/name, Email/email?, Phone/phone?, GSTIN/gstin?, Billing Address/billing_address?, Shipping Address/shipping_address?, Notes/notes?
+- Employees: columns (case-insensitive)
+  - Name/name, Email/email, Phone/phone, Role/role (admin|employee), Salary/salary, Joining Date/joining_date, Active/is_active (Yes/No)
+- Invoices (basic, without line items): columns
+  - CustomerId/customer_id, Invoice Number/invoice_number, Invoice Date/invoice_date (YYYY-MM-DD), Status/status, GST Invoice/is_gst_invoice (Yes/No), Subtotal/subtotal, CGST Amount/cgst_amount, SGST Amount/sgst_amount, IGST Amount/igst_amount, Total Amount/total_amount, Notes/notes?, Terms/terms?
 
-### Offline-First Architecture
-- **Full Offline Support**: All features work without internet connectivity
-- **Automatic Sync**: Data automatically syncs when connection is restored
-- **IndexedDB Storage**: Local data persistence using Dexie.js
-- **Conflict Resolution**: Last-write-wins strategy for sync conflicts
-
-### PWA Capabilities
-- **Installable**: Install as a native app on mobile and desktop
-- **Offline Access**: Complete functionality without internet
-- **Fast Loading**: Optimized performance with service workers
-- **Responsive Design**: Works on all devices (mobile, tablet, desktop)
-
-## Tech Stack
-
-- **Frontend**: Next.js 16+, React 19+, TypeScript
-- **Styling**: Tailwind CSS v4, shadcn/ui components
-- **Backend**: Supabase (PostgreSQL, Auth, Storage)
-- **State Management**: Zustand
-- **Offline Storage**: Dexie.js (IndexedDB wrapper)
-- **Charts**: Recharts
-- **PDF Generation**: jsPDF
-- **Deployment**: Vercel
-
-## Getting Started
-
-### Prerequisites
-- Node.js 18+
-- npm or yarn
-- Supabase account
-
-### Installation
-
-1. Clone the repository:
-\`\`\`bash
-git clone <repository-url>
-cd billing-solutions
-\`\`\`
-
-2. Install dependencies:
-\`\`\`bash
-npm install
-\`\`\`
-
-3. Set up environment variables:
-\`\`\`bash
-cp .env.example .env.local
-\`\`\`
-
-4. Add your Supabase credentials to `.env.local`:
-\`\`\`
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-\`\`\`
-
-5. Run database migrations:
-\`\`\`bash
-npm run db:migrate
-\`\`\`
-
-6. Start the development server:
-\`\`\`bash
-npm run dev
-\`\`\`
-
-7. Open [http://localhost:3000](http://localhost:3000) in your browser
-
-## Project Structure
-
-\`\`\`
-billing-solutions/
-├── app/                          # Next.js App Router
-│   ├── (auth)/                  # Authentication pages
-│   ├── (dashboard)/             # Protected dashboard routes
-│   │   ├── dashboard/           # Main dashboard
-│   │   ├── products/            # Product management
-│   │   ├── customers/           # Customer management
-│   │   ├── invoices/            # Invoice management
-│   │   ├── reports/             # Reports & analytics
-│   │   └── settings/            # Settings pages
-│   └── api/                     # API routes
-├── components/
-│   ├── ui/                      # shadcn/ui components
-│   ├── layout/                  # Layout components
-│   ├── forms/                   # Form components
-│   ├── features/                # Feature-specific components
-│   └── shared/                  # Shared utilities
-├── lib/
-│   ├── supabase/               # Supabase clients
-│   ├── db/                     # Database queries
-│   ├── sync/                   # Offline sync logic
-│   ├── utils/                  # Utility functions
-│   ├── hooks/                  # Custom React hooks
-│   └── api/                    # API client functions
-├── stores/                      # Zustand stores
-├── types/                       # TypeScript types
-├── public/                      # Static assets
-└── scripts/                     # Database migrations
-\`\`\`
-
-## Key Features Explained
-
-### GST Calculations
-The app automatically calculates GST based on:
-- **Same State**: CGST (50%) + SGST (50%)
-- **Different State**: IGST (100%)
-- **Non-GST Invoices**: No tax calculation
-
-### Offline Functionality
-1. All data is stored locally in IndexedDB
-2. Changes are queued for sync
-3. When online, changes are automatically pushed to Supabase
-4. Remote changes are pulled and merged locally
-
-### Reports
-- **Sales Report**: Track daily/monthly sales with trends
-- **Tax Report**: GST breakdown (CGST, SGST, IGST)
-- **Inventory Report**: Stock levels, low stock alerts, stock value
-
-## Database Schema
-
-### Tables
-- `user_profiles`: Extended user information
-- `products`: Product inventory
-- `customers`: Customer information
-- `invoices`: Invoice headers
-- `invoice_items`: Invoice line items
-- `business_settings`: User-specific business configuration
-- `sync_log`: Offline sync tracking
-
-All tables have Row-Level Security (RLS) enabled for data protection.
-
-## Security
-
-- **Authentication**: Supabase Auth with email/password
-- **Authorization**: Row-Level Security (RLS) policies
-- **Data Protection**: All user data is isolated by user_id
-- **HTTPS Only**: Enforced in production
-- **Session Management**: HTTP-only cookies for session storage
-
-## Performance Optimization
-
-- Server Components for faster initial load
-- Lazy loading of heavy components
-- Pagination for large datasets
-- Debounced search inputs
-- Image optimization with Next.js Image component
-- Service Worker caching strategy
-
-## Deployment
-
-### Deploy to Vercel
-
-1. Push code to GitHub
-2. Connect repository to Vercel
-3. Add environment variables
-4. Deploy
-
-\`\`\`bash
-vercel deploy
-\`\`\`
-
-### Custom Domain
-Configure custom domain in Vercel settings and update `NEXT_PUBLIC_APP_URL` environment variable.
-
-## Development
-
-### Running Tests
-\`\`\`bash
-npm run test
-\`\`\`
-
-### Building for Production
-\`\`\`bash
-npm run build
-npm start
-\`\`\`
-
-### Database Migrations
-\`\`\`bash
-npm run db:migrate
-npm run db:reset
-\`\`\`
-
-## Troubleshooting
-
-### Offline Sync Issues
-- Check browser's IndexedDB in DevTools
-- Verify Supabase connection
-- Check sync queue in browser console
-
-### Authentication Issues
-- Clear browser cookies
-- Check Supabase auth configuration
-- Verify environment variables
-
-### Performance Issues
-- Check Lighthouse score
-- Monitor bundle size
-- Use React DevTools Profiler
-
-## Contributing
-
-1. Create a feature branch
-2. Make your changes
-3. Submit a pull request
-
-## License
-
-MIT License - see LICENSE file for details
-
-## Support
-
-For issues and questions:
-- GitHub Issues: [Create an issue](https://github.com/your-repo/issues)
-- Email: support@billingsolutions.com
-
-## Roadmap
-
-- [ ] Multi-user support with team management
-- [ ] Payment gateway integration
-- [ ] Email invoice delivery
-- [ ] Advanced reporting with custom date ranges
-- [ ] Inventory alerts and notifications
-- [ ] Mobile app (React Native)
-- [ ] API for third-party integrations
-- [ ] Accounting software integration
-
-## Changelog
-
-### v1.0.0 (Initial Release)
-- Core product management
-- Customer management
-- Invoice creation with GST
-- Offline-first architecture
-- Reports and analytics
-- PWA capabilities
+Notes:
+- Imports currently insert rows into Dexie; autosync writes them to the connected Excel file.
+- Basic Invoices import does not include line items.
