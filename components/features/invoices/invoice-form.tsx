@@ -334,7 +334,12 @@ export function InvoiceForm({ customers, products, settings }: InvoiceFormProps)
               </TableHeader>
               <TableBody>
                 {lineItems.map((item) => {
-                  const calc = calculateLineItem(item)
+                  const calc = calculateLineItem({
+                    unitPrice: item.unit_price,
+                    discountPercent: item.discount_percent,
+                    gstRate: item.gst_rate,
+                    quantity: item.quantity,
+                  })
                   return (
                     <TableRow key={item.id}>
                       <TableCell>
