@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
-import { db } from "@/lib/db/dexie"
+import { db } from "@/lib/dexie-client"
+import { v4 as uuidv4 } from "uuid"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 import { createCustomer, updateCustomer } from "@/lib/api/customers";
 
@@ -49,15 +50,10 @@ export function CustomerForm({ customer }: CustomerFormProps) {
     e.preventDefault();
     setIsLoading(true);
     try {
-      if (customer?.id) {
-        await updateCustomer(customer.id, formData);
-        toast({ title: "Success", description: "Customer updated in Excel" });
-        router.push(`/customers/${customer.id}`);
-      } else {
-        const result = await createCustomer(formData);
-        toast({ title: "Success", description: "Customer created in Excel" });
-        router.push("/customers");
-      }
+      const id = customer?.id || uuidv4()
+      await db.customers!.put({ id, ...formData } as any)
+      toast({ title: "Success", description: customer?.id ? "Customer updated" : "Customer created" })
+      router.push(customer?.id ? `/customers/${customer.id}` : "/customers")
       router.refresh();
     } catch (error) {
       toast({

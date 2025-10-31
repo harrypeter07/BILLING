@@ -2,7 +2,8 @@ import { createClient } from "@/lib/supabase/server"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Building2, User, Palette } from "lucide-react"
+import { Building2, User, Palette, FileSpreadsheet } from "lucide-react"
+import { ExcelConnector } from "@/components/settings/excel-connector"
 
 export default async function SettingsPage() {
   const supabase = await createClient()
@@ -94,6 +95,19 @@ export default async function SettingsPage() {
             <Button asChild className="mt-4 w-full bg-transparent" variant="outline">
               <Link href="/settings/theme">Customize Theme</Link>
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              <CardTitle>Excel Connection</CardTitle>
+            </div>
+            <CardDescription>Connect an external .xlsx file and save in background</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ExcelConnector />
           </CardContent>
         </Card>
       </div>

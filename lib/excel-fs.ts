@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx"
-import { db, type Product, type Bill } from "./dexie-client"
+import { db, type Product, type Invoice } from "./dexie-client"
 
 export async function connectExcelFile(suggestedName = "smartbill-data.xlsx"): Promise<boolean> {
   if (typeof window === "undefined" || !("showSaveFilePicker" in window)) return false
@@ -21,21 +21,21 @@ export async function hasConnectedExcel(): Promise<boolean> {
   return !!rec?.handle
 }
 
-export async function saveToConnectedExcel(products: Product[], bills: Bill[]): Promise<{ ok: boolean; counts: { products: number; bills: number } }> {
+export async function saveToConnectedExcel(products: Product[], invoices: Invoice[]): Promise<{ ok: boolean; counts: { products: number; invoices: number } }> {
   const rec = await db.fsHandles.get("excelHandle")
   const handle = rec?.handle
-  if (!handle) return { ok: false, counts: { products: products.length, bills: bills.length } }
+  if (!handle) return { ok: false, counts: { products: products.length, invoices: invoices.length } }
   try {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(products), "Products")
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bills), "Bills")
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(invoices), "Invoices")
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" })
     const writable = await handle.createWritable()
     await writable.write(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))
     await writable.close()
-    return { ok: true, counts: { products: products.length, bills: bills.length } }
+    return { ok: true, counts: { products: products.length, invoices: invoices.length } }
   } catch {
-    return { ok: false, counts: { products: products.length, bills: bills.length } }
+    return { ok: false, counts: { products: products.length, invoices: invoices.length } }
   }
 }
 

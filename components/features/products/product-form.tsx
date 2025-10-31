@@ -11,9 +11,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
-import { db } from "@/lib/db/dexie"
-import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
-import { createProduct, updateProduct } from "@/lib/api/products";
+import { storageManager } from "@/lib/storage-manager"
+import { v4 as uuidv4 } from "uuid"
 
 interface Product {
   id?: string
@@ -57,15 +56,15 @@ export function ProductForm({ product }: ProductFormProps) {
     e.preventDefault();
     setIsLoading(true);
     try {
+      const payload: any = { id: product?.id || uuidv4(), ...formData }
       if (product?.id) {
-        await updateProduct(product.id, formData);
-        toast({ title: "Success", description: "Product updated in Excel" });
-        router.push("/products");
+        await storageManager.updateProduct(payload)
+        toast({ title: "Success", description: "Product updated" })
       } else {
-        await createProduct(formData);
-        toast({ title: "Success", description: "Product created in Excel" });
-        router.push("/products");
+        await storageManager.addProduct(payload)
+        toast({ title: "Success", description: "Product created" })
       }
+      router.push("/products")
       router.refresh();
     } catch (error) {
       toast({

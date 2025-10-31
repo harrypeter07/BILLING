@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx"
-import type { Product, Bill } from "./dexie-client"
+import type { Product, Invoice } from "./dexie-client"
 
 async function writeToOPFS(filename: string, data: ArrayBuffer): Promise<boolean> {
   try {
@@ -16,11 +16,11 @@ async function writeToOPFS(filename: string, data: ArrayBuffer): Promise<boolean
   }
 }
 
-export async function autoSaveExcel(products: Product[], bills: Bill[], filename = "smartbill-data.xlsx") {
+export async function autoSaveExcel(products: Product[], invoices: Invoice[], filename = "smartbill-data.xlsx") {
   try {
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(products), "Products")
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bills), "Bills")
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(invoices), "Invoices")
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" })
     const saved = await writeToOPFS(filename, buf)
     return saved

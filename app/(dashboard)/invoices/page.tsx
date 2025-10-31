@@ -7,7 +7,7 @@ import { Plus } from "lucide-react"
 import Link from "next/link"
 import { InvoicesTable } from "@/components/features/invoices/invoices-table"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller";
-import { fetchInvoices } from "@/lib/api/invoices"
+import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 
 export default function InvoicesPage() {
@@ -24,11 +24,11 @@ export default function InvoicesPage() {
         setLoading(true)
         if (isExcel) {
           try {
-            const list = await fetchInvoices()
-            console.log('[InvoicesPage][Excel] fetched', list?.length || 0)
+            const list = await db.invoices.toArray()
+            console.log('[InvoicesPage][Dexie] fetched', list?.length || 0)
             setInvoices(list || [])
           } catch (e) {
-            console.error('[InvoicesPage][Excel] fetch failed:', e)
+            console.error('[InvoicesPage][Dexie] load failed:', e)
             setInvoices([...excelSheetManager.getList('invoices')])
           }
         } else {

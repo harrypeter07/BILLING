@@ -8,7 +8,7 @@ import { toast } from "sonner"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 // Don't import createClient unless needed
 // import { createClient } from "@/lib/supabase/client"
-import { fetchCustomers } from "@/lib/api/customers"
+import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 
 export default function CustomersPage() {
@@ -24,15 +24,14 @@ export default function CustomersPage() {
       (async () => {
         try {
           setIsLoading(true)
-          const list = await fetchCustomers()
-          console.log('[CustomersPage][Excel] fetched', list?.length || 0, 'customers from /api/excel/customers')
+          const list = await db.customers.toArray()
+          console.log('[CustomersPage][Dexie] fetched', list?.length || 0, 'customers')
           if (!list || list.length === 0) {
             toast.warning('No customers found in data/Customers.xlsx')
           }
           setCustomers(list)
         } catch {
-          console.error('[CustomersPage][Excel] fetch failed')
-          toast.error('Failed to load customers from Excel API')
+          console.error('[CustomersPage][Dexie] load failed')
           setCustomers([...excelSheetManager.getList('customers')])
         } finally {
           setIsLoading(false)
@@ -40,11 +39,11 @@ export default function CustomersPage() {
       })()
       const unsub = excelSheetManager.subscribe(async () => {
         try {
-          const list = await fetchCustomers()
-          console.log('[CustomersPage][Excel][sub] fetched', list?.length || 0)
+          const list = await db.customers.toArray()
+          console.log('[CustomersPage][Dexie][sub] fetched', list?.length || 0)
           setCustomers(list)
         } catch (e) {
-          console.error('[CustomersPage][Excel][sub] fetch failed:', e)
+          console.error('[CustomersPage][Dexie][sub] load failed:', e)
           setCustomers([...excelSheetManager.getList('customers')])
         }
       })

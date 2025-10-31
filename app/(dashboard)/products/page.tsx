@@ -7,7 +7,7 @@ import { ProductsTable } from "@/components/features/products/products-table"
 import { toast } from "sonner"
 import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 import { createClient } from "@/lib/supabase/client"
-import { fetchProducts } from "@/lib/api/products"
+import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 
 export default function ProductsPage() {
@@ -24,16 +24,14 @@ export default function ProductsPage() {
       (async () => {
         try {
           setIsLoading(true)
-          const list = await fetchProducts()
-          console.log('[ProductsPage][Excel] fetched', list?.length || 0, 'products from /api/excel/products')
+          const list = await db.products.toArray()
+          console.log('[ProductsPage][Dexie] fetched', list?.length || 0, 'products')
           if (!list || list.length === 0) {
             toast.warning('No products found in data/Products.xlsx')
           }
           setProducts(list)
         } catch (e) {
-          console.error('[ProductsPage][Excel] fetch failed:', e)
-          toast.error('Failed to load products from Excel API')
-          // Fallback to in-memory manager if API fails
+          console.error('[ProductsPage][Dexie] load failed:', e)
           setProducts([...excelSheetManager.getList('products')])
         } finally {
           setIsLoading(false)
@@ -41,11 +39,11 @@ export default function ProductsPage() {
       })()
       const unsub = excelSheetManager.subscribe(async () => {
         try {
-          const list = await fetchProducts()
-          console.log('[ProductsPage][Excel][sub] fetched', list?.length || 0)
+          const list = await db.products.toArray()
+          console.log('[ProductsPage][Dexie][sub] fetched', list?.length || 0)
           setProducts(list)
         } catch (e) {
-          console.error('[ProductsPage][Excel][sub] fetch failed:', e)
+          console.error('[ProductsPage][Dexie][sub] load failed:', e)
           setProducts([...excelSheetManager.getList('products')])
         }
       })
