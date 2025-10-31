@@ -41,6 +41,8 @@ export async function saveToConnectedExcel(products: Product[], customers: Custo
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(employees), "Employees")
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" })
     const writable = await handle.createWritable()
+    // Ensure we overwrite the existing file fully so Excel shows the latest data
+    await writable.truncate(0)
     await writable.write(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))
     await writable.close()
     return { ok: true, counts: { products: products.length, customers: customers.length, invoices: invoices.length, employees: employees.length, invoice_items: invoiceItems.length } }

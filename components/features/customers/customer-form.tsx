@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
-import { db } from "@/lib/dexie-client"
+import { storageManager } from "@/lib/storage-manager"
 
 interface Customer {
   id?: string
@@ -48,7 +48,7 @@ export function CustomerForm({ customer }: CustomerFormProps) {
     setIsLoading(true);
     try {
       const id = customer?.id || (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now()))
-      await db.customers!.put({ id, ...formData } as any)
+      await storageManager.updateCustomer({ id, ...formData })
       toast({ title: "Success", description: customer?.id ? "Customer updated" : "Customer created" })
       router.push(customer?.id ? `/customers/${customer.id}` : "/customers")
       router.refresh();

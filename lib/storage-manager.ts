@@ -46,6 +46,32 @@ class StorageManager {
     this.scheduleAutoExport()
   }
 
+  async addCustomer(customer: any) {
+    await db.customers.put(customer)
+    this.scheduleAutoExport()
+  }
+  async updateCustomer(customer: any) {
+    await db.customers.put(customer)
+    this.scheduleAutoExport()
+  }
+  async deleteCustomer(id: string) {
+    await db.customers.delete(id)
+    this.scheduleAutoExport()
+  }
+
+  async addEmployee(employee: any) {
+    await db.employees?.put?.(employee)
+    this.scheduleAutoExport()
+  }
+  async updateEmployee(employee: any) {
+    await db.employees?.put?.(employee)
+    this.scheduleAutoExport()
+  }
+  async deleteEmployee(id: string) {
+    await db.employees?.delete?.(id)
+    this.scheduleAutoExport()
+  }
+
   async addInvoice(invoice: any, items: any[]) {
     const invoiceId = invoice.id || crypto.randomUUID()
     await db.invoices.put({ ...invoice, id: invoiceId })

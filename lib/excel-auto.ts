@@ -6,10 +6,12 @@ async function writeToOPFS(filename: string, data: ArrayBuffer): Promise<boolean
     if (typeof window === "undefined" || !("storage" in navigator)) return false
     const anyNavigator: any = navigator as any
     const root = await anyNavigator.storage.getDirectory()
-    const fileHandle = await root.getFileHandle(filename, { create: true })
-    const writable = await fileHandle.createWritable()
-    await writable.write(new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))
-    await writable.close()
+  const fileHandle = await root.getFileHandle(filename, { create: true })
+  const writable = await fileHandle.createWritable()
+  // Overwrite fully to avoid corrupted/hidden sheet views
+  await writable.truncate(0)
+  await writable.write(new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }))
+  await writable.close()
     return true
   } catch {
     return false

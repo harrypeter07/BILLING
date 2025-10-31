@@ -9,6 +9,7 @@ import { toast } from "sonner"
 // Don't import createClient unless needed
 // import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
+import { storageManager } from "@/lib/storage-manager"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 
 export default function CustomersPage() {
@@ -81,7 +82,7 @@ export default function CustomersPage() {
       }
       
       if (isExcel) {
-        await db.customers.put(mockCustomer as any)
+        await storageManager.addCustomer(mockCustomer as any)
         // Trigger refresh by re-fetching
         const list = await db.customers.toArray()
         setCustomers(list)
