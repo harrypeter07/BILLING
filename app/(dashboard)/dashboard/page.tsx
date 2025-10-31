@@ -4,6 +4,7 @@ import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle } from "lu
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useEffect, useState } from 'react';
+import { db } from '@/lib/dexie-client';
 import { createClient } from '@/lib/supabase/client';
 
 // Add this for now. Replace with a real config or store later.
@@ -20,21 +21,18 @@ export default function DashboardPage() {
       (async () => {
         try {
           setLoading(true);
-          const [prodRes, custRes, invRes] = await Promise.all([
-            fetch('/api/excel/products').then(r=>r.json()),
-            fetch('/api/excel/customers').then(r=>r.json()),
-            fetch('/api/excel/invoices').then(r=>r.json()),
+          const [products, customers, invoices] = await Promise.all([
+            db.products.toArray(),
+            db.customers.toArray(),
+            db.invoices.toArray(),
           ]);
-          const products = prodRes.products || [];
-          const customers = custRes.customers || [];
-          const invoices = invRes.invoices || [];
           setExcelStats({
-            totalRevenue: invoices.reduce((s: number, i: any)=> s + Number(i.total_amount || i.total || 0), 0),
-            productsCount: products.length,
-            customersCount: customers.length,
-            invoicesCount: invoices.length,
-            recentInvoices: invoices.slice(-5).reverse(),
-            lowStockProducts: products.filter((p: any)=> p.stock_quantity !== undefined && Number(p.stock_quantity) <= 10),
+            totalRevenue: (invoices || []).reduce((s: number, i: any)=> s + Number(i.total_amount || i.total || 0), 0),
+            productsCount: products?.length || 0,
+            customersCount: customers?.length || 0,
+            invoicesCount: invoices?.length || 0,
+            recentInvoices: (invoices || []).slice(-5).reverse(),
+            lowStockProducts: (products || []).filter((p: any)=> p.stock_quantity !== undefined && Number(p.stock_quantity) <= 10),
           });
         } finally {
           setLoading(false);
