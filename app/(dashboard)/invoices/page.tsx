@@ -9,37 +9,13 @@ import { InvoicesTable } from "@/components/features/invoices/invoices-table"
 import { db } from "@/lib/dexie-client"
 import { storageManager } from "@/lib/storage-manager"
 import { getDatabaseType } from "@/lib/utils/db-mode"
+import { useUserRole } from "@/lib/hooks/use-user-role"
 
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const [isEmployee, setIsEmployee] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const { isAdmin, isEmployee } = useUserRole()
   const isExcel = getDatabaseType() === 'excel'
-
-  useEffect(() => {
-    const checkUserRole = async () => {
-      const authType = localStorage.getItem("authType")
-      if (authType === "employee") {
-        setIsEmployee(true)
-        setIsAdmin(false)
-      } else {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("role")
-            .eq("id", user.id)
-            .single()
-          const role = profile?.role || "admin"
-          setIsAdmin(role === "admin")
-          setIsEmployee(false)
-        }
-      }
-    }
-    checkUserRole()
-  }, [])
 
   useEffect(() => {
     (async () => {

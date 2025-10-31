@@ -1,19 +1,19 @@
 "use client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle } from "lucide-react";
+import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle, UserCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/dexie-client';
 import { createClient } from '@/lib/supabase/client';
-
-// Add this for now. Replace with a real config or store later.
-const getDatabaseType = () => typeof window !== 'undefined' && window.localStorage.getItem('databaseType') === 'supabase' ? 'supabase' : 'excel';
+import { getDatabaseType } from '@/lib/utils/db-mode';
+import { useUserRole } from '@/lib/hooks/use-user-role';
 
 export default function DashboardPage() {
   const [excelStats, setExcelStats] = useState<any>(null);
   const [sbStats, setSbStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const { isAdmin, isEmployee } = useUserRole();
   const dbType = getDatabaseType();
 
   useEffect(() => {
@@ -146,9 +146,11 @@ export default function DashboardPage() {
             ) : (
               <div className="py-8 text-center text-muted-foreground">
                 <p>No invoices yet</p>
-                <Button asChild className="mt-4">
-                  <Link href="/invoices/new">Create Your First Invoice</Link>
-                </Button>
+                {isEmployee && (
+                  <Button asChild className="mt-4">
+                    <Link href="/invoices/new">Create Your First Invoice</Link>
+                  </Button>
+                )}
               </div>
             )}
           </CardContent>
@@ -192,12 +194,22 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Button asChild className="h-auto flex-col gap-2 py-4">
-              <Link href="/invoices/new">
-                <Receipt className="h-6 w-6" />
-                <span>Create Invoice</span>
-              </Link>
-            </Button>
+            {isEmployee && (
+              <Button asChild className="h-auto flex-col gap-2 py-4">
+                <Link href="/invoices/new">
+                  <Receipt className="h-6 w-6" />
+                  <span>Create Invoice</span>
+                </Link>
+              </Button>
+            )}
+            {isAdmin && (
+              <Button asChild variant="outline" className="h-auto flex-col gap-2 py-4 bg-transparent">
+                <Link href="/employees">
+                  <UserCog className="h-6 w-6" />
+                  <span>Manage Employees</span>
+                </Link>
+              </Button>
+            )}
             <Button asChild variant="outline" className="h-auto flex-col gap-2 py-4 bg-transparent">
               <Link href="/products/new">
                 <Package className="h-6 w-6" />

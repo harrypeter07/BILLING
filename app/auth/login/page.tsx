@@ -12,6 +12,7 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { db } from "@/lib/dexie-client"
+import { toast } from "sonner"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -44,6 +45,9 @@ export default function LoginPage() {
           .single()
         
         const userRole = profile?.role || "admin"
+        
+        // Show login success message with role
+        toast.success(`Logged in as ${userRole.charAt(0).toUpperCase() + userRole.slice(1)}`)
         
         // For admin users, check if they have a store
         if (userRole === "admin" || !profile) {
@@ -80,6 +84,7 @@ export default function LoginPage() {
             router.push("/dashboard")
           }
         } else {
+          // Public user
           router.push("/dashboard")
         }
       } else {

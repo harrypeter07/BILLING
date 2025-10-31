@@ -14,6 +14,7 @@ import { storageManager } from "@/lib/storage-manager"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useUserRole } from "@/lib/hooks/use-user-role"
 
 interface Employee {
   id: string
@@ -30,44 +31,38 @@ export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [isAdmin, setIsAdmin] = useState(false)
+  const [storesMap, setStoresMap] = useState<Record<string, any>>({})
   const { toast } = useToast()
+  const { isAdmin, isEmployee } = useUserRole()
   const isExcel = getDatabaseType() === 'excel'
   const router = useRouter()
 
   useEffect(() => {
-    const checkUserRole = async () => {
-      const authType = localStorage.getItem("authType")
-      if (authType === "employee") {
-        // Employees cannot access this page
+    // Only admin can access this page
+    if (!isLoading) {
+      if (isEmployee || !isAdmin) {
         router.push("/dashboard")
         return
       }
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("role")
-          .eq("id", user.id)
-          .single()
-        const role = profile?.role || "admin"
-        if (role !== "admin") {
-          router.push("/dashboard")
-          return
-        }
-        setIsAdmin(true)
+      if (isAdmin) {
+        fetchEmployees()
       }
     }
-    checkUserRole()
-    fetchEmployees()
-  }, [isExcel, router])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isExcel, router, isAdmin, isEmployee, isLoading])
 
   const fetchEmployees = async () => {
     try {
       if (isExcel) {
         setIsLoading(true)
         const list = await db.employees.toArray()
+        // Load stores for Excel mode
+        const allStores = await db.stores.toArray()
+        const stores: Record<string, any> = {}
+        allStores.forEach(store => {
+          stores[store.id] = store
+        })
+        setStoresMap(stores)
         setEmployees(list as any)
         return
       }
@@ -268,6 +263,19 @@ export default function EmployeesPage() {
                           <span title={emp.password}>{emp.password}</span>
                         ) : (
                           <span className="text-muted-foreground">{emp.employee_id || "N/A"}</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {emp.stores ? (
+                          <span className="text-sm">
+                            {emp.stores.name} <span className="text-muted-foreground font-mono">({emp.stores.store_code})</span>
+                          </span>
+                        ) : emp.store_id && storesMap[emp.store_id] ? (
+                          <span className="text-sm">
+                            {storesMap[emp.store_id].name} <span className="text-muted-foreground font-mono">({storesMap[emp.store_id].store_code})</span>
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-sm">N/A</span>
                         )}
                       </TableCell>
                       <TableCell>{emp.role}</TableCell>

@@ -11,9 +11,23 @@ export async function GET(request: NextRequest) {
     console.error("[API][employees][GET] Unauthorized access")
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  // Check if user is admin
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
+  const role = profile?.role || "admin"
+  if (role !== "admin") {
+    console.error("[API][employees][GET] Non-admin access attempted")
+    return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 })
+  }
+
   const { data: employees, error } = await supabase
     .from("employees")
-    .select("*")
+    .select("*, stores(name, store_code)")
     .eq("user_id", user.id)
     .order("created_at", { ascending: false })
   if (error) {
@@ -34,6 +48,20 @@ export async function POST(request: NextRequest) {
     console.error("[API][employees][POST] Unauthorized access")
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  // Check if user is admin
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
+  const role = profile?.role || "admin"
+  if (role !== "admin") {
+    console.error("[API][employees][POST] Non-admin access attempted")
+    return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 })
+  }
+
   const body = await request.json()
   const { data: employee, error } = await supabase
     .from("employees")
@@ -66,6 +94,18 @@ export async function DELETE(request: NextRequest) {
 
   if (authError || !user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // Check if user is admin
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single()
+
+  const role = profile?.role || "admin"
+  if (role !== "admin") {
+    return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 })
   }
 
   const { searchParams } = new URL(request.url)

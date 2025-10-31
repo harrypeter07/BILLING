@@ -10,13 +10,40 @@ import { ExcelConnector } from "@/components/settings/excel-connector"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useStore } from "@/lib/utils/store-context"
+import { useRouter } from "next/navigation"
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState<any>(null)
   const [settings, setSettings] = useState<any>(null)
   const [user, setUser] = useState<any>(null)
   const { currentStore } = useStore()
+  const router = useRouter()
   const isExcel = getDatabaseType() === 'excel'
+
+  // Only admin can access settings
+  useEffect(() => {
+    const checkAccess = async () => {
+      const authType = localStorage.getItem("authType")
+      if (authType === "employee") {
+        router.push("/dashboard")
+        return
+      }
+      const supabase = createClient()
+      const { data: { user: u } } = await supabase.auth.getUser()
+      if (u) {
+        const { data: p } = await supabase
+          .from("user_profiles")
+          .select("role")
+          .eq("id", u.id)
+          .single()
+        const role = p?.role || "admin"
+        if (role !== "admin") {
+          router.push("/dashboard")
+        }
+      }
+    }
+    checkAccess()
+  }, [router])
 
   useEffect(() => {
     (async () => {

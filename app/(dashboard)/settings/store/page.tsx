@@ -74,9 +74,10 @@ export default function StorePage() {
           setCurrentStore(store)
           localStorage.setItem("currentStoreId", store.id)
           toast({ title: "Success", description: "Store created successfully" })
-          // Redirect to settings page after store creation
+          // Redirect to dashboard after store creation (admin can then go to employees)
           setTimeout(() => {
-            router.push("/settings")
+            router.push("/dashboard")
+            router.refresh()
           }, 1000)
         }
       } else {
@@ -108,9 +109,10 @@ export default function StorePage() {
             setCurrentStore(data as any)
             localStorage.setItem("currentStoreId", data.id)
             toast({ title: "Success", description: "Store created successfully" })
-            // Redirect to settings page after store creation
+            // Redirect to dashboard after store creation (admin can then go to employees)
             setTimeout(() => {
-              router.push("/settings")
+              router.push("/dashboard")
+              router.refresh()
             }, 1000)
           }
         }

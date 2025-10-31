@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
+import { useUserRole } from "@/lib/hooks/use-user-role"
 
 // Navigation items for different user roles
 const adminNavigation = [
@@ -46,8 +47,7 @@ export function Sidebar() {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [isOnline, setIsOnline] = useState(true)
-  const [isEmployee, setIsEmployee] = useState(false)
-  const [isAdmin, setIsAdmin] = useState(false)
+  const { isAdmin, isEmployee } = useUserRole()
 
   useEffect(() => {
     setIsOnline(navigator.onLine)
@@ -64,31 +64,7 @@ export function Sidebar() {
     }
   }, [])
 
-  useEffect(() => {
-    const checkUserRole = async () => {
-      const authType = localStorage.getItem("authType")
-      if (authType === "employee") {
-        setIsEmployee(true)
-        setIsAdmin(false)
-      } else {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("role")
-            .eq("id", user.id)
-            .single()
-          const role = profile?.role || "admin"
-          setIsAdmin(role === "admin")
-          setIsEmployee(false)
-        }
-      }
-    }
-    checkUserRole()
-  }, [])
-
-  // Determine which navigation to show
+  // Determine which navigation to show based on role
   const navigation = isEmployee ? employeeNavigation : adminNavigation
 
   const handleLogout = async () => {
