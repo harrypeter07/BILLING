@@ -13,7 +13,6 @@ import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { db } from "@/lib/dexie-client"
 import { v4 as uuidv4 } from "uuid"
-import { excelSheetManager } from "@/lib/utils/excel-sync-controller"
 import { createCustomer, updateCustomer } from "@/lib/api/customers";
 
 interface Customer {
