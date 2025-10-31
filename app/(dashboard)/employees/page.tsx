@@ -5,10 +5,11 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Plus, FileSpreadsheet, Search, Edit2, Trash2 } from "lucide-react"
+import { Plus, FileSpreadsheet, Search, Edit2, Trash2, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
+import { storageManager } from "@/lib/storage-manager"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -83,7 +84,25 @@ export default function EmployeesPage() {
     }
   }
 
-  // Excel import logic placeholder removed for now
+  const handleAddMockEmployee = async () => {
+    const rand = Math.floor(Math.random()*10000)
+    const employee: any = {
+      id: crypto.randomUUID(),
+      name: `Employee ${rand}`,
+      email: `emp${rand}@example.com`,
+      phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
+      role: rand % 5 === 0 ? 'admin' : 'employee',
+      salary: Math.floor(Math.random()*50000)+20000,
+      joining_date: new Date().toISOString(),
+      is_active: true,
+    }
+    await storageManager.addEmployee(employee)
+    const list = await db.employees.toArray()
+    setEmployees(list as any)
+    toast({ title: "Success", description: `Mock employee "${employee.name}" added` })
+  }
+
+  // Excel import logic
   function ExcelImport() {
     const inputRef = useRef<HTMLInputElement | null>(null)
     const [importing, setImporting] = useState(false)
@@ -92,7 +111,16 @@ export default function EmployeesPage() {
       if (!e.target.files?.[0]) return
       setImporting(true)
       try {
-        toast({ title: "Import not configured", description: "Excel import disabled in this build" })
+        const { importEmployeesFromExcel } = await import("@/lib/utils/excel-import")
+        const res = await importEmployeesFromExcel(e.target.files[0])
+        if (!res.success) throw new Error(res.errors[0] || "Import failed")
+        const toSave = (res.data || []).map((e: any) => ({ id: crypto.randomUUID(), ...e }))
+        for (const emp of toSave) {
+          await storageManager.addEmployee(emp)
+        }
+        const list = await db.employees.toArray()
+        setEmployees(list as any)
+        toast({ title: "Imported", description: `Employees imported: ${toSave.length}` })
       } finally {
         setImporting(false)
         if (inputRef.current) inputRef.current.value = ""
@@ -129,6 +157,9 @@ export default function EmployeesPage() {
         </div>
         <div className="flex items-center gap-2">
           <ExcelImport />
+          <Button type="button" variant="outline" onClick={handleAddMockEmployee} title="Add a mock employee">
+            <Sparkles className="mr-2 h-4 w-4" /> Add Mock Employee
+          </Button>
           <Button asChild>
             <Link href="/employees/new">
               <Plus className="mr-2 h-4 w-4" />

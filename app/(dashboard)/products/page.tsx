@@ -1,7 +1,7 @@
 "use client"
 import { useState, useRef, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, FileSpreadsheet } from "lucide-react"
+import { Plus, FileSpreadsheet, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { ProductsTable } from "@/components/features/products/products-table"
 import { toast } from "sonner"
@@ -9,6 +9,7 @@ import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
+import { storageManager } from "@/lib/storage-manager"
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([])
@@ -66,7 +67,14 @@ export default function ProductsPage() {
         const { importProductsFromExcel } = await import("@/lib/utils/excel-import")
         const res = await importProductsFromExcel(e.target.files[0])
         if (!res.success) throw new Error(res.errors[0] || "Import failed")
-        toast.success("Products imported!")
+        // Save imported products to Dexie
+        const toSave = (res.data || []).map((p: any) => ({ id: crypto.randomUUID(), ...p }))
+        for (const p of toSave) {
+          await storageManager.addProduct(p as any)
+        }
+        const list = await db.products.toArray()
+        setProducts(list)
+        toast.success(`Products imported: ${toSave.length}`)
         
       } catch (error: any) {
         toast.error("Import failed: " + (error.message || error.toString()))
@@ -91,6 +99,27 @@ export default function ProductsPage() {
     )
   }
 
+  const handleAddMockProduct = async () => {
+    const rand = Math.floor(Math.random()*10000)
+    const product = {
+      id: crypto.randomUUID(),
+      name: `Mock Product ${rand}`,
+      sku: `SKU-${rand}`,
+      category: ["General","Tools","Food"][rand%3],
+      price: Number((Math.random()*1000+10).toFixed(2)),
+      cost_price: Number((Math.random()*800+5).toFixed(2)),
+      stock_quantity: Math.floor(Math.random()*100)+1,
+      unit: "piece",
+      hsn_code: "1234",
+      gst_rate: 18,
+      is_active: true,
+    }
+    await storageManager.addProduct(product as any)
+    const list = await db.products.toArray()
+    setProducts(list)
+    toast.success(`Mock product "${product.name}" added!`)
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -100,6 +129,9 @@ export default function ProductsPage() {
         </div>
         <div className="flex items-center gap-2">
           <ExcelImport />
+          <Button type="button" variant="outline" onClick={handleAddMockProduct} title="Add a mock product">
+            <Sparkles className="mr-2 h-4 w-4" /> Add Mock Product
+          </Button>
           <Button asChild>
             <Link href="/products/new">
               <Plus className="mr-2 h-4 w-4" />
