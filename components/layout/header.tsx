@@ -16,6 +16,8 @@ import { createClient } from "@/lib/supabase/client"
 import { useEffect, useState } from "react"
 import { storageManager } from "@/lib/storage-manager"
 import { SyncStatus } from "@/components/sync-status"
+import { useUserRole } from "@/lib/hooks/use-user-role"
+import { Badge } from "@/components/ui/badge"
 
 interface HeaderProps {
   title?: string
@@ -27,6 +29,7 @@ export function Header({ title }: HeaderProps) {
   const [initials, setInitials] = useState<string>("U")
   const [storageMode, setStorageMode] = useState<"database" | "excel">("database");
   const [hasMounted, setHasMounted] = useState(false);
+  const { role, isAdmin, isEmployee, isPublic } = useUserRole();
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -147,7 +150,14 @@ export function Header({ title }: HeaderProps) {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>
               <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium">My Account</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium">My Account</p>
+                  {role && (
+                    <Badge variant={isAdmin ? "default" : isEmployee ? "secondary" : "outline"} className="text-xs">
+                      {role.charAt(0).toUpperCase() + role.slice(1)}
+                    </Badge>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground">{userEmail}</p>
               </div>
             </DropdownMenuLabel>

@@ -9,6 +9,7 @@ import { useRouter } from "next/navigation"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { createClient } from "@/lib/supabase/client"
+import { toast } from "sonner"
 
 export default function EmployeeLoginPage() {
   const [storeName, setStoreName] = useState("")
