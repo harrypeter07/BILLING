@@ -1,29 +1,52 @@
-import { createClient } from "@/lib/supabase/server"
+"use client"
+import { useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DollarSign, TrendingUp, Package, Receipt } from "lucide-react"
+import { db } from "@/lib/dexie-client"
+import { getDatabaseType } from "@/lib/utils/db-mode"
 
-export default async function ReportsPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+export default function ReportsPage() {
+  const [loading, setLoading] = useState(true)
+  const [invoices, setInvoices] = useState<any[]>([])
+  const [products, setProducts] = useState<any[]>([])
+  const isExcel = getDatabaseType() === 'excel'
 
-  // Fetch data for reports
-  const { data: invoices } = await supabase.from("invoices").select("*").eq("user_id", user!.id)
+  useEffect(() => {
+    (async () => {
+      setLoading(true)
+      try {
+        if (isExcel) {
+          const [inv, prod] = await Promise.all([
+            db.invoices.toArray(),
+            db.products.toArray(),
+          ])
+          setInvoices(inv || [])
+          setProducts(prod || [])
+        } else {
+          const supabase = createClient()
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) { setInvoices([]); setProducts([]); return }
+          const [{ data: inv }, { data: prod }] = await Promise.all([
+            supabase.from('invoices').select('*').eq('user_id', user.id),
+            supabase.from('products').select('*').eq('user_id', user.id),
+          ])
+          setInvoices(inv || [])
+          setProducts(prod || [])
+        }
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [isExcel])
 
-  const { data: products } = await supabase.from("products").select("*").eq("user_id", user!.id)
-
-  // Calculate metrics
-  const totalRevenue = invoices?.reduce((sum, inv) => sum + Number(inv.total_amount), 0) || 0
-  const paidRevenue =
-    invoices?.filter((inv) => inv.status === "paid").reduce((sum, inv) => sum + Number(inv.total_amount), 0) || 0
-  const totalGST =
-    invoices?.reduce(
-      (sum, inv) => sum + Number(inv.cgst_amount) + Number(inv.sgst_amount) + Number(inv.igst_amount),
-      0,
-    ) || 0
+  const totalRevenue = invoices?.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0) || 0
+  const paidRevenue = invoices?.filter((inv) => inv.status === "paid").reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0) || 0
+  const totalGST = invoices?.reduce((sum, inv) => sum + Number(inv.cgst_amount || 0) + Number(inv.sgst_amount || 0) + Number(inv.igst_amount || 0), 0) || 0
   const totalProducts = products?.length || 0
-  const lowStockCount = products?.filter((p) => p.stock_quantity <= 10).length || 0
+  const lowStockCount = products?.filter((p) => (p.stock_quantity ?? Infinity) <= 10).length || 0
+
+  if (loading) return <div className="p-6">Loading...</div>
 
   return (
     <div className="space-y-6">
@@ -89,10 +112,7 @@ export default async function ReportsPage() {
             <div className="space-y-4">
               {["draft", "sent", "paid", "cancelled"].map((status) => {
                 const count = invoices?.filter((inv) => inv.status === status).length || 0
-                const amount =
-                  invoices
-                    ?.filter((inv) => inv.status === status)
-                    .reduce((sum, inv) => sum + Number(inv.total_amount), 0) || 0
+                const amount = invoices?.filter((inv) => inv.status === status).reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0) || 0
                 return (
                   <div key={status} className="flex items-center justify-between">
                     <div>
@@ -118,27 +138,21 @@ export default async function ReportsPage() {
                   <p className="font-medium">CGST</p>
                   <p className="text-sm text-muted-foreground">Central GST</p>
                 </div>
-                <p className="font-medium">
-                  ₹{(invoices?.reduce((sum, inv) => sum + Number(inv.cgst_amount), 0) || 0).toLocaleString("en-IN")}
-                </p>
+                <p className="font-medium">₹{(invoices?.reduce((sum, inv) => sum + Number(inv.cgst_amount || 0), 0) || 0).toLocaleString("en-IN")}</p>
               </div>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium">SGST</p>
                   <p className="text-sm text-muted-foreground">State GST</p>
                 </div>
-                <p className="font-medium">
-                  ₹{(invoices?.reduce((sum, inv) => sum + Number(inv.sgst_amount), 0) || 0).toLocaleString("en-IN")}
-                </p>
+                <p className="font-medium">₹{(invoices?.reduce((sum, inv) => sum + Number(inv.sgst_amount || 0), 0) || 0).toLocaleString("en-IN")}</p>
               </div>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium">IGST</p>
                   <p className="text-sm text-muted-foreground">Integrated GST</p>
                 </div>
-                <p className="font-medium">
-                  ₹{(invoices?.reduce((sum, inv) => sum + Number(inv.igst_amount), 0) || 0).toLocaleString("en-IN")}
-                </p>
+                <p className="font-medium">₹{(invoices?.reduce((sum, inv) => sum + Number(inv.igst_amount || 0), 0) || 0).toLocaleString("en-IN")}</p>
               </div>
             </div>
           </CardContent>
