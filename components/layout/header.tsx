@@ -30,6 +30,23 @@ export function Header({ title }: HeaderProps) {
 
   useEffect(() => {
     const fetchUser = async () => {
+      // Check for employee session first
+      const authType = localStorage.getItem("authType")
+      if (authType === "employee") {
+        const employeeSession = localStorage.getItem("employeeSession")
+        if (employeeSession) {
+          try {
+            const session = JSON.parse(employeeSession)
+            setUserEmail(session.employeeName || session.employeeId || "Employee")
+            setInitials(session.employeeName?.charAt(0).toUpperCase() || session.employeeId?.charAt(0).toUpperCase() || "E")
+            return
+          } catch (e) {
+            // Fall through to Supabase check
+          }
+        }
+      }
+
+      // Check for Supabase user
       const supabase = createClient()
       const {
         data: { user },
@@ -53,8 +70,19 @@ export function Header({ title }: HeaderProps) {
   }, []);
 
   const handleLogout = async () => {
+    // Clear employee session if exists
+    const authType = localStorage.getItem("authType")
+    if (authType === "employee") {
+      localStorage.removeItem("employeeSession")
+      localStorage.removeItem("currentStoreId")
+      localStorage.removeItem("authType")
+    }
+
+    // Sign out from Supabase
     const supabase = createClient()
     await supabase.auth.signOut()
+
+    // Redirect to login
     router.push("/auth/login")
     router.refresh()
   }

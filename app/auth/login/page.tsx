@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+import { getDatabaseType } from "@/lib/utils/db-mode"
+import { db } from "@/lib/dexie-client"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -30,7 +32,59 @@ export default function LoginPage() {
         password,
       })
       if (error) throw error
-      router.push("/dashboard")
+      
+      // Get user role and check for store
+      const isExcel = getDatabaseType() === 'excel'
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single()
+        
+        const userRole = profile?.role || "admin"
+        
+        // For admin users, check if they have a store
+        if (userRole === "admin" || !profile) {
+          if (isExcel) {
+            // Excel mode - check Dexie for stores
+            const stores = await db.stores.toArray()
+            if (!stores || stores.length === 0) {
+              router.push("/settings/store")
+              router.refresh()
+              return
+            }
+            // Store exists, save first store to localStorage
+            const store = stores[0]
+            localStorage.setItem("currentStoreId", store.id)
+            router.push("/dashboard")
+          } else {
+            // Supabase mode - check Supabase for stores
+            const { data: stores } = await supabase
+              .from("stores")
+              .select("*")
+              .eq("admin_user_id", user.id)
+              .limit(1)
+            
+            // If no store exists, redirect to store setup
+            if (!stores || stores.length === 0) {
+              router.push("/settings/store")
+              router.refresh()
+              return
+            }
+            
+            // Store exists, save to localStorage and go to dashboard
+            const store = stores[0]
+            localStorage.setItem("currentStoreId", store.id)
+            router.push("/dashboard")
+          }
+        } else {
+          router.push("/dashboard")
+        }
+      } else {
+        router.push("/dashboard")
+      }
       router.refresh()
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred")
@@ -44,7 +98,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <Card>
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-bold">Welcome back</CardTitle>
+            <CardTitle className="text-2xl font-bold">Admin/Public Login</CardTitle>
             <CardDescription>Enter your credentials to access your billing dashboard</CardDescription>
           </CardHeader>
           <CardContent>
@@ -77,11 +131,22 @@ export default function LoginPage() {
                 {isLoading ? "Signing in..." : "Sign in"}
               </Button>
             </form>
-            <div className="mt-4 text-center text-sm text-muted-foreground">
-              Don't have an account?{" "}
-              <Link href="/auth/signup" className="font-medium text-primary underline-offset-4 hover:underline">
-                Sign up
-              </Link>
+            <div className="mt-4 space-y-2">
+              <div className="text-center text-sm text-muted-foreground">
+                Don't have an account?{" "}
+                <Link href="/auth/signup" className="font-medium text-primary underline-offset-4 hover:underline">
+                  Sign up
+                </Link>
+              </div>
+              <div className="flex items-center justify-center gap-4 pt-2">
+                <Link href="/auth/employee-login" className="text-xs text-muted-foreground hover:text-primary">
+                  Employee Login
+                </Link>
+                <span className="text-xs text-muted-foreground">•</span>
+                <Link href="/auth/customer-login" className="text-xs text-muted-foreground hover:text-primary">
+                  Customer Login
+                </Link>
+              </div>
             </div>
           </CardContent>
         </Card>

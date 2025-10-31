@@ -5,23 +5,39 @@ import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Building2, User, Palette, FileSpreadsheet } from "lucide-react"
+import { Building2, User, Palette, FileSpreadsheet, Store } from "lucide-react"
 import { ExcelConnector } from "@/components/settings/excel-connector"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
+import { useStore } from "@/lib/utils/store-context"
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState<any>(null)
   const [settings, setSettings] = useState<any>(null)
   const [user, setUser] = useState<any>(null)
+  const { currentStore } = useStore()
   const isExcel = getDatabaseType() === 'excel'
 
   useEffect(() => {
     (async () => {
       if (isExcel) {
-        // Excel mode - no profile/settings from Supabase
-        setProfile(null)
-        setSettings(null)
+        // Excel mode - load profile/settings from localStorage or default
+        // Try to get user profile data from Supabase if available
+        const supabase = createClient()
+        const { data: { user: u } } = await supabase.auth.getUser()
+        setUser(u)
+        if (u) {
+          try {
+            const { data: p } = await supabase.from("user_profiles").select("*").eq("id", u.id).single()
+            const { data: s } = await supabase.from("business_settings").select("*").eq("user_id", u.id).single()
+            setProfile(p)
+            setSettings(s)
+          } catch (e) {
+            // If no profile exists yet, set defaults
+            setProfile(null)
+            setSettings(null)
+          }
+        }
       } else {
         const supabase = createClient()
         const { data: { user: u } } = await supabase.auth.getUser()
@@ -137,14 +153,46 @@ export default function SettingsPage() {
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <Building2 className="h-5 w-5" />
+              <Store className="h-5 w-5" />
               <CardTitle>Store Settings</CardTitle>
             </div>
-            <CardDescription>Create or manage your store information</CardDescription>
+            <CardDescription>{currentStore ? "Manage your store information" : "Create your store to get started"}</CardDescription>
           </CardHeader>
           <CardContent>
+            {currentStore ? (
+              <div className="space-y-2 text-sm mb-4">
+                <div>
+                  <p className="font-medium">Store Name</p>
+                  <p className="text-muted-foreground">{currentStore.name || "Not set"}</p>
+                </div>
+                <div>
+                  <p className="font-medium">Store Code</p>
+                  <p className="text-muted-foreground font-mono">{currentStore.store_code || "Not set"}</p>
+                </div>
+                {currentStore.address && (
+                  <div>
+                    <p className="font-medium">Address</p>
+                    <p className="text-muted-foreground">{currentStore.address}</p>
+                  </div>
+                )}
+                {currentStore.gstin && (
+                  <div>
+                    <p className="font-medium">GSTIN</p>
+                    <p className="text-muted-foreground">{currentStore.gstin}</p>
+                  </div>
+                )}
+                {currentStore.phone && (
+                  <div>
+                    <p className="font-medium">Phone</p>
+                    <p className="text-muted-foreground">{currentStore.phone}</p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground mb-4">No store created yet. Create your first store to start managing your business.</p>
+            )}
             <Button asChild className="w-full bg-transparent" variant="outline">
-              <Link href="/settings/store">Manage Store</Link>
+              <Link href="/settings/store">{currentStore ? "Manage Store" : "Create Store"}</Link>
             </Button>
           </CardContent>
         </Card>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { InvoiceForm } from "@/components/features/invoices/invoice-form"
 import { db } from "@/lib/dexie-client"
@@ -14,7 +15,34 @@ export default function NewInvoicePage() {
   const [storeId, setStoreId] = useState<string | null>(null)
   const [employeeId, setEmployeeId] = useState<string>("ADMN")
   const { currentStore } = useStore()
+  const router = useRouter()
   const isExcel = getDatabaseType() === 'excel'
+  
+  // Check if user is employee - only employees can create invoices
+  useEffect(() => {
+    const checkAccess = async () => {
+      const authType = localStorage.getItem("authType")
+      if (authType !== "employee") {
+        // Check if admin user
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const { data: profile } = await supabase
+            .from("user_profiles")
+            .select("role")
+            .eq("id", user.id)
+            .single()
+          const role = profile?.role || "admin"
+          // Admin cannot create invoices - redirect to invoices list
+          if (role === "admin") {
+            router.push("/invoices")
+            return
+          }
+        }
+      }
+    }
+    checkAccess()
+  }, [router])
   
   useEffect(() => {
     if (currentStore) {

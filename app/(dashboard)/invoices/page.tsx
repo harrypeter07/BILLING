@@ -13,7 +13,33 @@ import { getDatabaseType } from "@/lib/utils/db-mode"
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [isEmployee, setIsEmployee] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const isExcel = getDatabaseType() === 'excel'
+
+  useEffect(() => {
+    const checkUserRole = async () => {
+      const authType = localStorage.getItem("authType")
+      if (authType === "employee") {
+        setIsEmployee(true)
+        setIsAdmin(false)
+      } else {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const { data: profile } = await supabase
+            .from("user_profiles")
+            .select("role")
+            .eq("id", user.id)
+            .single()
+          const role = profile?.role || "admin"
+          setIsAdmin(role === "admin")
+          setIsEmployee(false)
+        }
+      }
+    }
+    checkUserRole()
+  }, [])
 
   useEffect(() => {
     (async () => {
@@ -166,16 +192,28 @@ export default function InvoicesPage() {
           <p className="text-muted-foreground">Create and manage your invoices</p>
         </div>
         <div className="flex items-center gap-2">
-          <ExcelImport />
-          <Button type="button" variant="outline" onClick={handleAddMockInvoice} title="Add a mock invoice">
-            <Sparkles className="mr-2 h-4 w-4" /> Add Mock Invoice
-          </Button>
-          <Button asChild>
-          <Link href="/invoices/new">
-            <Plus className="mr-2 h-4 w-4" />
-            Create Invoice
-          </Link>
-          </Button>
+          {isAdmin && (
+            <>
+              <ExcelImport />
+              <Button type="button" variant="outline" onClick={handleAddMockInvoice} title="Add a mock invoice">
+                <Sparkles className="mr-2 h-4 w-4" /> Add Mock Invoice
+              </Button>
+            </>
+          )}
+          {isEmployee && (
+            <>
+              <ExcelImport />
+              <Button type="button" variant="outline" onClick={handleAddMockInvoice} title="Add a mock invoice">
+                <Sparkles className="mr-2 h-4 w-4" /> Add Mock Invoice
+              </Button>
+              <Button asChild>
+                <Link href="/invoices/new">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Invoice
+                </Link>
+              </Button>
+            </>
+          )}
         </div>
       </div>
       {isExcel && (!invoices || invoices.length === 0) && (

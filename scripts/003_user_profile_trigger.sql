@@ -11,14 +11,16 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  -- Create user profile
-  INSERT INTO public.user_profiles (id, full_name, business_name)
+  -- Create user profile with role from metadata or default to 'admin'
+  INSERT INTO public.user_profiles (id, full_name, business_name, role)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'full_name', NULL),
-    COALESCE(NEW.raw_user_meta_data->>'business_name', NULL)
+    COALESCE(NEW.raw_user_meta_data->>'business_name', NULL),
+    COALESCE(NEW.raw_user_meta_data->>'role', 'admin')
   )
-  ON CONFLICT (id) DO NOTHING;
+  ON CONFLICT (id) DO UPDATE SET
+    role = COALESCE(NEW.raw_user_meta_data->>'role', user_profiles.role);
 
   -- Create default business settings
   INSERT INTO public.business_settings (user_id)

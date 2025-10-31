@@ -1,8 +1,43 @@
+"use client"
+
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { Receipt, Users, Package, BarChart3, Wifi, Shield } from "lucide-react"
+import { useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
+import { useRouter } from "next/navigation"
 
 export default function LandingPage() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
+  const router = useRouter()
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      // Check for employee session
+      const authType = localStorage.getItem("authType")
+      if (authType === "employee") {
+        setIsAuthenticated(true)
+        setIsLoading(false)
+        return
+      }
+
+      // Check for Supabase user
+      const supabase = createClient()
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      setIsAuthenticated(!!user)
+      setIsLoading(false)
+    }
+
+    checkAuth()
+  }, [])
+
+  const handleGoToDashboard = () => {
+    router.push("/dashboard")
+  }
+
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
@@ -13,12 +48,22 @@ export default function LandingPage() {
             <span className="text-xl font-bold">Billing Solutions</span>
           </div>
           <div className="flex items-center gap-4">
-            <Button asChild variant="ghost">
-              <Link href="/auth/login">Sign in</Link>
-            </Button>
-            <Button asChild>
-              <Link href="/auth/signup">Get Started</Link>
-            </Button>
+            {!isLoading && (
+              <>
+                {isAuthenticated ? (
+                  <Button onClick={handleGoToDashboard}>Go to Dashboard</Button>
+                ) : (
+                  <>
+                    <Button asChild variant="ghost">
+                      <Link href="/auth/login">Admin/Public Login</Link>
+                    </Button>
+                    <Button asChild>
+                      <Link href="/auth/signup">Admin/Public Sign Up</Link>
+                    </Button>
+                  </>
+                )}
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -34,10 +79,18 @@ export default function LandingPage() {
         </p>
         <div className="flex flex-wrap items-center justify-center gap-4">
           <Button asChild size="lg">
-            <Link href="/auth/signup">Start Free Trial</Link>
+            <Link href="/auth/signup">Admin/Public Sign Up</Link>
           </Button>
           <Button asChild size="lg" variant="outline">
-            <Link href="/auth/login">Sign In</Link>
+            <Link href="/auth/login">Admin/Public Login</Link>
+          </Button>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-4">
+          <Button asChild size="lg" variant="secondary">
+            <Link href="/auth/employee-login">Employee Login</Link>
+          </Button>
+          <Button asChild size="lg" variant="secondary">
+            <Link href="/auth/customer-login">Customer Login</Link>
           </Button>
         </div>
       </section>
@@ -105,7 +158,7 @@ export default function LandingPage() {
             Join hundreds of small businesses using Billing Solutions
           </p>
           <Button asChild size="lg">
-            <Link href="/auth/signup">Get Started Free</Link>
+            <Link href="/auth/signup">Admin/Public Sign Up</Link>
           </Button>
         </div>
       </section>

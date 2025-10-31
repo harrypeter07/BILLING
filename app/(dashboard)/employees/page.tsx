@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Plus, FileSpreadsheet, Search, Edit2, Trash2, Sparkles } from "lucide-react"
+import { Plus, FileSpreadsheet, Search, Edit2, Trash2, Sparkles, Key } from "lucide-react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { storageManager } from "@/lib/storage-manager"
@@ -29,10 +30,38 @@ export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [isAdmin, setIsAdmin] = useState(false)
   const { toast } = useToast()
   const isExcel = getDatabaseType() === 'excel'
+  const router = useRouter()
 
-  useEffect(() => { fetchEmployees() }, [isExcel])
+  useEffect(() => {
+    const checkUserRole = async () => {
+      const authType = localStorage.getItem("authType")
+      if (authType === "employee") {
+        // Employees cannot access this page
+        router.push("/dashboard")
+        return
+      }
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("role")
+          .eq("id", user.id)
+          .single()
+        const role = profile?.role || "admin"
+        if (role !== "admin") {
+          router.push("/dashboard")
+          return
+        }
+        setIsAdmin(true)
+      }
+    }
+    checkUserRole()
+    fetchEmployees()
+  }, [isExcel, router])
 
   const fetchEmployees = async () => {
     try {
@@ -43,7 +72,10 @@ export default function EmployeesPage() {
         return
       }
       const supabase = createClient()
-      const { data, error } = await supabase.from("employees").select("*").order("created_at", { ascending: false })
+      const { data, error } = await supabase
+        .from("employees")
+        .select("*, stores(name, store_code)")
+        .order("created_at", { ascending: false })
 
       if (error) throw error
       setEmployees(data || [])
@@ -215,6 +247,8 @@ export default function EmployeesPage() {
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Phone</TableHead>
+                    <TableHead>Password</TableHead>
+                    <TableHead>Store</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Salary</TableHead>
                     <TableHead>Joining Date</TableHead>
@@ -229,6 +263,13 @@ export default function EmployeesPage() {
                       <TableCell className="font-medium">{emp.name}</TableCell>
                       <TableCell>{emp.email}</TableCell>
                       <TableCell>{emp.phone}</TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {emp.password ? (
+                          <span title={emp.password}>{emp.password}</span>
+                        ) : (
+                          <span className="text-muted-foreground">{emp.employee_id || "N/A"}</span>
+                        )}
+                      </TableCell>
                       <TableCell>{emp.role}</TableCell>
                       <TableCell>₹{emp.salary.toLocaleString()}</TableCell>
                       <TableCell>{new Date(emp.joining_date).toLocaleDateString()}</TableCell>
@@ -244,9 +285,37 @@ export default function EmployeesPage() {
                               <Edit2 className="h-4 w-4" />
                             </Link>
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(emp.id)}>
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                          {isAdmin && (
+                            <Button 
+                              variant="ghost" 
+                              size="icon" 
+                              onClick={async () => {
+                                if (!confirm(`Reset password for ${emp.name} to ${emp.employee_id || emp.id.slice(0, 4).toUpperCase()}?`)) return
+                                try {
+                                  const newPassword = emp.employee_id || emp.id.slice(0, 4).toUpperCase()
+                                  if (isExcel) {
+                                    await db.employees.update(emp.id, { password: newPassword })
+                                    toast({ title: "Success", description: `Password reset to ${newPassword}` })
+                                  } else {
+                                    const supabase = createClient()
+                                    await supabase.from("employees").update({ password: newPassword }).eq("id", emp.id)
+                                    toast({ title: "Success", description: `Password reset to ${newPassword}` })
+                                  }
+                                  fetchEmployees()
+                                } catch (error: any) {
+                                  toast({ title: "Error", description: error.message || "Failed to reset password", variant: "destructive" })
+                                }
+                              }}
+                              title="Reset Password"
+                            >
+                              <Key className="h-4 w-4" />
+                            </Button>
+                          )}
+                          {isAdmin && (
+                            <Button variant="ghost" size="icon" onClick={() => handleDelete(emp.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
@@ -17,6 +18,7 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [businessName, setBusinessName] = useState("")
   const [fullName, setFullName] = useState("")
+  const [role, setRole] = useState<"admin" | "public">("admin")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
@@ -40,7 +42,7 @@ export default function SignupPage() {
     }
 
     try {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
@@ -48,10 +50,19 @@ export default function SignupPage() {
           data: {
             full_name: fullName,
             business_name: businessName,
+            role: role,
           },
         },
       })
+      
       if (error) throw error
+      
+      // Update user profile role if user was created (role should be set by trigger from metadata)
+      // But we can also update it explicitly here as a fallback
+      if (data.user) {
+        await supabase.from("user_profiles").update({ role: role }).eq("id", data.user.id)
+      }
+      
       router.push("/auth/signup-success")
     } catch (error: unknown) {
       setError(error instanceof Error ? error.message : "An error occurred")
@@ -66,7 +77,7 @@ export default function SignupPage() {
         <Card>
           <CardHeader className="space-y-1">
             <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
-            <CardDescription>Enter your details to get started with Billing Solutions</CardDescription>
+            <CardDescription>Sign up as Admin or Public user (Employees and Customers login with provided credentials)</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSignup} className="space-y-4">
@@ -81,6 +92,18 @@ export default function SignupPage() {
                   onChange={(e) => setFullName(e.target.value)}
                   disabled={isLoading}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="role">Account Type</Label>
+                <Select value={role} onValueChange={(value: "admin" | "public") => setRole(value)} disabled={isLoading}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select account type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin - Full access to manage business</SelectItem>
+                    <SelectItem value="public">Public - Limited access</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="businessName">Business Name</Label>

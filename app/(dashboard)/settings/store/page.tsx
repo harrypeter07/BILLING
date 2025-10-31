@@ -72,7 +72,12 @@ export default function StorePage() {
           }
           await db.stores.put(store)
           setCurrentStore(store)
+          localStorage.setItem("currentStoreId", store.id)
           toast({ title: "Success", description: "Store created successfully" })
+          // Redirect to settings page after store creation
+          setTimeout(() => {
+            router.push("/settings")
+          }, 1000)
         }
       } else {
         // Supabase mode
@@ -101,7 +106,12 @@ export default function StorePage() {
           if (error) throw error
           if (data) {
             setCurrentStore(data as any)
+            localStorage.setItem("currentStoreId", data.id)
             toast({ title: "Success", description: "Store created successfully" })
+            // Redirect to settings page after store creation
+            setTimeout(() => {
+              router.push("/settings")
+            }, 1000)
           }
         }
       }

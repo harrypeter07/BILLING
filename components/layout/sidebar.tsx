@@ -15,19 +15,30 @@ import {
   X,
   Wifi,
   WifiOff,
+  UserCog,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 
-const navigation = [
+// Navigation items for different user roles
+const adminNavigation = [
+  { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Products", href: "/products", icon: Package },
+  { name: "Customers", href: "/customers", icon: Users },
+  { name: "Employees", href: "/employees", icon: UserCog },
+  { name: "Invoices", href: "/invoices", icon: Receipt },
+  { name: "Reports", href: "/reports", icon: BarChart3 },
+  { name: "Settings", href: "/settings", icon: Settings },
+]
+
+const employeeNavigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Products", href: "/products", icon: Package },
   { name: "Customers", href: "/customers", icon: Users },
   { name: "Invoices", href: "/invoices", icon: Receipt },
   { name: "Reports", href: "/reports", icon: BarChart3 },
-  { name: "Settings", href: "/settings", icon: Settings },
 ]
 
 export function Sidebar() {
@@ -35,6 +46,8 @@ export function Sidebar() {
   const router = useRouter()
   const [isOpen, setIsOpen] = useState(false)
   const [isOnline, setIsOnline] = useState(true)
+  const [isEmployee, setIsEmployee] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   useEffect(() => {
     setIsOnline(navigator.onLine)
@@ -51,9 +64,47 @@ export function Sidebar() {
     }
   }, [])
 
+  useEffect(() => {
+    const checkUserRole = async () => {
+      const authType = localStorage.getItem("authType")
+      if (authType === "employee") {
+        setIsEmployee(true)
+        setIsAdmin(false)
+      } else {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const { data: profile } = await supabase
+            .from("user_profiles")
+            .select("role")
+            .eq("id", user.id)
+            .single()
+          const role = profile?.role || "admin"
+          setIsAdmin(role === "admin")
+          setIsEmployee(false)
+        }
+      }
+    }
+    checkUserRole()
+  }, [])
+
+  // Determine which navigation to show
+  const navigation = isEmployee ? employeeNavigation : adminNavigation
+
   const handleLogout = async () => {
+    // Clear employee session if exists
+    const authType = localStorage.getItem("authType")
+    if (authType === "employee") {
+      localStorage.removeItem("employeeSession")
+      localStorage.removeItem("currentStoreId")
+      localStorage.removeItem("authType")
+    }
+
+    // Sign out from Supabase
     const supabase = createClient()
     await supabase.auth.signOut()
+
+    // Redirect to login
     router.push("/auth/login")
     router.refresh()
   }
