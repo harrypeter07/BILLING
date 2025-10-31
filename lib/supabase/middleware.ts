@@ -44,8 +44,22 @@ export async function updateSession(request: NextRequest) {
   // Protected routes - redirect to login if not authenticated
   const protectedPaths = ["/dashboard", "/products", "/invoices", "/customers", "/reports", "/settings"]
   const isProtectedRoute = protectedPaths.some((path) => request.nextUrl.pathname.startsWith(path))
+  
+  // Customer routes
+  const isCustomerRoute = request.nextUrl.pathname.startsWith("/customer")
+  // Employee routes (same as admin routes for now)
+  const isEmployeeRoute = request.nextUrl.pathname.startsWith("/dashboard") || request.nextUrl.pathname.startsWith("/products") || request.nextUrl.pathname.startsWith("/invoices") || request.nextUrl.pathname.startsWith("/customers")
+
+  // Check customer session for customer routes
+  if (isCustomerRoute) {
+    // Customer routes are handled client-side, middleware just allows through
+    // Actual auth check happens in the page component
+    return supabaseResponse
+  }
 
   if (isProtectedRoute && !user) {
+    // Check for employee session in cookies/localStorage (handled client-side)
+    // For now, redirect to login
     const url = request.nextUrl.clone()
     url.pathname = "/auth/login"
     return NextResponse.redirect(url)

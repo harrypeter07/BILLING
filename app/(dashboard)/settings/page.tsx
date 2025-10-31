@@ -1,19 +1,42 @@
-import { createClient } from "@/lib/supabase/server"
+"use client"
+
+import { useEffect, useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { Building2, User, Palette, FileSpreadsheet } from "lucide-react"
 import { ExcelConnector } from "@/components/settings/excel-connector"
+import { db } from "@/lib/dexie-client"
+import { getDatabaseType } from "@/lib/utils/db-mode"
 
-export default async function SettingsPage() {
-  const supabase = await createClient()
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+export default function SettingsPage() {
+  const [profile, setProfile] = useState<any>(null)
+  const [settings, setSettings] = useState<any>(null)
+  const [user, setUser] = useState<any>(null)
+  const isExcel = getDatabaseType() === 'excel'
 
-  const { data: profile } = await supabase.from("user_profiles").select("*").eq("id", user!.id).single()
-
-  const { data: settings } = await supabase.from("business_settings").select("*").eq("user_id", user!.id).single()
+  useEffect(() => {
+    (async () => {
+      if (isExcel) {
+        // Excel mode - no profile/settings from Supabase
+        setProfile(null)
+        setSettings(null)
+      } else {
+        const supabase = createClient()
+        const { data: { user: u } } = await supabase.auth.getUser()
+        setUser(u)
+        if (u) {
+          const [{ data: p }, { data: s }] = await Promise.all([
+            supabase.from("user_profiles").select("*").eq("id", u.id).single(),
+            supabase.from("business_settings").select("*").eq("user_id", u.id).single(),
+          ])
+          setProfile(p)
+          setSettings(s)
+        }
+      }
+    })()
+  }, [isExcel])
 
   return (
     <div className="space-y-6">
@@ -68,7 +91,7 @@ export default async function SettingsPage() {
               </div>
               <div>
                 <p className="font-medium">Email</p>
-                <p className="text-muted-foreground">{user?.email}</p>
+                <p className="text-muted-foreground">{user?.email || "Not available"}</p>
               </div>
             </div>
             <Button asChild className="mt-4 w-full bg-transparent" variant="outline">
@@ -108,6 +131,21 @@ export default async function SettingsPage() {
           </CardHeader>
           <CardContent>
             <ExcelConnector />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Building2 className="h-5 w-5" />
+              <CardTitle>Store Settings</CardTitle>
+            </div>
+            <CardDescription>Create or manage your store information</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild className="w-full bg-transparent" variant="outline">
+              <Link href="/settings/store">Manage Store</Link>
+            </Button>
           </CardContent>
         </Card>
       </div>

@@ -77,7 +77,7 @@ class StorageManager {
     // Generate invoice number if not provided and we have store/employee context
     let invoiceNumber = invoice.invoice_number
     if (!invoiceNumber && invoice.store_id && invoice.employee_id) {
-      const { generateInvoiceNumber } = await import("./utils/invoice-number")
+      const { generateInvoiceNumber } = await import("@/lib/utils/invoice-number")
       invoiceNumber = await generateInvoiceNumber(invoice.store_id, invoice.employee_id)
     }
     await db.invoices.put({ ...invoice, id: invoiceId, invoice_number: invoiceNumber || invoice.invoice_number })
