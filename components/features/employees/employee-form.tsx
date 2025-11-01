@@ -199,6 +199,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
                 salary: String(Math.floor(Math.random()*50000)+20000),
                 joining_date: new Date().toISOString().split('T')[0],
                 is_active: true,
+                password: "",
               })
             }}>Fill Mock</Button>
           </div>
