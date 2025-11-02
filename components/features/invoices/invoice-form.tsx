@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast"
 import { calculateLineItem, roundToTwo } from "@/lib/utils/gst-calculator"
 import { Switch } from "@/components/ui/switch"
 import { storageManager } from "@/lib/storage-manager"
-import { QuickCustomerForm } from "@/components/features/customers/quick-customer-form"
+import { InlineCustomerForm } from "@/components/features/customers/inline-customer-form"
 
 interface Customer {
   id: string
@@ -69,8 +69,12 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [invoiceNumber, setInvoiceNumber] = useState("")
-  const [showCustomerForm, setShowCustomerForm] = useState(false)
   const [localCustomers, setLocalCustomers] = useState<Customer[]>(customers)
+  
+  // Update local customers when prop changes
+  useEffect(() => {
+    setLocalCustomers(customers)
+  }, [customers])
   
   useEffect(() => {
     // Generate invoice number on mount if we have store/employee
@@ -272,6 +276,20 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
   return (
     <>
     <form onSubmit={handleSubmit} className="space-y-6">
+      {/* Quick Customer Form - Always Visible */}
+      <InlineCustomerForm
+        onCustomerCreated={(newCustomer) => {
+          // Add new customer to local list
+          setLocalCustomers([...localCustomers, newCustomer])
+          // Select the newly created customer
+          setCustomerId(newCustomer.id)
+          // Notify parent if callback provided
+          if (onCustomersUpdate) {
+            onCustomersUpdate([...localCustomers, newCustomer])
+          }
+        }}
+      />
+
       {/* Invoice Details */}
       <Card>
         <CardHeader>
@@ -306,19 +324,7 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="customer">Customer</Label>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setShowCustomerForm(true)}
-                  className="h-7 text-xs"
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Add New
-                </Button>
-              </div>
+              <Label htmlFor="customer">Customer</Label>
               <Select value={customerId} onValueChange={setCustomerId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select customer" />
@@ -550,21 +556,6 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
         </Button>
       </div>
     </form>
-
-    <QuickCustomerForm
-      open={showCustomerForm}
-      onOpenChange={setShowCustomerForm}
-      onCustomerCreated={(newCustomer) => {
-        // Add new customer to local list
-        setLocalCustomers([...localCustomers, newCustomer])
-        // Select the newly created customer
-        setCustomerId(newCustomer.id)
-        // Notify parent if callback provided
-        if (onCustomersUpdate) {
-          onCustomersUpdate([...localCustomers, newCustomer])
-        }
-      }}
-    />
     </>
   )
 }

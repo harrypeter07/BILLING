@@ -4,20 +4,18 @@ import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { storageManager } from "@/lib/storage-manager"
 import { getDatabaseType } from "@/lib/utils/db-mode"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
-interface QuickCustomerFormProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
+interface InlineCustomerFormProps {
   onCustomerCreated: (customer: { id: string; name: string }) => void
 }
 
-export function QuickCustomerForm({ open, onOpenChange, onCustomerCreated }: QuickCustomerFormProps) {
+export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProps) {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
@@ -65,10 +63,45 @@ export function QuickCustomerForm({ open, onOpenChange, onCustomerCreated }: Qui
       } else {
         // Supabase mode - use API
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        const authType = localStorage.getItem("authType")
         
-        if (!user) {
-          throw new Error("Not authenticated")
+        let userId: string | null = null
+        
+        // For employees, get admin_user_id from store
+        if (authType === "employee") {
+          const empSession = localStorage.getItem("employeeSession")
+          if (empSession) {
+            try {
+              const session = JSON.parse(empSession)
+              const storeId = session.storeId
+              
+              if (storeId) {
+                // Get store to find admin_user_id
+                const { data: store } = await supabase
+                  .from('stores')
+                  .select('admin_user_id')
+                  .eq('id', storeId)
+                  .single()
+                
+                if (store?.admin_user_id) {
+                  userId = store.admin_user_id
+                } else {
+                  throw new Error("Store not found or invalid")
+                }
+              }
+            } catch (e: any) {
+              throw new Error("Failed to get employee store: " + (e.message || "Unknown error"))
+            }
+          } else {
+            throw new Error("Employee session not found")
+          }
+        } else {
+          // For admin users
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) {
+            throw new Error("Not authenticated")
+          }
+          userId = user.id
         }
 
         const response = await fetch('/api/customers', {
@@ -79,6 +112,7 @@ export function QuickCustomerForm({ open, onOpenChange, onCustomerCreated }: Qui
             email: customerData.email,
             phone: customerData.phone,
             gstin: customerData.gstin,
+            user_id: userId,
           }),
         })
 
@@ -101,7 +135,6 @@ export function QuickCustomerForm({ open, onOpenChange, onCustomerCreated }: Qui
       setEmail("")
       setPhone("")
       setGstin("")
-      onOpenChange(false)
     } catch (error: any) {
       toast({
         title: "Error",
@@ -114,70 +147,77 @@ export function QuickCustomerForm({ open, onOpenChange, onCustomerCreated }: Qui
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
-          <DialogTitle>Add New Customer</DialogTitle>
-          <DialogDescription>
-            Quickly add a customer while creating an invoice. Required fields only.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit}>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="name">
+    <Card className="border-dashed">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Add New Customer</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="quick-name" className="text-xs">
                 Name <span className="text-destructive">*</span>
               </Label>
               <Input
-                id="name"
+                id="quick-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Customer name"
-                required
-                autoFocus
+                className="h-9 text-sm"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && name.trim()) {
+                    e.preventDefault()
+                    handleSubmit(e as any)
+                  }
+                }}
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="email">Email</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="quick-email" className="text-xs">Email</Label>
               <Input
-                id="email"
+                id="quick-email"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="customer@example.com"
+                className="h-9 text-sm"
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="phone">Phone</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="quick-phone" className="text-xs">Phone</Label>
               <Input
-                id="phone"
+                id="quick-phone"
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+91 9876543210"
+                className="h-9 text-sm"
               />
             </div>
-            <div className="grid gap-2">
-              <Label htmlFor="gstin">GSTIN</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="quick-gstin" className="text-xs">GSTIN</Label>
               <Input
-                id="gstin"
+                id="quick-gstin"
                 value={gstin}
                 onChange={(e) => setGstin(e.target.value)}
                 placeholder="29XXXXXXXXXX"
+                className="h-9 text-sm"
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={isLoading}>
-              Cancel
-            </Button>
-            <Button type="submit" disabled={isLoading}>
+          <div className="flex justify-end">
+            <Button 
+              type="button" 
+              size="sm" 
+              disabled={isLoading || !name.trim()}
+              onClick={handleSubmit}
+            >
               {isLoading ? "Adding..." : "Add Customer"}
             </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 

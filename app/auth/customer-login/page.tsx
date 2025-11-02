@@ -73,7 +73,7 @@ export default function CustomerLoginPage() {
       // Generate magic link
       const magicLink = `${window.location.origin}/auth/customer-verify/${token}`
       
-      // Send email via API route
+      // Try to send email via API route (optional - won't fail if email service unavailable)
       try {
         const emailResponse = await fetch('/api/email/send-magic-link', {
           method: 'POST',
@@ -87,15 +87,16 @@ export default function CustomerLoginPage() {
         
         const emailData = await emailResponse.json()
         
-        if (emailData.success) {
+        // API always returns success (even if email not sent)
+        if (emailData.success && emailData.message?.includes('sent successfully')) {
           setMessage("Magic link has been sent to your email! Please check your inbox.")
         } else {
-          // Fallback: show link if email fails
-          setMessage(`Magic link generated! ${emailData.magicLink ? `Click here to login: ${emailData.magicLink}` : `Link: ${magicLink}`}`)
+          // Email not configured or failed - show link directly
+          const linkToShow = emailData.magicLink || magicLink
+          setMessage(`Magic link generated! Click here to login: ${linkToShow}`)
         }
       } catch (emailError) {
-        // Fallback: show link if email service is not available
-        console.error("Failed to send email:", emailError)
+        // API call failed (network error, etc.) - show link anyway
         setMessage(`Magic link generated! Click here to login: ${magicLink}`)
       }
       

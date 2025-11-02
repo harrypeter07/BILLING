@@ -83,6 +83,48 @@ export default function NewInvoicePage() {
         }
       } else {
         const supabase = createClient()
+        const authType = localStorage.getItem("authType")
+        
+        // For employees, get admin_user_id from store
+        if (authType === "employee") {
+          const empSession = localStorage.getItem("employeeSession")
+          if (empSession) {
+            try {
+              const session = JSON.parse(empSession)
+              const storeId = session.storeId
+              
+              if (storeId) {
+                // Get store to find admin_user_id
+                const { data: store } = await supabase
+                  .from('stores')
+                  .select('admin_user_id')
+                  .eq('id', storeId)
+                  .single()
+                
+                if (store?.admin_user_id) {
+                  const [{ data: dbCustomers }, { data: dbProducts }, { data: dbSettings }] = await Promise.all([
+                    supabase.from('customers').select('id, name').eq('user_id', store.admin_user_id),
+                    supabase.from('products').select('id, name, price, gst_rate, hsn_code, unit').eq('user_id', store.admin_user_id).eq('is_active', true),
+                    supabase.from('business_settings').select('*').eq('user_id', store.admin_user_id).single(),
+                  ])
+                  setCustomers(dbCustomers || [])
+                  setProducts(dbProducts || [])
+                  setSettings(dbSettings || null)
+                  return
+                }
+              }
+            } catch (e) {
+              console.error('[NewInvoice] Employee session error:', e)
+            }
+          }
+          // If employee but no valid session, set empty
+          setCustomers([])
+          setProducts([])
+          setSettings(null)
+          return
+        }
+        
+        // For admin users (Supabase auth)
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) { setCustomers([]); setProducts([]); setSettings(null); return }
         const [{ data: dbCustomers }, { data: dbProducts }, { data: dbSettings }] = await Promise.all([

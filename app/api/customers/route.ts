@@ -20,34 +20,51 @@ export async function GET(request: NextRequest) {
     console.error("[API][customers][GET] DB error:", error)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-  console.log(`[API][customers][GET] Returned ${customers?.length || 0} customers for user ${user.id}`)
   return NextResponse.json({ customers })
 }
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
-  const {
-    data: { user },
-    error: authError,
-  } = await supabase.auth.getUser()
-  if (authError || !user) {
-    console.error("[API][customers][POST] Unauthorized access")
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
   const body = await request.json()
+  
+  // Get user_id - can come from body (for employees) or from auth (for admins)
+  let userId: string | null = null
+  
+  // Check if user_id is provided in body (for employee access)
+  if (body.user_id) {
+    userId = body.user_id
+  } else {
+    // For admin users, get from Supabase auth
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser()
+    if (authError || !user) {
+      console.error("[API][customers][POST] Unauthorized access")
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+    userId = user.id
+  }
+  
+  if (!userId) {
+    return NextResponse.json({ error: "User ID is required" }, { status: 400 })
+  }
+  
+  // Remove user_id from body if present (we'll use our resolved userId)
+  const { user_id: _, ...customerData } = body
+  
   const { data: customer, error } = await supabase
     .from("customers")
     .insert({
-      ...body,
-      user_id: user.id,
+      ...customerData,
+      user_id: userId,
     })
     .select()
     .single()
   if (error) {
-    console.error("[API][customers][POST] DB error:", error, "Input:", body, "User:", user.id)
+    console.error("[API][customers][POST] DB error:", error, "Input:", customerData, "User:", userId)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
-  console.log(`[API][customers][POST] Created customer with id ${customer?.id} for user ${user.id}`)
   return NextResponse.json({ customer }, { status: 201 })
 }
 
