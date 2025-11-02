@@ -86,7 +86,7 @@ export function InvoiceActions({ invoiceId, invoiceNumber, invoiceData }: Invoic
         }))
       }
 
-      generateInvoicePDF({
+      await generateInvoicePDF({
         invoiceNumber: invoice.invoice_number || invoiceNumber,
         invoiceDate: invoice.invoice_date || invoice.invoiceDate || new Date().toISOString(),
         dueDate: invoice.due_date || invoice.dueDate,

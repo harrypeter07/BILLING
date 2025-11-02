@@ -1,6 +1,3 @@
-import jsPDF from "jspdf"
-import "jspdf-autotable"
-
 export interface InvoiceData {
   invoiceNumber: string
   invoiceDate: string
@@ -32,7 +29,15 @@ export interface InvoiceData {
   isGstInvoice: boolean
 }
 
-export function generateInvoicePDF(data: InvoiceData): void {
+export async function generateInvoicePDF(data: InvoiceData): Promise<void> {
+  // Dynamically import for client-side Next.js compatibility
+  const [{ default: jsPDF }] = await Promise.all([
+    import("jspdf"),
+  ])
+  
+  // Import autotable plugin (side effect import)
+  await import("jspdf-autotable")
+  
   const doc = new jsPDF()
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
@@ -169,7 +174,7 @@ export function generateInvoicePDF(data: InvoiceData): void {
   }
 
   doc.setFontSize(12)
-  doc.setFont(undefined, "bold")
+  doc.setFont("helvetica", "bold")
   doc.text("Total:", totalX, yPosition)
   doc.text(`₹${data.totalAmount.toFixed(2)}`, pageWidth - 10, yPosition, { align: "right" })
 
@@ -178,18 +183,18 @@ export function generateInvoicePDF(data: InvoiceData): void {
   // Notes and Terms
   if (data.notes || data.terms) {
     doc.setFontSize(9)
-    doc.setFont(undefined, "normal")
+    doc.setFont("helvetica", "normal")
     if (data.notes) {
       doc.text("Notes:", 10, yPosition)
       yPosition += 4
-      const notesLines = doc.splitTextToSize(data.notes, pageWidth - 20)
+      const notesLines = doc.splitTextToSize(data.notes || "", pageWidth - 20)
       doc.text(notesLines, 10, yPosition)
       yPosition += notesLines.length * 4 + 5
     }
     if (data.terms) {
       doc.text("Terms & Conditions:", 10, yPosition)
       yPosition += 4
-      const termsLines = doc.splitTextToSize(data.terms, pageWidth - 20)
+      const termsLines = doc.splitTextToSize(data.terms || "", pageWidth - 20)
       doc.text(termsLines, 10, yPosition)
     }
   }
