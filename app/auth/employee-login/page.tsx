@@ -32,15 +32,56 @@ export default function EmployeeLoginPage() {
       
       // Try Supabase first (even in Excel mode, employees should be in Supabase)
       try {
-        // Find store by name in Supabase
+        console.log("[EmployeeLogin] Searching for store:", { 
+          storeName, 
+          storeNameLength: storeName.length,
+          storeNameTrimmed: storeName.trim(),
+        })
+        
+        // Find store by name OR store_code (case-insensitive, trimmed)
+        const trimmedStoreName = storeName.trim()
+        const upperStoreName = trimmedStoreName.toUpperCase()
+        
+        // Try to find by name (case-insensitive using ilike) OR by store_code (exact match after trimming)
         const { data: stores, error: storeError } = await supabase
           .from("stores")
           .select("*")
-          .eq("name", storeName)
-          .limit(1)
+          .or(`name.ilike.%${trimmedStoreName}%,store_code.eq.${upperStoreName}`)
+          .limit(5) // Get multiple in case of matches to find the best one
         
-        if (!storeError && stores && stores.length > 0) {
-          const store = stores[0]
+        if (storeError) {
+          console.error("[EmployeeLogin] Error searching for store:", storeError)
+          throw new Error(`Store lookup failed: ${storeError.message}`)
+        }
+        
+        console.log("[EmployeeLogin] Store search results:", {
+          found: stores?.length || 0,
+          stores: stores?.map(s => ({ id: s.id, name: s.name, code: s.store_code }))
+        })
+        
+        // Find exact match by name (case-insensitive) or store_code
+        let store = stores?.find(s => 
+          s.name.toLowerCase().trim() === trimmedStoreName.toLowerCase() || 
+          s.store_code.toUpperCase().trim() === upperStoreName
+        )
+        
+        // If no exact match, try partial name match
+        if (!store && stores && stores.length > 0) {
+          store = stores[0] // Take first result as fallback
+          console.log("[EmployeeLogin] Using first store result:", {
+            id: store.id,
+            name: store.name,
+            code: store.store_code
+          })
+        }
+        
+        if (store) {
+          console.log("[EmployeeLogin] Store found:", {
+            id: store.id,
+            name: store.name,
+            storeCode: store.store_code,
+            adminUserId: store.admin_user_id
+          })
 
           // Verify store belongs to an admin
           if (!store.admin_user_id) {
@@ -103,12 +144,43 @@ export default function EmployeeLoginPage() {
 
       // Fallback to Excel mode if Supabase didn't work
       if (isExcel) {
-        // Find store by name - ensure it belongs to an admin
-        const stores = await db.stores.where("name").equals(storeName).toArray()
+        console.log("[EmployeeLogin] Excel mode: Searching for store:", { storeName })
+        
+        // Find store by name (case-insensitive) OR store_code
+        const trimmedStoreName = storeName.trim()
+        const upperStoreName = trimmedStoreName.toUpperCase()
+        
+        // Get all stores and filter
+        const allStores = await db.stores.toArray()
+        const stores = allStores.filter(s => 
+          s.name?.toLowerCase().trim() === trimmedStoreName.toLowerCase() ||
+          s.store_code?.toUpperCase().trim() === upperStoreName
+        )
+        
+        console.log("[EmployeeLogin] Excel mode: Store search results:", {
+          totalStores: allStores.length,
+          matchedStores: stores.length,
+          stores: stores.map(s => ({ id: s.id, name: s.name, code: s.store_code }))
+        })
+        
         if (stores.length === 0) {
-          throw new Error("Store not found")
+          const availableStores = allStores.map(s => ({
+            name: s.name,
+            code: s.store_code
+          }))
+          console.error("[EmployeeLogin] Store not found. Available stores:", availableStores)
+          throw new Error(
+            `Store not found. Please enter the exact Store Name or Store Code.\n` +
+            `Available stores: ${availableStores.map(s => `${s.name} (${s.code})`).join(', ')}`
+          )
         }
         const store = stores[0]
+        
+        console.log("[EmployeeLogin] Excel mode: Store found:", {
+          id: store.id,
+          name: store.name,
+          storeCode: store.store_code
+        })
 
         // Verify store belongs to an admin (has admin_user_id or created by admin)
         if (!store.admin_user_id) {
@@ -173,15 +245,18 @@ export default function EmployeeLoginPage() {
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="store_name">Store Name</Label>
+              <Label htmlFor="store_name">Store Name or Store Code</Label>
               <Input
                 id="store_name"
                 required
                 value={storeName}
                 onChange={(e) => setStoreName(e.target.value)}
-                placeholder="My Store"
+                placeholder="Enter store name (e.g., 'My Store') or code (e.g., 'MYS1')"
                 autoComplete="off"
               />
+              <p className="text-xs text-muted-foreground">
+                You can enter either the full store name or the 4-character store code
+              </p>
             </div>
 
             <div className="space-y-2">
