@@ -31,14 +31,38 @@ export interface InvoiceData {
 
 export async function generateInvoicePDF(data: InvoiceData): Promise<void> {
   // Dynamically import for client-side Next.js compatibility
-  const [{ default: jsPDF }] = await Promise.all([
+  const [{ default: jsPDF }, autoTableModule] = await Promise.all([
     import("jspdf"),
+    import("jspdf-autotable"),
   ])
   
-  // Import autotable plugin (side effect import)
-  await import("jspdf-autotable")
+  // Log what we got from autotable module
+  console.log("[PDF Generator] Autotable module keys:", Object.keys(autoTableModule))
   
   const doc = new jsPDF()
+  
+  // For jspdf-autotable v5.x, the default export is a function: autoTable(doc, options)
+  // We need to create a wrapper method on the doc instance
+  const autoTableFn = autoTableModule.default || autoTableModule.applyPlugin || (autoTableModule as any)
+  
+  if (typeof autoTableFn === 'function') {
+    // Create autoTable method that calls the function with doc instance
+    (doc as any).autoTable = function(this: any, options: any) {
+      // Call autoTable function with doc instance (this) and options
+      return autoTableFn(this, options)
+    }
+  } else if (autoTableModule.applyPlugin && typeof autoTableModule.applyPlugin === 'function') {
+    // Try applyPlugin method (for older versions)
+    autoTableModule.applyPlugin(jsPDF)
+    
+    // Verify it worked
+    if (typeof (doc as any).autoTable !== 'function') {
+      throw new Error("applyPlugin failed to add autoTable method")
+    }
+  } else {
+    console.error("[PDF Generator] Could not find autoTable function in module:", Object.keys(autoTableModule))
+    throw new Error("autoTable plugin failed to load. Module structure: " + JSON.stringify(Object.keys(autoTableModule)))
+  }
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
   let yPosition = 10
