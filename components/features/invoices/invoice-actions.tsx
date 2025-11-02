@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { MoreVertical, Download, Edit2, Trash2 } from "lucide-react"
+import { MoreVertical, Download, Edit2, Trash2, Printer } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
@@ -106,6 +106,13 @@ export function InvoiceActions({ invoiceId, invoiceNumber }: InvoiceActionsProps
         <DropdownMenuItem onClick={handleDownloadPDF}>
           <Download className="mr-2 h-4 w-4" />
           Download PDF
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={async () => {
+          await handleDownloadPDF()
+          setTimeout(() => window.print(), 500)
+        }}>
+          <Printer className="mr-2 h-4 w-4" />
+          Print Invoice
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => router.push(`/invoices/${invoiceId}/edit`)}>
           <Edit2 className="mr-2 h-4 w-4" />

@@ -5,8 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import Link from "next/link"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Printer } from "lucide-react"
 import { InvoiceActions } from "@/components/features/invoices/invoice-actions"
+import { InvoicePrint } from "@/components/features/invoices/invoice-print"
 
 export default async function InvoiceDetailPage({ params }: { params: { id: string } }) {
   const supabase = await createClient()
@@ -47,28 +48,29 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
   }
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-4 md:space-y-6 p-4 md:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-2 md:gap-4">
           <Link href="/invoices">
             <Button variant="ghost" size="icon">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold">Invoice {invoice.invoice_number}</h1>
-            <p className="text-muted-foreground">Created on {new Date(invoice.created_at).toLocaleDateString()}</p>
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">Invoice {invoice.invoice_number}</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">Created on {new Date(invoice.created_at).toLocaleDateString()}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
           <Badge className={statusColors[invoice.status]}>{invoice.status.toUpperCase()}</Badge>
+          <InvoicePrint invoiceId={params.id} invoiceNumber={invoice.invoice_number} />
           <InvoiceActions invoiceId={params.id} invoiceNumber={invoice.invoice_number} />
         </div>
       </div>
 
       {/* Invoice Details */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-4 md:gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Invoice Information</CardTitle>
@@ -127,11 +129,12 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
       {/* Line Items */}
       <Card>
         <CardHeader>
-          <CardTitle>Line Items</CardTitle>
+          <CardTitle className="text-lg md:text-xl">Line Items</CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
+        <CardContent className="p-4 md:p-6">
+          <div className="overflow-x-auto -mx-4 md:mx-0">
+            <div className="inline-block min-w-full align-middle">
+              <Table className="min-w-full">
               <TableHeader>
                 <TableRow>
                   <TableHead>Description</TableHead>
@@ -156,15 +159,16 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
+              </Table>
+            </div>
           </div>
         </CardContent>
       </Card>
 
       {/* Totals */}
       <Card>
-        <CardContent className="p-6">
-          <div className="ml-auto max-w-sm space-y-2">
+        <CardContent className="p-4 md:p-6">
+          <div className="ml-auto w-full sm:max-w-sm space-y-2">
             <div className="flex justify-between">
               <span>Subtotal:</span>
               <span className="font-medium">₹{invoice.subtotal.toFixed(2)}</span>
@@ -201,7 +205,7 @@ export default async function InvoiceDetailPage({ params }: { params: { id: stri
 
       {/* Notes and Terms */}
       {(invoice.notes || invoice.terms) && (
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-4 md:gap-6 md:grid-cols-2">
           {invoice.notes && (
             <Card>
               <CardHeader>

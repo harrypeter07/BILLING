@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -18,6 +18,39 @@ export default function EmployeeLoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter()
+  const hasCheckedSession = useRef(false)
+
+  // Check if already logged in and redirect (prevent loops)
+  useEffect(() => {
+    // Only check once on mount
+    if (hasCheckedSession.current) return
+    hasCheckedSession.current = true
+    
+    const checkExistingSession = () => {
+      const authType = localStorage.getItem("authType")
+      if (authType === "employee") {
+        const employeeSession = localStorage.getItem("employeeSession")
+        if (employeeSession) {
+          try {
+            const session = JSON.parse(employeeSession)
+            if (session.employeeId && session.storeId) {
+              console.log("[EmployeeLogin] Already logged in, redirecting to dashboard")
+              // Use window.location to prevent React re-renders
+              window.location.href = "/dashboard"
+              return
+            }
+          } catch (e) {
+            // Invalid session, clear it
+            localStorage.removeItem("employeeSession")
+            localStorage.removeItem("authType")
+            localStorage.removeItem("currentStoreId")
+          }
+        }
+      }
+    }
+    
+    checkExistingSession()
+  }, [])
   const isExcel = getDatabaseType() === 'excel'
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -42,183 +75,132 @@ export default function EmployeeLoginPage() {
         const trimmedStoreName = storeName.trim()
         const upperStoreName = trimmedStoreName.toUpperCase()
         
-        // Try to find by name (case-insensitive using ilike) OR by store_code (exact match)
-        // First try by store_code (exact match)
-        let { data: stores, error: storeError } = await supabase
-          .from("stores")
-          .select("*")
-          .eq("store_code", upperStoreName)
-          .limit(5)
+        // Use API route to fetch stores (bypasses RLS issues with direct Supabase calls)
+        console.log("[EmployeeLogin] Step 1: Fetching stores via API (searched:", { 
+          storeCode: upperStoreName, 
+          storeName: trimmedStoreName 
+        })
         
-        // If not found by code, try by name (case-insensitive)
-        if ((!stores || stores.length === 0) && !storeError) {
-          const { data: storesByName, error: nameError } = await supabase
-            .from("stores")
-            .select("*")
-            .ilike("name", `%${trimmedStoreName}%`)
-            .limit(5)
+        let stores: any[] = []
+        let storeError: any = null
+        
+        try {
+          // Fetch all stores via API (this works even with RLS)
+          const storesResponse = await fetch('/api/stores?all=true')
+          const storesData = await storesResponse.json()
           
-          if (nameError) {
-            storeError = nameError
-          } else {
-            stores = storesByName
+          // Log only if error occurs
+          
+          if (!storesResponse.ok) {
+            throw new Error(`API Error: ${storesData.error || storesResponse.statusText}`)
           }
+          
+          if (!storesData.stores || storesData.stores.length === 0) {
+            throw new Error("No stores found in database")
+          }
+          
+          // Filter stores by code or name (client-side filtering)
+          // Try exact match first
+          stores = storesData.stores.filter((s: any) => {
+            const nameMatch = s.name?.toLowerCase().trim() === trimmedStoreName.toLowerCase()
+            const codeMatch = s.store_code?.toUpperCase().trim() === upperStoreName
+            return nameMatch || codeMatch
+          })
+          
+          // If no exact match, try partial name match
+          if (stores.length === 0) {
+            const partialMatch = storesData.stores.filter((s: any) =>
+              s.name?.toLowerCase().includes(trimmedStoreName.toLowerCase())
+            )
+            
+            if (partialMatch.length > 0) {
+              stores = [partialMatch[0]]
+            }
+          }
+          
+          // Store search completed
+        } catch (apiError: any) {
+          console.error("[EmployeeLogin] Stores API call failed:", apiError)
+          storeError = apiError
+          
+          // Error handled below
         }
         
         if (storeError) {
-          console.error("[EmployeeLogin] Error searching for store:", storeError)
-          throw new Error(`Store lookup failed: ${storeError.message}`)
-        }
-        
-        console.log("[EmployeeLogin] Store search results:", {
-          found: stores?.length || 0,
-          stores: stores?.map(s => ({ id: s.id, name: s.name, code: s.store_code }))
-        })
-        
-        // Find exact match by name (case-insensitive) or store_code
-        let store = stores?.find(s => 
-          s.name.toLowerCase().trim() === trimmedStoreName.toLowerCase() || 
-          s.store_code.toUpperCase().trim() === upperStoreName
-        )
-        
-        // If no exact match, try partial name match
-        if (!store && stores && stores.length > 0) {
-          store = stores[0] // Take first result as fallback
-          console.log("[EmployeeLogin] Using first store result (partial match):", {
-            id: store.id,
-            name: store.name,
-            code: store.store_code
-          })
-        }
-        
-        if (!store || stores.length === 0) {
-          // Try to get all stores to show in error message
-          const { data: allStores } = await supabase
-            .from("stores")
-            .select("name, store_code")
-            .limit(10)
-          
-          const availableStores = allStores?.map(s => `${s.name} (code: ${s.store_code})`).join(', ') || "No stores found"
-          
-          console.error("[EmployeeLogin] Store not found in Supabase:", {
-            searched: trimmedStoreName,
-            availableStores: allStores
-          })
-          
           throw new Error(
-            `Store not found: "${trimmedStoreName}".\n\n` +
-            `Available stores: ${availableStores}\n\n` +
-            `Please enter the exact Store Name or Store Code (e.g., "MYS1").`
+            `Failed to fetch stores: ${storeError.message}\n\n` +
+            `Please ensure the stores API is accessible.`
           )
         }
         
+        // Get the matched store (stores array already contains filtered results)
+        const store = stores && stores.length > 0 ? stores[0] : null
+        
+        if (!stores || stores.length === 0 || !store) {
+          // Fetch all stores to show what's available
+          try {
+            const storesResponse = await fetch('/api/stores?all=true')
+            const storesData = await storesResponse.json()
+            
+            const availableStores = storesData.stores?.map((s: any) => 
+              `"${s.name}" (code: ${s.store_code})`
+            ).join(', ') || "No stores found"
+            
+            throw new Error(
+              `Store not found: "${trimmedStoreName}" (searched as code: "${upperStoreName}").\n\n` +
+              `Available stores: ${availableStores}\n\n` +
+              `Please enter the exact Store Name or Store Code from the list above.`
+            )
+          } catch (apiError: any) {
+            throw new Error(
+              `Store not found: "${trimmedStoreName}".\n\n` +
+              `Could not fetch available stores. Please try again.`
+            )
+          }
+        }
+        
         if (store) {
-          console.log("[EmployeeLogin] Store found:", {
-            id: store.id,
-            name: store.name,
-            storeCode: store.store_code,
-            adminUserId: store.admin_user_id
-          })
-
           // Verify store belongs to an admin
           if (!store.admin_user_id) {
             throw new Error("Access denied: Store must be created by an admin")
           }
 
-          // Verify the admin_user_id exists and is an admin
-          const { data: adminProfile } = await supabase
-            .from("user_profiles")
-            .select("role")
-            .eq("id", store.admin_user_id)
-            .maybeSingle()
-          
-          if (!adminProfile || adminProfile.role !== "admin") {
-            throw new Error("Access denied: Store owner is not an admin")
-          }
-
           // Find employee - ensure employee belongs to this store
           const upperEmployeeId = employeeId.toUpperCase().trim()
-          console.log("[EmployeeLogin] Searching for employee:", {
-            employeeId: upperEmployeeId,
-            storeId: store.id,
-            storeName: store.name,
-          })
           
-          // Query employees - check by employee_id and store_id
-          const { data: employees, error: empError } = await supabase
-            .from("employees")
-            .select("*")
-            .eq("employee_id", upperEmployeeId)
-            .eq("store_id", store.id)
-          
-          console.log("[EmployeeLogin] Employee search results:", {
-            found: employees?.length || 0,
-            error: empError,
-            employees: employees?.map(e => ({
-              id: e.id,
-              employee_id: e.employee_id,
-              name: e.name,
-              store_id: e.store_id,
-              hasPassword: !!e.password,
-            }))
-          })
-          
-          if (empError) {
-            console.error("[EmployeeLogin] Error searching for employee:", empError)
-            throw new Error(`Employee lookup failed: ${empError.message}`)
-          }
-          
-          if (!employees || employees.length === 0) {
-            // Try to find employee without store_id filter to see if it exists
-            const { data: allEmployees } = await supabase
-              .from("employees")
-              .select("employee_id, name, store_id")
-              .eq("employee_id", upperEmployeeId)
-              .limit(5)
-            
-            console.error("[EmployeeLogin] Employee not found in store:", {
-              searchedEmployeeId: upperEmployeeId,
-              searchedStoreId: store.id,
-              foundEmployees: allEmployees,
+          const employeeResponse = await fetch('/api/employees/lookup', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              employee_id: upperEmployeeId,
+              store_id: store.id
             })
-            
+          })
+          
+          const employeeData = await employeeResponse.json()
+          
+          if (!employeeResponse.ok || !employeeData.employee) {
             throw new Error(
+              employeeData.error || 
               `Employee "${upperEmployeeId}" not found in store "${store.name}" (${store.store_code}).\n\n` +
               `Please verify:\n` +
-              `1. Employee ID is correct (case-insensitive)\n` +
-              `2. Employee belongs to this store\n` +
-              (allEmployees && allEmployees.length > 0 
-                ? `\nNote: Employee exists but may be in a different store.` 
-                : `\nNote: Employee "${upperEmployeeId}" not found in system.`)
+              `1. Employee ID is correct\n` +
+              `2. Employee belongs to this store`
             )
           }
           
-          const employee = employees[0]
+          const employee = employeeData.employee
 
           // Verify employee has a valid store_id that matches the store
           if (!employee.store_id || employee.store_id !== store.id) {
-            console.error("[EmployeeLogin] Store ID mismatch:", {
-              employeeStoreId: employee.store_id,
-              expectedStoreId: store.id,
-            })
             throw new Error("Invalid employee-store association")
           }
-
-          console.log("[EmployeeLogin] Employee found, checking password:", {
-            employeeId: employee.employee_id,
-            employeeName: employee.name,
-            hasPassword: !!employee.password,
-            passwordLength: employee.password?.length,
-          })
 
           // Check password
           const passwordMatches = employee.password === password || employee.employee_id === password
           if (!passwordMatches) {
-            console.error("[EmployeeLogin] Password mismatch:", {
-              provided: password.length,
-              storedLength: employee.password?.length,
-              employeeIdFallback: employee.employee_id,
-            })
             throw new Error("Invalid password. Please check your password or try using your Employee ID as password.")
           }
 
@@ -235,8 +217,10 @@ export default function EmployeeLoginPage() {
             localStorage.setItem("authType", "employee")
 
             toast.success("Logged in as Employee")
-            router.push("/dashboard")
-            router.refresh()
+            // Use window.location to prevent React re-renders and infinite loops
+            setTimeout(() => {
+              window.location.href = "/dashboard"
+            }, 100)
             return // Success - exit early
           }
       } catch (supabaseError: any) {
@@ -360,8 +344,10 @@ export default function EmployeeLoginPage() {
         localStorage.setItem("authType", "employee")
 
         toast.success("Logged in as Employee")
-        router.push("/dashboard")
-        router.refresh()
+        // Use window.location to prevent React re-renders and infinite loops
+        setTimeout(() => {
+          window.location.href = "/dashboard"
+        }, 100)
       } else {
         // Pure Supabase mode (shouldn't reach here since we checked Supabase first)
         // But keeping as fallback

@@ -188,23 +188,31 @@ export function Header({ title }: HeaderProps) {
           )}
         </DropdownMenu>
 
-        <Button 
-          variant="outline" 
-          className="bg-transparent" 
-          onClick={handleSyncNow}
-          disabled={isSyncing}
-          title={
-            (getDatabaseType() === 'excel' || storageMode === 'excel')
-              ? "Upload employees from Excel to Supabase"
-              : "Save current data to Excel"
-          }
-        >
-          {isSyncing ? "Syncing..." : (
-            (getDatabaseType() === 'excel' || storageMode === 'excel')
-              ? "Upload to Supabase"
-              : "Sync Now"
-          )}
-        </Button>
+        {/* Excel Export - Show for employees if in Excel mode, or for admins */}
+        {(isEmployee || isAdmin) && (getDatabaseType() === 'excel' || storageMode === 'excel') && (
+          <Button 
+            variant="outline" 
+            className="bg-transparent" 
+            onClick={handleSyncNow}
+            disabled={isSyncing}
+            title="Upload employees from Excel to Supabase"
+          >
+            {isSyncing ? "Syncing..." : "Upload to Supabase"}
+          </Button>
+        )}
+        
+        {/* Excel Export - Show for admins in Database mode */}
+        {isAdmin && (getDatabaseType() === 'database' || storageMode === 'database') && (
+          <Button 
+            variant="outline" 
+            className="bg-transparent" 
+            onClick={handleSyncNow}
+            disabled={isSyncing}
+            title="Save current data to Excel"
+          >
+            {isSyncing ? "Syncing..." : "Export to Excel"}
+          </Button>
+        )}
 
         <SyncStatus />
 

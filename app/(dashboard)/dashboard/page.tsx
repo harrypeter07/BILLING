@@ -1,6 +1,6 @@
 "use client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle, UserCog } from "lucide-react";
+import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle, UserCog, FileSpreadsheet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useEffect, useState } from 'react';
@@ -9,6 +9,7 @@ import { db } from '@/lib/dexie-client';
 import { createClient } from '@/lib/supabase/client';
 import { getDatabaseType } from '@/lib/utils/db-mode';
 import { useUserRole } from '@/lib/hooks/use-user-role';
+import { EmployeeExcelExport } from '@/components/features/employees/employee-excel-export';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -198,6 +199,26 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+      {/* Excel Export Section for Employees */}
+      {isEmployee && dbType === 'excel' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              Excel Data Management
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Export your employee data to Excel format for backup or offline use.
+              </p>
+              <EmployeeExcelExport />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle>Quick Actions</CardTitle>

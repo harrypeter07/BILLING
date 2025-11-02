@@ -50,18 +50,38 @@ CREATE POLICY "Employees can be read for login" ON public.employees
 SELECT 
     policyname,
     cmd as command,
-    qual as using_expression
+    qual as using_expression,
+    with_check as with_check_expression
 FROM pg_policies
 WHERE tablename = 'stores'
 AND schemaname = 'public'
 ORDER BY policyname;
 
--- If stores don't have a public read policy for login, add one
+-- CRITICAL: Stores MUST be readable for employee login
+-- Without this, employees cannot look up stores during login (when not authenticated)
+-- The existing "Admins can manage own stores" policy requires auth.uid() which is null during login
 DROP POLICY IF EXISTS "Stores can be read for employee login" ON public.stores;
 
+-- Create a policy that allows reading stores with admin_user_id set
+-- This allows employee login to look up stores without authentication
 CREATE POLICY "Stores can be read for employee login" ON public.stores
   FOR SELECT
   USING (admin_user_id IS NOT NULL);
+
+-- Note: This policy works alongside "Admins can manage own stores"
+-- Supabase combines policies with OR, so either can allow access
+
+-- Also ensure the existing admin policy doesn't conflict
+-- Check what policies exist
+SELECT 
+    policyname,
+    cmd,
+    qual,
+    with_check
+FROM pg_policies
+WHERE tablename = 'stores'
+AND schemaname = 'public'
+ORDER BY policyname;
 
 -- ============================================
 -- 4. VERIFY THE FIX
