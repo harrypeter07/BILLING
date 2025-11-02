@@ -270,6 +270,7 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
   }
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="space-y-6">
       {/* Invoice Details */}
       <Card>
@@ -549,5 +550,21 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
         </Button>
       </div>
     </form>
+
+    <QuickCustomerForm
+      open={showCustomerForm}
+      onOpenChange={setShowCustomerForm}
+      onCustomerCreated={(newCustomer) => {
+        // Add new customer to local list
+        setLocalCustomers([...localCustomers, newCustomer])
+        // Select the newly created customer
+        setCustomerId(newCustomer.id)
+        // Notify parent if callback provided
+        if (onCustomersUpdate) {
+          onCustomersUpdate([...localCustomers, newCustomer])
+        }
+      }}
+    />
+    </>
   )
 }
