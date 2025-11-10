@@ -85,6 +85,105 @@ export interface SyncQueue {
   retry_count: number
 }
 
+// New interfaces for offline-first functionality
+export interface Settings {
+  id?: number
+  shop_name?: string
+  shop_address?: string
+  gstin?: string
+  phone?: string
+  email?: string
+  lastAnalyticsSync?: string // ISO date string
+  created_at: string
+  updated_at: string
+}
+
+export interface LocalUser {
+  id: string
+  name: string
+  email?: string
+  role: "admin" | "cashier"
+  password_hash?: string // For local auth
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface Inventory {
+  id: string
+  product_id: string
+  quantity: number
+  unit: string
+  last_updated: string
+  notes?: string
+}
+
+export interface Employee {
+  id: string
+  name: string
+  email?: string
+  phone?: string
+  role: string
+  employee_id: string
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface Attendance {
+  id: string
+  employee_id: string
+  date: string // ISO date string
+  check_in?: string // ISO datetime string
+  check_out?: string // ISO datetime string
+  status: "present" | "absent" | "leave"
+  notes?: string
+  created_at: string
+}
+
+export interface SalesHeader {
+  id: string
+  invoice_number: string
+  customer_id?: string
+  customer_name?: string
+  sale_date: string
+  subtotal: number
+  discount_amount: number
+  tax_amount: number
+  total_amount: number
+  payment_method?: string
+  status: "completed" | "pending" | "cancelled"
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SalesItem {
+  id: string
+  sale_id: string
+  product_id?: string
+  product_name: string
+  quantity: number
+  unit_price: number
+  discount_percent: number
+  tax_rate: number
+  line_total: number
+  created_at: string
+}
+
+export interface License {
+  id?: number
+  licenseKey: string
+  macAddress: string
+  clientName: string
+  activatedOn: string
+  expiresOn: string
+  status: "active" | "expired" | "revoked"
+  encryptedData?: string // Encrypted license data
+  created_at: string
+  updated_at: string
+}
+
 // Dexie database class
 class BillingDatabase extends Dexie {
   products!: EntityTable<Product, "id">
@@ -92,6 +191,14 @@ class BillingDatabase extends Dexie {
   invoices!: EntityTable<Invoice, "id">
   invoice_items!: EntityTable<InvoiceItem, "id">
   sync_queue!: EntityTable<SyncQueue, "id">
+  settings!: EntityTable<Settings, "id">
+  users!: EntityTable<LocalUser, "id">
+  inventory!: EntityTable<Inventory, "id">
+  employees!: EntityTable<Employee, "id">
+  attendance!: EntityTable<Attendance, "id">
+  sales_header!: EntityTable<SalesHeader, "id">
+  sales_items!: EntityTable<SalesItem, "id">
+  license!: EntityTable<License, "id">
 
   constructor() {
     super("BillingDatabase")
@@ -102,6 +209,23 @@ class BillingDatabase extends Dexie {
       invoices: "id, user_id, customer_id, invoice_number, invoice_date, is_synced, deleted",
       invoice_items: "id, invoice_id, product_id",
       sync_queue: "++id, entity_type, entity_id, created_at",
+    })
+
+    // Version 2: Add new offline-first tables
+    this.version(2).stores({
+      products: "id, user_id, name, is_synced, deleted",
+      customers: "id, user_id, name, is_synced, deleted",
+      invoices: "id, user_id, customer_id, invoice_number, invoice_date, is_synced, deleted",
+      invoice_items: "id, invoice_id, product_id",
+      sync_queue: "++id, entity_type, entity_id, created_at",
+      settings: "++id",
+      users: "id, email, role",
+      inventory: "id, product_id",
+      employees: "id, employee_id, is_active",
+      attendance: "id, employee_id, date",
+      sales_header: "id, invoice_number, customer_id, sale_date, status",
+      sales_items: "id, sale_id, product_id",
+      license: "++id, licenseKey, macAddress, status",
     })
   }
 }
