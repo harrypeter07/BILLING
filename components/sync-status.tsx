@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { hasConnectedExcel } from '@/lib/excel-fs'
+// Excel connection removed; rely on IndexedDB status events
 import { CheckCircle2, XCircle, Clock } from 'lucide-react'
 
 export function SyncStatus() {

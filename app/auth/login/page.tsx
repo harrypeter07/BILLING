@@ -30,7 +30,7 @@ export default function LoginPage() {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const isExcel = getDatabaseType() === 'excel'
+        const isExcel = false
         
         // Check for employee session first
         const authType = localStorage.getItem("authType")
@@ -70,7 +70,7 @@ export default function LoginPage() {
           
           const userRole = profile?.role || "admin"
           
-          setCurrentUser({ email: user.email, name: profile?.full_name || user.email })
+          setCurrentUser({ email: user.email, name: user.email })
           setCurrentRole(userRole)
           
           console.log("[Login] Authenticated user detected, role:", userRole)
@@ -152,7 +152,7 @@ export default function LoginPage() {
       if (error) throw error
       
       // Get user role and check for store
-      const isExcel = getDatabaseType() === 'excel'
+      const isExcel = false
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         const { data: profile } = await supabase
@@ -164,7 +164,7 @@ export default function LoginPage() {
         const userRole = profile?.role || "admin"
         
         // Update current user state
-        setCurrentUser({ email: user.email, name: profile?.full_name || user.email })
+        setCurrentUser({ email: user.email, name: user.email })
         setCurrentRole(userRole)
         
         // Show login success message with role

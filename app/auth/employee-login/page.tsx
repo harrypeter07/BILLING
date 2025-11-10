@@ -50,7 +50,7 @@ export default function EmployeeLoginPage() {
     
     checkExistingSession()
   }, [])
-  const isExcel = getDatabaseType() === 'excel'
+  const isExcel = false
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()

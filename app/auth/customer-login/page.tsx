@@ -16,7 +16,7 @@ export default function CustomerLoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const router = useRouter()
-  const isExcel = getDatabaseType() === 'excel'
+  const isExcel = false
 
   const handleRequestMagicLink = async (e: React.FormEvent) => {
     e.preventDefault()
