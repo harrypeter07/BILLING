@@ -20,6 +20,8 @@ import { storageManager } from "@/lib/storage-manager"
 import { InlineCustomerForm } from "@/components/features/customers/inline-customer-form"
 import { useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
+import { isIndexedDbMode } from "@/lib/utils/db-mode"
+import { createClient } from "@/lib/supabase/client"
 
 interface Customer {
   id: string
@@ -172,20 +174,21 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
 
   // Calculate frequently bought products (products that appear most in lineItems)
   const frequentlyBoughtProducts = useMemo(() => {
-    // For now, we'll show products with stock > 0, sorted by name
+    // For now, we'll show products with stock > 0 (or no stock limit), sorted by name
     // In a real app, you'd track purchase frequency from invoice_items
     return products
-      .filter(p => p.stock_quantity > 0)
+      .filter(p => p.stock_quantity === undefined || p.stock_quantity > 0)
       .slice(0, 8)
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [products])
 
   // Filter products based on search
   const filteredProducts = useMemo(() => {
-    if (!productSearchTerm) return products.filter(p => p.stock_quantity > 0)
+    const availableProducts = products.filter(p => p.stock_quantity === undefined || p.stock_quantity > 0)
+    if (!productSearchTerm) return availableProducts
     const search = productSearchTerm.toLowerCase()
-    return products.filter(
-      p => p.stock_quantity > 0 && (
+    return availableProducts.filter(
+      p => (
         p.name.toLowerCase().includes(search) ||
         p.sku?.toLowerCase().includes(search) ||
         p.category?.toLowerCase().includes(search)
@@ -306,10 +309,43 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
       });
       
       console.log('[InvoiceForm] Saving invoice', invoiceData, items);
-      await storageManager.addInvoice(invoiceData, items);
-      toast({ title: "Success", description: "Invoice created successfully" });
-      router.push("/invoices");
-      router.refresh();
+      
+      const isIndexedDb = isIndexedDbMode()
+      if (isIndexedDb) {
+        // Save to Dexie
+        await storageManager.addInvoice(invoiceData, items);
+        toast({ title: "Success", description: "Invoice created successfully" });
+        router.push("/invoices");
+        router.refresh();
+      } else {
+        // Save to Supabase
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          toast({ title: "Error", description: "Not authenticated", variant: "destructive" })
+          return
+        }
+        
+        const { data: newInvoice, error: invoiceError } = await supabase
+          .from('invoices')
+          .insert({ ...invoiceData, user_id: user.id })
+          .select()
+          .single()
+        
+        if (invoiceError) throw invoiceError
+        
+        const itemsWithInvoiceId = items.map(item => ({
+          ...item,
+          invoice_id: newInvoice.id
+        }))
+        
+        const { error: itemsError } = await supabase.from('invoice_items').insert(itemsWithInvoiceId)
+        if (itemsError) throw itemsError
+        
+        toast({ title: "Success", description: "Invoice created successfully" });
+        router.push("/invoices");
+        router.refresh();
+      }
     } catch (error) {
       console.error('[InvoiceForm] Error saving invoice:', error);
       toast({
@@ -616,6 +652,95 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
         </Button>
       </div>
     </form>
+
+    {/* Product Selection Window */}
+    <Dialog open={showProductWindow} onOpenChange={setShowProductWindow}>
+      <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>Select Products</DialogTitle>
+        </DialogHeader>
+        <div className="flex flex-col gap-4 flex-1 overflow-hidden">
+          {/* Search Bar */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder="Search products by name, SKU, or category..."
+              value={productSearchTerm}
+              onChange={(e) => setProductSearchTerm(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          {/* Frequently Bought Items */}
+          {frequentlyBoughtProducts.length > 0 && !productSearchTerm && (
+            <div>
+              <h3 className="text-sm font-semibold mb-2 text-muted-foreground">Frequently Bought</h3>
+              <div className="flex flex-wrap gap-2">
+                {frequentlyBoughtProducts.map((product) => (
+                  <Button
+                    key={product.id}
+                    type="button"
+                    variant="outline"
+                    onClick={() => addProductToInvoice(product)}
+                    className="h-auto flex-col items-start p-3 gap-1 text-left"
+                  >
+                    <span className="font-medium">{product.name}</span>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <span>₹{product.price.toLocaleString()}</span>
+                      {product.stock_quantity !== undefined && (
+                        <Badge variant={product.stock_quantity > 10 ? "default" : "secondary"}>
+                          {product.stock_quantity} {product.unit}
+                        </Badge>
+                      )}
+                    </div>
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* All Products Grid */}
+          <div className="flex-1 overflow-y-auto">
+            <h3 className="text-sm font-semibold mb-2 text-muted-foreground">
+              {productSearchTerm ? "Search Results" : "All Products"}
+            </h3>
+            {filteredProducts.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                {productSearchTerm ? "No products found" : "No products available"}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                {filteredProducts.map((product) => (
+                  <Button
+                    key={product.id}
+                    type="button"
+                    variant="outline"
+                    onClick={() => addProductToInvoice(product)}
+                    className="h-auto flex-col items-start p-3 gap-1 text-left hover:bg-primary hover:text-primary-foreground"
+                  >
+                    <span className="font-medium text-sm">{product.name}</span>
+                    <div className="flex flex-col gap-1 text-xs text-muted-foreground w-full">
+                      <span>₹{product.price.toLocaleString()}</span>
+                      {product.stock_quantity !== undefined && (
+                        <Badge 
+                          variant={product.stock_quantity > 10 ? "default" : product.stock_quantity > 0 ? "secondary" : "destructive"}
+                          className="w-fit text-xs"
+                        >
+                          {product.stock_quantity} {product.unit}
+                        </Badge>
+                      )}
+                      {product.category && (
+                        <span className="text-xs opacity-75">{product.category}</span>
+                      )}
+                    </div>
+                  </Button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
     </>
   )
 }
