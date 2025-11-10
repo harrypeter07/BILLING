@@ -6,7 +6,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
 import { Building2, User, Palette, FileSpreadsheet, Store } from "lucide-react"
-import { ExcelConnector } from "@/components/settings/excel-connector"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useStore } from "@/lib/utils/store-context"
@@ -18,7 +17,7 @@ export default function SettingsPage() {
   const [user, setUser] = useState<any>(null)
   const { currentStore } = useStore()
   const router = useRouter()
-  const isExcel = getDatabaseType() === 'excel'
+  const isExcel = false
 
   // Only admin can access settings
   useEffect(() => {

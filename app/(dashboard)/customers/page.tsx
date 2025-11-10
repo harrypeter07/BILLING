@@ -2,7 +2,7 @@
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Plus, FileSpreadsheet, Sparkles } from "lucide-react"
+import { Plus, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { CustomersTable } from "@/components/features/customers/customers-table"
 import { toast } from "sonner"
@@ -19,7 +19,7 @@ export default function CustomersPage() {
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
   const { isAdmin, isLoading: roleLoading } = useUserRole()
-  const isExcel = getDatabaseType() === 'excel'
+  const isExcel = false
 
   // Redirect admin to analytics page
   useEffect(() => {
@@ -126,42 +126,7 @@ export default function CustomersPage() {
     }
   }
 
-  // Excel import logic
-  function ExcelImport() {
-    const inputRef = useRef<HTMLInputElement | null>(null)
-    const [importing, setImporting] = useState(false)
-    const handleClick = () => inputRef.current?.click()
-    const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      if (!e.target.files?.[0]) return
-      setImporting(true)
-      try {
-        const { importCustomersFromExcel } = await import("@/lib/utils/excel-import")
-        const res = await importCustomersFromExcel(e.target.files[0])
-        if (!res.success) throw new Error(res.errors[0] || "Import failed")
-        toast.success("Customers imported!")
-        
-      } catch (error: any) {
-        toast.error("Import failed: " + (error.message || error.toString()))
-      } finally {
-        setImporting(false)
-        if (inputRef.current) inputRef.current.value = ""
-      }
-    }
-    return (
-      <>
-        <Button type="button" variant="secondary" className="mr-2" onClick={handleClick} disabled={importing}>
-          <FileSpreadsheet className="mr-2 h-4 w-4" /> Import from Excel
-        </Button>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          onChange={handleImport}
-          style={{ display: "none" }}
-        />
-      </>
-    )
-  }
+  // Excel import removed
 
   return (
     <div className="space-y-6">
@@ -171,7 +136,6 @@ export default function CustomersPage() {
           <p className="text-muted-foreground">Manage your customer database</p>
         </div>
         <div className="flex items-center gap-2">
-          <ExcelImport />
           <Button 
             type="button" 
             variant="outline" 
