@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { InvoiceForm } from "@/components/features/invoices/invoice-form"
 import { db } from "@/lib/dexie-client"
-import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useStore } from "@/lib/utils/store-context"
 
 export default function NewInvoicePage() {
@@ -16,7 +15,7 @@ export default function NewInvoicePage() {
   const [employeeId, setEmployeeId] = useState<string>("ADMN")
   const { currentStore } = useStore()
   const router = useRouter()
-  const isExcel = getDatabaseType() === 'excel'
+  
   
   // Check if user is employee - only employees can create invoices
   useEffect(() => {
@@ -60,7 +59,7 @@ export default function NewInvoicePage() {
 
   useEffect(() => {
     (async () => {
-      if (isExcel) {
+      {
         try {
           const [cust, prod, inv] = await Promise.all([
             db.customers.toArray(),
@@ -81,7 +80,9 @@ export default function NewInvoicePage() {
           setProducts([])
           setSettings({ invoice_prefix: 'INV', next_invoice_number: 1, default_gst_rate: 18, place_of_supply: null })
         }
-      } else {
+      }
+      // Additionally, try to pull remote datasets when authenticated (optional)
+      try {
         const supabase = createClient()
         const authType = localStorage.getItem("authType")
         
@@ -121,23 +122,23 @@ export default function NewInvoicePage() {
           setCustomers([])
           setProducts([])
           setSettings(null)
-          return
+          // return (employee flow handled above)
         }
         
         // For admin users (Supabase auth)
         const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setCustomers([]); setProducts([]); setSettings(null); return }
+        if (!user) { return }
         const [{ data: dbCustomers }, { data: dbProducts }, { data: dbSettings }] = await Promise.all([
           supabase.from('customers').select('id, name').eq('user_id', user.id),
           supabase.from('products').select('id, name, price, gst_rate, hsn_code, unit').eq('user_id', user.id).eq('is_active', true),
           supabase.from('business_settings').select('*').eq('user_id', user.id).single(),
         ])
-        setCustomers(dbCustomers || [])
-        setProducts(dbProducts || [])
-        setSettings(dbSettings || null)
-      }
+        if (dbCustomers?.length) setCustomers(dbCustomers)
+        if (dbProducts?.length) setProducts(dbProducts)
+        if (dbSettings) setSettings(dbSettings)
+      } catch {}
     })()
-  }, [isExcel])
+  }, [])
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 md:space-y-6 px-4 md:px-6 py-4 md:py-6">

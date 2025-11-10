@@ -2,7 +2,7 @@
 
 # dependencies
 /node_modules
-/app/firebase/billingsolution-firebase-adminsdk-fbsvc-716c6a10d0.json
+/app/firebase/
 
 # next.js
 /.next/
