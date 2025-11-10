@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { seedTestLicense, createLicense } from "@/lib/utils/firestore-seed";
+import { seedInitialLicense, createLicense } from "@/lib/utils/firestore-seed";
 
 /**
- * API route to seed a test license in Firestore
- * This is for development/testing purposes only
- * 
+ * API route to provision licenses in Firestore.
+ *
  * POST /api/seed-license
  * Body: { licenseKey?: string, macAddress?: string, clientName?: string, expiresInDays?: number }
- * 
- * If no body is provided, creates a default test license
+ *
+ * If no body is provided, creates an initial placeholder license (macAddress=00:00:00:00:00:00).
  */
 export async function POST(request: NextRequest) {
   try {
@@ -37,8 +36,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Otherwise, seed a default test license
-    const result = await seedTestLicense();
+    // Otherwise, seed a default license placeholder
+    const result = await seedInitialLicense();
     return NextResponse.json(result);
   } catch (error: any) {
     console.error("Error in seed-license API:", error);
@@ -57,7 +56,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET() {
   try {
-    const result = await seedTestLicense();
+    const result = await seedInitialLicense();
     return NextResponse.json(result);
   } catch (error: any) {
     return NextResponse.json(
