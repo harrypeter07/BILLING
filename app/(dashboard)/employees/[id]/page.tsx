@@ -10,7 +10,6 @@ import { ArrowLeft, Edit2, Key, DollarSign, Calendar, Mail, Phone, Building2, Us
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
-import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useToast } from "@/hooks/use-toast"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -38,7 +37,6 @@ export default function EmployeeDetailPage() {
   const router = useRouter()
   const { toast } = useToast()
   const { isAdmin, isLoading: roleLoading } = useUserRole()
-  const isExcel = getDatabaseType() === 'excel'
   const [employee, setEmployee] = useState<Employee | null>(null)
   const [invoices, setInvoices] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -49,53 +47,20 @@ export default function EmployeeDetailPage() {
       return
     }
 
-    // In Excel mode, allow access (admin check happens client-side via useUserRole)
-    // In Supabase mode, require admin
-    if (!isExcel && !isAdmin) {
+    // Require admin
+    if (!isAdmin) {
       router.push("/dashboard")
       return
     }
 
     // Fetch employee data
     fetchEmployee()
-  }, [params.id, isAdmin, roleLoading, isExcel, router])
+  }, [params.id, isAdmin, roleLoading, router])
 
   const fetchEmployee = async () => {
     try {
       setIsLoading(true)
-      if (isExcel) {
-        // Excel mode - fetch from Dexie
-        const emp = await db.employees.get(params.id as string)
-        if (!emp) {
-          console.error("[EmployeeDetail] Employee not found in Excel mode:", params.id)
-          toast({ title: "Error", description: "Employee not found", variant: "destructive" })
-          router.push("/employees")
-          return
-        }
-        
-        // Load store info if store_id exists
-        let storeInfo = null
-        if (emp.store_id) {
-          const store = await db.stores.get(emp.store_id)
-          if (store) {
-            storeInfo = { name: store.name, store_code: store.store_code }
-          }
-        }
-        
-        setEmployee({ 
-          ...emp as any,
-          stores: storeInfo
-        })
-        
-        // Fetch invoices created by this employee
-        // Try both employee_id and created_by_employee_id fields
-        const allInvoices = await db.invoices.toArray()
-        const empInvoices = allInvoices.filter((inv: any) => 
-          (inv.created_by_employee_id === emp.employee_id) || 
-          (inv.employee_id === emp.employee_id)
-        )
-        setInvoices(empInvoices as any)
-      } else {
+      {
         const supabase = createClient()
         const { data: emp, error } = await supabase
           .from("employees")
@@ -104,25 +69,38 @@ export default function EmployeeDetailPage() {
           .single()
         
         if (error || !emp) {
-          toast({ title: "Error", description: "Employee not found", variant: "destructive" })
-          router.push("/employees")
-          return
+          // Fallback to IndexedDB offline cache
+          const localEmp = await db.employees?.get?.(params.id as string)
+          if (!localEmp) {
+            toast({ title: "Error", description: "Employee not found", variant: "destructive" })
+            router.push("/employees")
+            return
+          }
+          let storeInfo = null as any
+          if ((localEmp as any).store_id) {
+            const store = await db.stores?.get?.((localEmp as any).store_id)
+            if (store) storeInfo = { name: (store as any).name, store_code: (store as any).store_code }
+          }
+          setEmployee({ ...(localEmp as any), stores: storeInfo })
+          const allInvoices = await db.invoices.toArray()
+          const empInvoices = allInvoices.filter((inv: any) => 
+            (inv.created_by_employee_id === (localEmp as any).employee_id) || 
+            (inv.employee_id === (localEmp as any).employee_id)
+          )
+          setInvoices(empInvoices as any)
+        } else {
+          setEmployee(emp as any)
+          const { data: empInvoices, error: invoiceError } = await supabase
+            .from("invoices")
+            .select("*, customers(name)")
+            .or(`employee_id.eq.${emp.employee_id || ''},created_by_employee_id.eq.${emp.employee_id || ''}`)
+            .order("created_at", { ascending: false })
+            .limit(10)
+          if (invoiceError) {
+            console.warn("[EmployeeDetail] Error fetching invoices:", invoiceError)
+          }
+          setInvoices(empInvoices || [])
         }
-        setEmployee(emp as any)
-        
-        // Fetch invoices created by this employee
-        // Try both employee_id and created_by_employee_id columns
-        const { data: empInvoices, error: invoiceError } = await supabase
-          .from("invoices")
-          .select("*, customers(name)")
-          .or(`employee_id.eq.${emp.employee_id || ''},created_by_employee_id.eq.${emp.employee_id || ''}`)
-          .order("created_at", { ascending: false })
-          .limit(10)
-        
-        if (invoiceError) {
-          console.warn("[EmployeeDetail] Error fetching invoices:", invoiceError)
-        }
-        setInvoices(empInvoices || [])
       }
     } catch (error: any) {
       console.error("[EmployeeDetail] Error fetching employee:", error)
@@ -145,18 +123,17 @@ export default function EmployeeDetailPage() {
     if (!confirm(`Reset password for ${employee.name} to ${newPassword}?`)) return
     
     try {
-      if (isExcel) {
-        await db.employees.update(employee.id, { password: newPassword })
-        setEmployee({ ...employee, password: newPassword })
-        toast({ title: "Success", description: `Password reset to ${newPassword}` })
-      } else {
+      {
         const supabase = createClient()
         const { error } = await supabase
           .from("employees")
           .update({ password: newPassword })
           .eq("id", employee.id)
         
-        if (error) throw error
+        if (error) {
+          // Offline fallback
+          await db.employees?.update?.(employee.id, { password: newPassword } as any)
+        }
         setEmployee({ ...employee, password: newPassword })
         toast({ title: "Success", description: `Password reset to ${newPassword}` })
       }

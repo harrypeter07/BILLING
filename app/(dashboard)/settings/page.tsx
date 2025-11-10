@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Building2, User, Palette, FileSpreadsheet, Store } from "lucide-react"
+import { Building2, User, Palette, Store } from "lucide-react"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useStore } from "@/lib/utils/store-context"
@@ -163,18 +163,7 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <FileSpreadsheet className="h-5 w-5" />
-              <CardTitle>Excel Connection</CardTitle>
-            </div>
-            <CardDescription>Connect an external .xlsx file and save in background</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ExcelConnector />
-          </CardContent>
-        </Card>
+        {/* Excel connector removed - IndexedDB is the primary local storage */}
 
         <Card>
           <CardHeader>

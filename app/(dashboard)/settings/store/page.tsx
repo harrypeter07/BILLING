@@ -8,7 +8,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useToast } from "@/hooks/use-toast"
 import { db, type Store } from "@/lib/dexie-client"
 import { createClient } from "@/lib/supabase/client"
-import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useStore } from "@/lib/utils/store-context"
 import { useRouter } from "next/navigation"
 
@@ -16,7 +15,7 @@ export default function StorePage() {
   const { currentStore, setCurrentStore, loading } = useStore()
   const { toast } = useToast()
   const router = useRouter()
-  const isExcel = getDatabaseType() === 'excel'
+  
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
@@ -46,80 +45,7 @@ export default function StorePage() {
     e.preventDefault()
     setIsLoading(true)
     try {
-      if (isExcel) {
-        if (currentStore) {
-          // Update existing store
-          const updatedStore = {
-            ...currentStore,
-            name: formData.name,
-            address: formData.address,
-            gstin: formData.gstin,
-            phone: formData.phone,
-          }
-          
-          // ALWAYS sync to Supabase first
-          const supabase = createClient()
-          const { data: { user } } = await supabase.auth.getUser()
-          if (user) {
-            const { syncStoreToSupabase } = await import("@/lib/utils/supabase-sync")
-            await syncStoreToSupabase(updatedStore)
-          }
-          
-          // Also update in Excel for local cache
-          await db.stores.update(currentStore.id, {
-            name: formData.name,
-            address: formData.address,
-            gstin: formData.gstin,
-            phone: formData.phone,
-          })
-          const updated = await db.stores.get(currentStore.id)
-          if (updated) setCurrentStore(updated)
-          toast({ title: "Success", description: "Store updated successfully" })
-          // Wait a bit for state to update, then redirect
-          await new Promise(resolve => setTimeout(resolve, 500))
-          router.push("/dashboard")
-          router.refresh()
-        } else {
-          // Create new store
-          const supabase = createClient()
-          const { data: { user } } = await supabase.auth.getUser()
-          if (!user) {
-            toast({ title: "Error", description: "Not authenticated", variant: "destructive" })
-            return
-          }
-
-          const storeCode = generateStoreCode(formData.name)
-          const store: Store = {
-            id: crypto.randomUUID(),
-            name: formData.name,
-            store_code: storeCode,
-            address: formData.address,
-            gstin: formData.gstin,
-            phone: formData.phone,
-            admin_user_id: user.id,
-            created_at: new Date().toISOString(),
-          }
-          
-          // ALWAYS sync to Supabase first (for remote access)
-          const { syncStoreToSupabase } = await import("@/lib/utils/supabase-sync")
-          const syncResult = await syncStoreToSupabase(store)
-          
-          if (!syncResult.success) {
-            console.warn("[StorePage] Supabase sync failed:", syncResult.error)
-            // Continue anyway - will be synced later
-          }
-          
-          // Also save to Excel for local cache
-          await db.stores.put(store)
-          setCurrentStore(store)
-          localStorage.setItem("currentStoreId", store.id)
-          toast({ title: "Success", description: "Store created successfully" })
-          // Wait a bit for state to update, then redirect
-          await new Promise(resolve => setTimeout(resolve, 500))
-          router.push("/dashboard")
-          router.refresh()
-        }
-      } else {
+      {
         // Supabase mode
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
