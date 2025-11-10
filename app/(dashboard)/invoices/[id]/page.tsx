@@ -11,7 +11,6 @@ import { ArrowLeft, Printer } from "lucide-react"
 import { InvoiceActions } from "@/components/features/invoices/invoice-actions"
 import { InvoicePrint } from "@/components/features/invoices/invoice-print"
 import { db } from "@/lib/dexie-client"
-import { getDatabaseType } from "@/lib/utils/db-mode"
 
 export default function InvoiceDetailPage() {
   const params = useParams()
@@ -22,7 +21,6 @@ export default function InvoiceDetailPage() {
   const [settings, setSettings] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const isExcel = getDatabaseType() === 'excel'
 
   useEffect(() => {
     fetchInvoice()
@@ -33,43 +31,7 @@ export default function InvoiceDetailPage() {
       setLoading(true)
       setError(null)
 
-      if (isExcel) {
-        // Excel mode - fetch from Dexie
-        const inv = await db.invoices.get(invoiceId)
-        if (!inv) {
-          setError("Invoice not found")
-          return
-        }
-
-        // Check employee access
-        const authType = localStorage.getItem("authType")
-        if (authType === "employee") {
-          const employeeSession = localStorage.getItem("employeeSession")
-          if (employeeSession) {
-            const session = JSON.parse(employeeSession)
-            // Check if invoice belongs to this employee's store or was created by this employee
-            if (inv.store_id && inv.store_id !== session.storeId) {
-              setError("Access denied: Invoice does not belong to your store")
-              return
-            }
-          }
-        }
-
-        setInvoice(inv)
-
-        // Fetch items
-        const invoiceItems = await db.invoice_items
-          .where("invoice_id")
-          .equals(invoiceId)
-          .toArray()
-        setItems(invoiceItems || [])
-
-        // Fetch customer
-        if (inv.customer_id) {
-          const cust = await db.customers.get(inv.customer_id)
-          setCustomer(cust)
-        }
-      } else {
+      {
         // Supabase mode - use API route to avoid RLS issues
         try {
           // Determine if this is an employee session
@@ -90,11 +52,9 @@ export default function InvoiceDetailPage() {
           const data = await response.json()
 
           if (!response.ok || !data.invoice) {
-            setError(data.error || "Invoice not found")
-            return
+            throw new Error(data.error || "Invoice not found")
           }
 
-          fetchedInvoice = data.invoice
           setInvoice(data.invoice)
           setItems(data.invoice.invoice_items || [])
           
@@ -107,8 +67,23 @@ export default function InvoiceDetailPage() {
             setSettings(data.profile)
           }
         } catch (apiError: any) {
-          console.error("API fetch error:", apiError)
-          setError(apiError.message || "Failed to fetch invoice")
+          // Fallback to IndexedDB (offline)
+          console.warn("API fetch failed, trying IndexedDB:", apiError?.message || apiError)
+          const inv = await db.invoices.get(invoiceId)
+          if (!inv) {
+            setError(apiError?.message || "Invoice not found")
+            return
+          }
+          setInvoice(inv)
+          const invoiceItems = await db.invoice_items
+            .where("invoice_id")
+            .equals(invoiceId)
+            .toArray()
+          setItems(invoiceItems || [])
+          if (inv.customer_id) {
+            const cust = await db.customers.get(inv.customer_id)
+            setCustomer(cust)
+          }
         }
       }
     } catch (err: any) {

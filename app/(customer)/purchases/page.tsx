@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { db } from "@/lib/dexie-client"
-import { getDatabaseType } from "@/lib/utils/db-mode"
 import { createClient } from "@/lib/supabase/client"
 import { getCustomerSession } from "@/lib/utils/customer-auth"
 import { useRouter } from "next/navigation"
@@ -18,7 +17,6 @@ export default function CustomerDashboardPage() {
   const [customer, setCustomer] = useState<any>(null)
   const router = useRouter()
   const session = getCustomerSession()
-  const isExcel = getDatabaseType() === 'excel'
 
   useEffect(() => {
     if (!session) {
@@ -30,28 +28,26 @@ export default function CustomerDashboardPage() {
       try {
         setLoading(true)
         
-        // Get customer info
-        if (isExcel) {
-          const cust = await db.customers.get(session.customerId)
-          setCustomer(cust)
-          
-          // Get invoices for this customer
-          const invs = await db.invoices.where("customer_id").equals(session.customerId).toArray()
-          setInvoices(invs || [])
-        } else {
+        // Try cloud first, then fallback to local IndexedDB
+        try {
           const supabase = createClient()
           const { data: cust } = await supabase
             .from("customers")
             .select("*")
             .eq("id", session.customerId)
             .single()
-          setCustomer(cust)
+          if (cust) setCustomer(cust)
 
           const { data: invs } = await supabase
             .from("invoices")
             .select("*")
             .eq("customer_id", session.customerId)
             .order("created_at", { ascending: false })
+          if (invs) setInvoices(invs || [])
+        } catch {
+          const cust = await db.customers.get(session.customerId)
+          setCustomer(cust)
+          const invs = await db.invoices.where("customer_id").equals(session.customerId).toArray()
           setInvoices(invs || [])
         }
       } catch (error) {
@@ -60,7 +56,7 @@ export default function CustomerDashboardPage() {
         setLoading(false)
       }
     })()
-  }, [session, isExcel, router])
+  }, [session, router])
 
   if (!session) return null
   if (loading) return <div className="p-6">Loading...</div>

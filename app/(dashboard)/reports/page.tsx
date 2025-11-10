@@ -4,32 +4,31 @@ import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DollarSign, TrendingUp, Package, Receipt } from "lucide-react"
 import { db } from "@/lib/dexie-client"
-import { getDatabaseType } from "@/lib/utils/db-mode"
 
 export default function ReportsPage() {
   const [loading, setLoading] = useState(true)
   const [invoices, setInvoices] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])
-  const isExcel = getDatabaseType() === 'excel'
 
   useEffect(() => {
     (async () => {
       setLoading(true)
       try {
-        if (isExcel) {
-          const [inv, prod] = await Promise.all([
-            db.invoices.toArray(),
-            db.products.toArray(),
-          ])
-          setInvoices(inv || [])
-          setProducts(prod || [])
-        } else {
+        // Try cloud first, then fallback to local
+        try {
           const supabase = createClient()
           const { data: { user } } = await supabase.auth.getUser()
-          if (!user) { setInvoices([]); setProducts([]); return }
+          if (!user) { throw new Error("No user") }
           const [{ data: inv }, { data: prod }] = await Promise.all([
             supabase.from('invoices').select('*').eq('user_id', user.id),
             supabase.from('products').select('*').eq('user_id', user.id),
+          ])
+          if (inv) setInvoices(inv)
+          if (prod) setProducts(prod)
+        } catch {
+          const [inv, prod] = await Promise.all([
+            db.invoices.toArray(),
+            db.products.toArray(),
           ])
           setInvoices(inv || [])
           setProducts(prod || [])
@@ -38,7 +37,7 @@ export default function ReportsPage() {
         setLoading(false)
       }
     })()
-  }, [isExcel])
+  }, [])
 
   const totalRevenue = invoices?.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0) || 0
   const paidRevenue = invoices?.filter((inv) => inv.status === "paid").reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0) || 0
