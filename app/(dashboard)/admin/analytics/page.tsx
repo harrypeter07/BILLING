@@ -18,7 +18,6 @@ import {
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { db } from "@/lib/dexie-client"
-import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 
 interface AnalyticsData {
@@ -38,7 +37,6 @@ export default function AdminAnalyticsPage() {
   const { toast } = useToast()
   const router = useRouter()
   const { isAdmin, isLoading: roleLoading } = useUserRole()
-  const isExcel = getDatabaseType() === 'excel'
 
   useEffect(() => {
     // Role guard
@@ -57,18 +55,14 @@ export default function AdminAnalyticsPage() {
       let invoices: any[] = []
       let customers: any[] = []
 
-      if (isExcel) {
-        // Excel mode - fetch from Dexie
-        invoices = await db.invoices.toArray()
-        customers = await db.customers.toArray()
-      } else {
+      try {
         // Supabase mode
         const supabase = createClient()
         const {
           data: { user },
         } = await supabase.auth.getUser()
 
-        if (!user) return
+        if (!user) throw new Error("No user")
 
         const [{ data: invData }, { data: custData }] = await Promise.all([
           supabase.from("invoices").select("*").eq("user_id", user.id),
@@ -77,6 +71,10 @@ export default function AdminAnalyticsPage() {
 
         invoices = invData || []
         customers = custData || []
+      } catch {
+        // Fallback to IndexedDB
+        invoices = await db.invoices.toArray()
+        customers = await db.customers.toArray()
       }
 
       // Calculate metrics

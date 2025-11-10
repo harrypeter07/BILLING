@@ -2,7 +2,6 @@
 
 # dependencies
 /node_modules
-/app/firebase/
 
 # next.js
 /.next/
