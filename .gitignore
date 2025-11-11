@@ -29,3 +29,12 @@ next-env.d.ts
 # firebase credentials
 app/firebase/*.json
 **/firebase-adminsdk-*.json
+
+# electron build artifacts
+/dist/
+/out/
+*.dmg
+*.exe
+*.AppImage
+*.deb
+*.rpm

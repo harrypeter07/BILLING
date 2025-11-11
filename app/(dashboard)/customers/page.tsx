@@ -5,71 +5,67 @@ import { Plus, Sparkles } from "lucide-react"
 import Link from "next/link"
 import { CustomersTable } from "@/components/features/customers/customers-table"
 import { toast } from "sonner"
-// excel-sync-controller removed; Dexie is the source of truth
-// Don't import createClient unless needed
-// import { createClient } from "@/lib/supabase/client"
+import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { storageManager } from "@/lib/storage-manager"
-import { getDatabaseType } from "@/lib/utils/db-mode"
+import { isIndexedDbMode } from "@/lib/utils/db-mode"
 
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const isExcel = getDatabaseType() === "excel"
 
   const initializedRef = useRef(false)
   useEffect(() => {
     if (initializedRef.current) return
     initializedRef.current = true
-    if (isExcel) {
+    const isIndexedDb = isIndexedDbMode()
+    
+    if (isIndexedDb) {
+      // Load from Dexie (IndexedDB)
       (async () => {
         try {
           setIsLoading(true)
           const list = await db.customers.toArray()
           console.log('[CustomersPage][Dexie] fetched', list?.length || 0, 'customers')
-          if (!list || list.length === 0) {
-            toast.warning('No customers found in data/Customers.xlsx')
-          }
           setCustomers(list)
-        } catch {
-          console.error('[CustomersPage][Dexie] load failed')
+        } catch (error) {
+          console.error('[CustomersPage][Dexie] load failed:', error)
           toast.error('Failed to load customers')
           setCustomers([])
         } finally {
           setIsLoading(false)
         }
       })()
-      
     } else {
-      // Only import and use Supabase when NOT in Excel mode
-      import("@/lib/supabase/client").then(({ createClient }) => {
-        const fetchData = async () => {
-          setIsLoading(true)
-          const supabase = createClient()
-          const {
-            data: { user },
-          } = await supabase.auth.getUser()
-          if (!user) {
-            setCustomers([])
-            setIsLoading(false)
-            return
-          }
-          const { data: dbCustomers } = await supabase
-            .from("customers")
-            .select("*")
-            .eq("user_id", user.id)
-            .order("created_at", { ascending: false })
-          setCustomers(dbCustomers || [])
+      // Load from Supabase
+      const fetchData = async () => {
+        setIsLoading(true)
+        const supabase = createClient()
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+        if (!user) {
+          setCustomers([])
           setIsLoading(false)
+          return
         }
-        fetchData()
-      })
+        const { data: dbCustomers } = await supabase
+          .from("customers")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false })
+        setCustomers(dbCustomers || [])
+        setIsLoading(false)
+      }
+      fetchData()
     }
-  }, [isExcel])
+  }, [])
 
   const handleAddMockCustomer = async () => {
     try {
       const rand = Math.floor(Math.random() * 10000)
+      const isIndexedDb = isIndexedDbMode()
+      
       const mockCustomer = {
         id: crypto.randomUUID(),
         name: `Mock Customer ${rand}`,
@@ -81,15 +77,14 @@ export default function CustomersPage() {
         notes: `Mock customer generated at ${new Date().toLocaleString()}`,
       }
       
-      if (isExcel) {
+      if (isIndexedDb) {
+        // Save to Dexie
         await storageManager.addCustomer(mockCustomer as any)
-        // Trigger refresh by re-fetching
         const list = await db.customers.toArray()
         setCustomers(list)
         toast.success(`Mock customer "${mockCustomer.name}" added!`)
       } else {
-        // For Supabase mode, use API
-        const { createClient } = await import("@/lib/supabase/client")
+        // Save to Supabase
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (!user) {
@@ -114,8 +109,6 @@ export default function CustomersPage() {
       toast.error("Failed to add mock customer: " + (error.message || error.toString()))
     }
   }
-
-  // Excel import removed
 
   return (
     <div className="space-y-6">
