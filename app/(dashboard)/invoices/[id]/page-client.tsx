@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -11,133 +11,321 @@ import { ArrowLeft, Printer } from "lucide-react"
 import { InvoiceActions } from "@/components/features/invoices/invoice-actions"
 import { InvoicePrint } from "@/components/features/invoices/invoice-print"
 import { db } from "@/lib/dexie-client"
+import { useToast } from "@/hooks/use-toast"
 
 export default function InvoiceDetailPageClient() {
   const params = useParams()
+  const router = useRouter()
+  const { toast } = useToast()
+  const invoiceId = params.id as string
   const [invoice, setInvoice] = useState<any>(null)
   const [items, setItems] = useState<any[]>([])
   const [customer, setCustomer] = useState<any>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [settings, setSettings] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchInvoice()
-  }, [params.id])
+  }, [invoiceId])
 
   const fetchInvoice = async () => {
     try {
-      setIsLoading(true)
-      const inv = await db.invoices?.get?.(params.id as string)
-      if (inv) {
-        setInvoice(inv)
-        const invoiceItems = await db.invoice_items?.where("invoice_id").equals(params.id as string).toArray()
-        setItems(invoiceItems || [])
-        if (inv.customer_id) {
-          const cust = await db.customers?.get?.(inv.customer_id)
-          setCustomer(cust || null)
+      setLoading(true)
+      setError(null)
+
+      {
+        // Supabase mode - use API route to avoid RLS issues
+        try {
+          // Determine if this is an employee session
+          const authType = localStorage.getItem("authType")
+          let apiUrl = `/api/invoices/${invoiceId}`
+          
+          if (authType === "employee") {
+            const employeeSession = localStorage.getItem("employeeSession")
+            if (employeeSession) {
+              const session = JSON.parse(employeeSession)
+              // Add store_id to query params for employee access
+              apiUrl += `?store_id=${encodeURIComponent(session.storeId)}`
+            }
+          }
+
+          // Use API route to bypass RLS issues
+          const response = await fetch(apiUrl)
+          const data = await response.json()
+
+          if (!response.ok || !data.invoice) {
+            throw new Error(data.error || "Invoice not found")
+          }
+
+          setInvoice(data.invoice)
+          setItems(data.invoice.invoice_items || [])
+          
+          if (data.invoice.customers) {
+            setCustomer(data.invoice.customers)
+          }
+
+          // Set business settings if returned by API
+          if (data.profile) {
+            setSettings(data.profile)
+          }
+        } catch (apiError: any) {
+          // Fallback to IndexedDB (offline)
+          console.warn("API fetch failed, trying IndexedDB:", apiError?.message || apiError)
+          const inv = await db.invoices.get(invoiceId)
+          if (!inv) {
+            setError(apiError?.message || "Invoice not found")
+            return
+          }
+          setInvoice(inv)
+          const invoiceItems = await db.invoice_items
+            .where("invoice_id")
+            .equals(invoiceId)
+            .toArray()
+          setItems(invoiceItems || [])
+          if (inv.customer_id) {
+            const cust = await db.customers.get(inv.customer_id)
+            setCustomer(cust)
+          }
         }
       }
-    } catch (error) {
-      console.error("Failed to fetch invoice:", error)
+    } catch (err: any) {
+      console.error("Error fetching invoice:", err)
+      setError(err.message || "Failed to fetch invoice")
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
-  if (isLoading) {
-    return <div className="text-center py-8">Loading...</div>
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center">
+          <p className="text-muted-foreground">Loading invoice...</p>
+        </div>
+      </div>
+    )
   }
 
-  if (!invoice) {
-    return <div className="text-center py-8">Invoice not found</div>
+  if (error || !invoice) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="text-center space-y-4">
+          <p className="text-destructive">{error || "Invoice not found"}</p>
+          <Button asChild>
+            <Link href="/invoices">Back to Invoices</Link>
+          </Button>
+        </div>
+      </div>
+    )
   }
 
-  const subtotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0)
-  const tax = subtotal * 0.18 // 18% GST
-  const total = subtotal + tax
+  const statusColors: Record<string, string> = {
+    draft: "bg-gray-100 text-gray-800",
+    sent: "bg-blue-100 text-blue-800",
+    paid: "bg-green-100 text-green-800",
+    cancelled: "bg-red-100 text-red-800",
+  }
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
-      <div className="flex items-center justify-between">
-        <Link href="/invoices">
-          <Button variant="ghost" className="gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Invoices
-          </Button>
-        </Link>
-        <div className="flex gap-2">
-          <InvoicePrint invoice={invoice} items={items} customer={customer} />
-          <InvoiceActions invoice={invoice} />
+    <div className="mx-auto max-w-5xl space-y-4 md:space-y-6 p-4 md:p-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-2 md:gap-4">
+          <Link href="/invoices">
+            <Button variant="ghost" size="icon">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">Invoice {invoice.invoice_number}</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground">Created on {new Date(invoice.created_at).toLocaleDateString()}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          <Badge className={statusColors[invoice.status]}>{invoice.status.toUpperCase()}</Badge>
+          <InvoicePrint 
+            invoiceId={invoiceId} 
+            invoiceNumber={invoice.invoice_number}
+            invoiceData={{
+              ...invoice,
+              invoice_items: items,
+              customers: customer,
+              profile: settings
+            }}
+          />
+          <InvoiceActions 
+            invoiceId={invoiceId} 
+            invoiceNumber={invoice.invoice_number}
+            invoiceData={{
+              ...invoice,
+              invoice_items: items,
+              customers: customer,
+              profile: settings
+            }}
+          />
         </div>
       </div>
 
+      {/* Invoice Details */}
+      <div className="grid gap-4 md:gap-6 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Invoice Information</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Invoice Date:</span>
+              <span>{new Date(invoice.invoice_date).toLocaleDateString()}</span>
+            </div>
+            {invoice.due_date && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Due Date:</span>
+                <span>{new Date(invoice.due_date).toLocaleDateString()}</span>
+              </div>
+            )}
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Type:</span>
+              <span>{invoice.is_gst_invoice ? "GST Invoice" : "Non-GST Invoice"}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        {customer && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Customer Information</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Name:</span>
+                <span>{customer.name}</span>
+              </div>
+              {customer.email && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Email:</span>
+                  <span>{customer.email}</span>
+                </div>
+              )}
+              {customer.phone && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Phone:</span>
+                  <span>{customer.phone}</span>
+                </div>
+              )}
+              {customer.gstin && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">GSTIN:</span>
+                  <span>{customer.gstin}</span>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Line Items */}
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Invoice {invoice.invoice_number}</CardTitle>
-            <Badge variant={invoice.status === 'paid' ? 'default' : 'secondary'}>
-              {invoice.status || 'pending'}
-            </Badge>
-          </div>
+          <CardTitle className="text-lg md:text-xl">Line Items</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h3 className="font-semibold mb-2">Customer</h3>
-              <p className="text-sm text-muted-foreground">
-                {customer?.name || invoice.customer_id}
-              </p>
-            </div>
-            <div>
-              <h3 className="font-semibold mb-2">Date</h3>
-              <p className="text-sm text-muted-foreground">
-                {invoice.invoice_date ? new Date(invoice.invoice_date).toLocaleDateString() : 'N/A'}
-              </p>
-            </div>
-          </div>
-
-          <div>
-            <h3 className="font-semibold mb-4">Line Items</h3>
-            <Table>
+        <CardContent className="p-4 md:p-6">
+          <div className="overflow-x-auto -mx-4 md:mx-0">
+            <div className="inline-block min-w-full align-middle">
+              <Table className="min-w-full">
               <TableHeader>
                 <TableRow>
-                  <TableHead>Product</TableHead>
-                  <TableHead>Quantity</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
+                  <TableHead>Description</TableHead>
+                  <TableHead>Qty</TableHead>
+                  <TableHead>Unit Price</TableHead>
+                  <TableHead>Discount %</TableHead>
+                  {invoice.is_gst_invoice && <TableHead>GST %</TableHead>}
+                  {invoice.is_gst_invoice && <TableHead>GST Amount</TableHead>}
+                  <TableHead>Total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item) => (
+                {items?.map((item) => (
                   <TableRow key={item.id}>
-                    <TableCell>{item.product_name || item.product_id}</TableCell>
+                    <TableCell>{item.description}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
-                    <TableCell>₹{item.price.toFixed(2)}</TableCell>
-                    <TableCell className="text-right">₹{(item.price * item.quantity).toFixed(2)}</TableCell>
+                    <TableCell>₹{item.unit_price.toFixed(2)}</TableCell>
+                    <TableCell>{item.discount_percent}%</TableCell>
+                    {invoice.is_gst_invoice && <TableCell>{item.gst_rate}%</TableCell>}
+                    {invoice.is_gst_invoice && <TableCell>₹{item.gst_amount.toFixed(2)}</TableCell>}
+                    <TableCell>₹{item.line_total.toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
-            </Table>
-          </div>
-
-          <div className="flex justify-end">
-            <div className="w-full md:w-64 space-y-2">
-              <div className="flex justify-between">
-                <span>Subtotal:</span>
-                <span>₹{subtotal.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>GST (18%):</span>
-                <span>₹{tax.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between font-bold text-lg">
-                <span>Total:</span>
-                <span>₹{total.toFixed(2)}</span>
-              </div>
+              </Table>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Totals */}
+      <Card>
+        <CardContent className="p-4 md:p-6">
+          <div className="ml-auto w-full sm:max-w-sm space-y-2">
+            <div className="flex justify-between">
+              <span>Subtotal:</span>
+              <span className="font-medium">₹{invoice.subtotal.toFixed(2)}</span>
+            </div>
+            {invoice.is_gst_invoice && (
+              <>
+                {invoice.cgst_amount > 0 && (
+                  <div className="flex justify-between">
+                    <span>CGST:</span>
+                    <span className="font-medium">₹{invoice.cgst_amount.toFixed(2)}</span>
+                  </div>
+                )}
+                {invoice.sgst_amount > 0 && (
+                  <div className="flex justify-between">
+                    <span>SGST:</span>
+                    <span className="font-medium">₹{invoice.sgst_amount.toFixed(2)}</span>
+                  </div>
+                )}
+                {invoice.igst_amount > 0 && (
+                  <div className="flex justify-between">
+                    <span>IGST:</span>
+                    <span className="font-medium">₹{invoice.igst_amount.toFixed(2)}</span>
+                  </div>
+                )}
+              </>
+            )}
+            <div className="flex justify-between border-t pt-2 text-lg font-bold">
+              <span>Total:</span>
+              <span>₹{invoice.total_amount.toFixed(2)}</span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Notes and Terms */}
+      {(invoice.notes || invoice.terms) && (
+        <div className="grid gap-4 md:gap-6 md:grid-cols-2">
+          {invoice.notes && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Notes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="whitespace-pre-wrap">{invoice.notes}</p>
+              </CardContent>
+            </Card>
+          )}
+          {invoice.terms && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Terms & Conditions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="whitespace-pre-wrap">{invoice.terms}</p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
     </div>
   )
 }
-
