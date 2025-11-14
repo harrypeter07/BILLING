@@ -5,9 +5,9 @@ export async function generateStaticParams() {
   return []
 }
 
-import EditEmployeePageClient from './page-client'
+import InvoiceDetailPageClient from './page-client'
 
-export default function EditEmployeePage() {
-  return <EditEmployeePageClient />
+export default function InvoiceDetailPage() {
+  return <InvoiceDetailPageClient />
 }
 
