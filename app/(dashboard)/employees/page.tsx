@@ -407,9 +407,6 @@ export default function EmployeesPage() {
                                     const supabase = createClient()
                                     await supabase.from("employees").update({ password: newPassword }).eq("id", emp.id)
                                     toast({ title: "Success", description: `Password reset to ${newPassword}` })
-                                    const supabase = createClient()
-                                    await supabase.from("employees").update({ password: newPassword }).eq("id", emp.id)
-                                    toast({ title: "Success", description: `Password reset to ${newPassword}` })
                                     fetchEmployees()
                                   } catch (error: any) {
                                     toast({ title: "Error", description: error.message || "Failed to reset password", variant: "destructive" })
