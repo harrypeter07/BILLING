@@ -23,7 +23,18 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
       }
 
       try {
-        const result = await checkLicenseOnLaunch();
+        // Add timeout to prevent hanging (5 seconds max)
+        const timeoutPromise = new Promise<{ valid: boolean; requiresActivation: boolean }>((resolve) => {
+          setTimeout(() => {
+            console.warn("License check timed out, redirecting to license page");
+            resolve({ valid: false, requiresActivation: true });
+          }, 5000); // 5 second timeout
+        });
+
+        const result = await Promise.race([
+          checkLicenseOnLaunch(),
+          timeoutPromise,
+        ]);
 
         if (!result.valid || result.requiresActivation) {
           // Redirect to license page if license is invalid or requires activation

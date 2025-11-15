@@ -1,35 +1,95 @@
 /**
  * Get MAC address of the device
  * 
- * In browser environment, we'll use a fallback approach since direct MAC access isn't available.
- * For Electron, this will be replaced with node-machine-id or os.networkInterfaces()
- * 
- * For now, we'll generate a device fingerprint based on available browser APIs.
- * In Electron, we'll use the actual MAC address.
+ * In browser/Tauri environment, we'll use a fallback approach since direct MAC access isn't available.
+ * We generate a device fingerprint based on available browser APIs.
  */
 
 export async function getMacAddress(): Promise<string> {
-  // Check if we're in Electron environment
+  // Check if we're in Electron environment (legacy support)
   if (typeof window !== "undefined" && (window as any).electron) {
-    // Electron environment - use actual MAC address
     try {
       const mac = await (window as any).electron.getMacAddress();
-      return mac;
+      if (mac) return mac;
     } catch (error) {
       console.error("Error getting MAC address from Electron:", error);
     }
   }
 
-  // Browser environment - generate device fingerprint
-  // This is a fallback until Electron is integrated
+  // Check if we're in Tauri environment
+  if (typeof window !== "undefined" && (window as any).__TAURI__) {
+    // Tauri environment - use device fingerprint
+    try {
+      const fingerprint = await generateDeviceFingerprint();
+      return fingerprint;
+    } catch (error) {
+      console.error("Error generating device fingerprint in Tauri:", error);
+    }
+  }
+
+  // Browser environment - generate device fingerprint with timeout
   try {
-    const fingerprint = await generateDeviceFingerprint();
+    const fingerprint = await Promise.race([
+      generateDeviceFingerprint(),
+      new Promise<string>((resolve) => {
+        setTimeout(() => {
+          resolve(generateSimpleFingerprint());
+        }, 2000); // 2 second timeout
+      }),
+    ]);
     return fingerprint;
   } catch (error) {
     console.error("Error generating device fingerprint:", error);
-    // Ultimate fallback
-    return `browser-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    // Ultimate fallback - simple and fast
+    return generateSimpleFingerprint();
   }
+}
+
+/**
+ * Generate a simple device fingerprint (fast, no crypto operations)
+ */
+function generateSimpleFingerprint(): string {
+  const storageKey = "device_fingerprint_id";
+  let deviceId = localStorage.getItem(storageKey);
+  
+  if (!deviceId) {
+    // Generate a simple but unique ID
+    const components: string[] = [];
+    
+    if (typeof navigator !== "undefined") {
+      components.push(navigator.userAgent || "");
+      components.push(navigator.language || "");
+      components.push(navigator.platform || "");
+    }
+    
+    if (typeof screen !== "undefined") {
+      components.push(`${screen.width}x${screen.height}`);
+    }
+    
+    const baseString = components.join("|") + Date.now().toString();
+    // Simple hash
+    let hash = 0;
+    for (let i = 0; i < baseString.length; i++) {
+      const char = baseString.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    
+    deviceId = `device-${Math.abs(hash).toString(16)}-${Date.now().toString(36)}`;
+    try {
+      localStorage.setItem(storageKey, deviceId);
+    } catch (e) {
+      console.warn("Could not store device ID:", e);
+    }
+  }
+  
+  // Format as MAC-like address
+  const hashStr = deviceId.replace(/[^0-9a-f]/gi, "").substring(0, 12).padEnd(12, "0");
+  const parts: string[] = [];
+  for (let i = 0; i < 6; i++) {
+    parts.push(hashStr.substring(i * 2, (i + 1) * 2));
+  }
+  return parts.join(":").toUpperCase();
 }
 
 /**
@@ -76,13 +136,45 @@ async function generateDeviceFingerprint(): Promise<string> {
   
   if (!deviceId) {
     deviceId = `device-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
-    localStorage.setItem(storageKey, deviceId);
+    try {
+      localStorage.setItem(storageKey, deviceId);
+    } catch (e) {
+      console.warn("Could not store device ID:", e);
+    }
   }
   components.push(deviceId);
 
-  // Create hash-like identifier
+  // Create hash-like identifier with timeout protection
   const combined = components.join("|");
-  const hash = await hashString(combined);
+  let hash: string;
+  
+  try {
+    hash = await Promise.race([
+      hashString(combined),
+      new Promise<string>((resolve) => {
+        setTimeout(() => {
+          // Fallback to simple hash if crypto.subtle takes too long
+          let simpleHash = 0;
+          for (let i = 0; i < combined.length; i++) {
+            const char = combined.charCodeAt(i);
+            simpleHash = ((simpleHash << 5) - simpleHash) + char;
+            simpleHash = simpleHash & simpleHash;
+          }
+          resolve(Math.abs(simpleHash).toString(16));
+        }, 1000); // 1 second timeout for crypto operation
+      }),
+    ]);
+  } catch (error) {
+    console.error("Error hashing, using simple hash:", error);
+    // Fallback to simple hash
+    let simpleHash = 0;
+    for (let i = 0; i < combined.length; i++) {
+      const char = combined.charCodeAt(i);
+      simpleHash = ((simpleHash << 5) - simpleHash) + char;
+      simpleHash = simpleHash & simpleHash;
+    }
+    hash = Math.abs(simpleHash).toString(16);
+  }
   
   // Format as MAC-like address (00:1A:2B:3C:4D:5E)
   return formatAsMacAddress(hash);

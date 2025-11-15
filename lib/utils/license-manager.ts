@@ -192,8 +192,22 @@ export async function checkLicenseOnLaunch(): Promise<{
   requiresActivation: boolean;
 }> {
   try {
-    // First, try to get stored license
-    const storedLicense = await getStoredLicense();
+    // First, try to get stored license (with timeout protection)
+    let storedLicense: LicenseInfo | null = null;
+    try {
+      storedLicense = await Promise.race([
+        getStoredLicense(),
+        new Promise<null>((resolve) => {
+          setTimeout(() => {
+            console.warn("getStoredLicense timed out");
+            resolve(null);
+          }, 2000); // 2 second timeout for IndexedDB access
+        }),
+      ]);
+    } catch (error) {
+      console.error("Error getting stored license:", error);
+      storedLicense = null;
+    }
 
     if (!storedLicense) {
       return { valid: false, requiresActivation: true };
@@ -205,12 +219,34 @@ export async function checkLicenseOnLaunch(): Promise<{
     }
 
     // Try to validate online (optional - for revocation check)
+    // Add timeout to prevent hanging on network requests
     try {
-      const macAddress = await getMacAddress();
-      const onlineValidation = await validateLicenseOnline(
+      const macAddressPromise = Promise.race([
+        getMacAddress(),
+        new Promise<string>((resolve) => {
+          setTimeout(() => {
+            console.warn("getMacAddress timed out, using stored MAC");
+            resolve(storedLicense!.macAddress);
+          }, 2000); // 2 second timeout
+        }),
+      ]);
+
+      const macAddress = await macAddressPromise;
+      
+      const onlineValidationPromise = validateLicenseOnline(
         storedLicense.licenseKey,
         macAddress
       );
+
+      const onlineValidation = await Promise.race([
+        onlineValidationPromise,
+        new Promise<{ valid: boolean; error?: string }>((resolve) => {
+          setTimeout(() => {
+            console.warn("Online validation timed out, using offline license");
+            resolve({ valid: false, error: "Timeout" });
+          }, 3000); // 3 second timeout for network request
+        }),
+      ]);
 
       if (!onlineValidation.valid) {
         // License revoked or invalid online, but allow offline use
@@ -227,7 +263,7 @@ export async function checkLicenseOnLaunch(): Promise<{
       }
     } catch (error) {
       // Offline - use stored license
-      console.log("Offline mode: using stored license");
+      console.log("Offline mode: using stored license", error);
     }
 
     // Use stored license (offline mode)

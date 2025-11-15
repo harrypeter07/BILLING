@@ -97,3 +97,4 @@ The EXE will be approximately 100-200 MB because it includes:
 - Next.js static files (~20-40 MB)
 - Node.js dependencies (~30-80 MB)
 
+
