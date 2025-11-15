@@ -19,6 +19,8 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
   const pathname = usePathname();
   
   console.log('[LicenseGuard] Component rendered');
+  console.log('[LicenseGuard] Initial state - checking:', checking, 'showWelcome:', showWelcome);
+  console.log('[LicenseGuard] isElectron:', isElectron);
 
   // Get current path - use window.location in Electron, pathname in web
   const getCurrentPath = () => {
@@ -35,23 +37,9 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
   const redirectToLicense = () => {
     console.log('[LicenseGuard] redirectToLicense called');
     if (isElectron) {
-      // In Electron, use window.location for reliable redirect
-      console.log('[LicenseGuard] Redirecting via window.location to /license');
-      try {
-        // Try relative path first
-        window.location.href = "./license/";
-        // Fallback after a short delay if it doesn't work
-        setTimeout(() => {
-          if (window.location.pathname !== '/license' && !window.location.pathname.includes('license')) {
-            console.log('[LicenseGuard] Fallback: trying absolute path /license');
-            window.location.href = "/license/";
-          }
-        }, 500);
-      } catch (error) {
-        console.error('[LicenseGuard] Redirect error:', error);
-        // Last resort: try to navigate directly
-        window.location.href = "/license/";
-      }
+      // In Electron, use HTTP URL (server handles routing)
+      console.log('[LicenseGuard] Redirecting via window.location to http://localhost:3000/license');
+      window.location.href = "http://localhost:3000/license";
     } else {
       // In web, use Next.js router
       console.log('[LicenseGuard] Redirecting via router.push to /license');
@@ -66,6 +54,21 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
     console.log('[LicenseGuard] pathname (hook):', pathname);
     console.log('[LicenseGuard] window.location.pathname:', typeof window !== 'undefined' ? window.location.pathname : 'N/A');
     console.log('[LicenseGuard] currentPath (computed):', currentPath);
+    
+    // BYPASS LICENSE CHECK IN ELECTRON FOR NOW
+    if (isElectron) {
+      console.log('[LicenseGuard] ⚠ BYPASSING LICENSE CHECK IN ELECTRON - allowing immediate access');
+      console.log('[LicenseGuard] Setting checking=false and showWelcome=false immediately');
+      // Use setTimeout to ensure state updates happen
+      setTimeout(() => {
+        console.log('[LicenseGuard] State update timeout - ensuring checking is false');
+        setChecking(false);
+        setShowWelcome(false);
+      }, 0);
+      setChecking(false);
+      setShowWelcome(false);
+      return;
+    }
     
     // Skip license check on license page itself
     const isLicensePage = currentPath === "/license" || currentPath === "/license/" || 
@@ -177,7 +180,15 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
     };
   }, [router, pathname]);
 
+  // In Electron, always show children immediately (bypass is active)
+  if (isElectron) {
+    console.log('[LicenseGuard] Electron detected - rendering children immediately (bypass active)');
+    console.log('[LicenseGuard] checking:', checking, 'showWelcome:', showWelcome);
+    return <>{children}</>;
+  }
+
   if (checking || showWelcome) {
+    console.log('[LicenseGuard] Rendering loading state - checking:', checking, 'showWelcome:', showWelcome);
     return (
       <div style={{ 
         minHeight: '100vh', 
@@ -226,6 +237,7 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
     );
   }
 
+  console.log('[LicenseGuard] Rendering children (normal flow)');
   return <>{children}</>;
 }
 

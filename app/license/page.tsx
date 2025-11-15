@@ -61,7 +61,7 @@ export default function LicensePage() {
           // License is valid, redirect to dashboard
           if (typeof window !== 'undefined' && (window as any).electronAPI) {
             console.log('[LicensePage] Using window.location for Electron redirect');
-            window.location.href = "./dashboard/";
+            window.location.href = "http://localhost:3000/dashboard";
           } else {
             console.log('[LicensePage] Using router.push for web redirect');
             router.push("/dashboard");

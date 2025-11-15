@@ -1,6 +1,8 @@
 {
-  "name": "my-v0-project",
+  "name": "billing-solutions",
   "version": "0.1.0",
+  "description": "Smart Billing for Small Businesses - Manage products, create GST invoices, track customers, and generate reports",
+  "author": "Billing Solutions",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -127,9 +129,10 @@
     "files": [
       "out/**/*",
       "electron/**/*",
-      "package.json",
-      "node_modules/**/*"
+      "package.json"
     ],
+    "asar": true,
+    "asarUnpack": [],
     "extraResources": [
       {
         "from": "public",

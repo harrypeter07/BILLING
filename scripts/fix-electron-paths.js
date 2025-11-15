@@ -2,8 +2,9 @@ const fs = require('fs');
 const path = require('path');
 
 /**
- * Fixes absolute paths in Next.js static export HTML files to work with Electron's file:// protocol
- * Converts paths like /_next/static/... to relative paths like ./_next/static/... or ../_next/static/...
+ * Fixes absolute paths in Next.js static export HTML files
+ * NOTE: Since we're now using HTTP server (not file://), this script is mainly for compatibility
+ * but paths should work with HTTP server as-is. Keeping this for any edge cases.
  */
 function fixPathsInHtml(htmlContent, filePath) {
   const outDir = path.join(__dirname, '../out');
@@ -45,59 +46,14 @@ function fixPathsInHtml(htmlContent, filePath) {
     let electronScript = '';
     
     if (isLicensePage) {
-      // For license page: show fallback form if React doesn't hydrate
+      // For license page: simple logging (HTTP server handles everything)
       electronScript = `
 <script>
-// Fallback license form for Electron if React doesn't hydrate
+// Electron environment detection for license page
 (function() {
   try {
-    if (window.location.protocol === 'file:') {
-      console.log('[Electron Fallback] License page loaded, waiting for React...');
-      var reactLoaded = false;
-      var checkInterval = setInterval(function() {
-        // Check if React has loaded by looking for __next_f or React
-        var nextRoot = document.querySelector('#__next');
-        var hasContent = nextRoot && nextRoot.innerHTML && nextRoot.innerHTML.trim().length > 100;
-        if (window.__next_f || window.React || document.querySelector('[data-reactroot]') || hasContent) {
-          reactLoaded = true;
-          clearInterval(checkInterval);
-          console.log('[Electron Fallback] React loaded successfully');
-        }
-      }, 500);
-      
-      // After 3 seconds, if React hasn't loaded, show fallback form
-      setTimeout(function() {
-        if (!reactLoaded) {
-          console.warn('[Electron Fallback] React did not load, showing fallback form');
-          clearInterval(checkInterval);
-          
-          // Hide the React root and show fallback
-          var root = document.getElementById('__next') || document.body;
-          if (root) {
-            var fallbackHTML = '<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f5f5f5;padding:20px;"><div style="background:white;border-radius:8px;padding:32px;max-width:400px;width:100%;box-shadow:0 2px 8px rgba(0,0,0,0.1);"><h1 style="text-align:center;margin:0 0 8px 0;font-size:24px;font-weight:600;">License Activation</h1><p style="text-align:center;color:#666;margin:0 0 24px 0;">Enter your license key to activate the application</p><form id="fallback-license-form" style="display:flex;flex-direction:column;gap:16px;"><div><label style="display:block;margin-bottom:8px;font-weight:500;">License Key <span style="color:red;">*</span></label><input type="text" id="fallback-license-key" required style="width:100%;padding:10px;border:1px solid #ddd;border-radius:4px;font-family:monospace;" placeholder="ABC-123-XYZ" /></div><div><label style="display:block;margin-bottom:8px;font-weight:500;">Email (Optional)</label><input type="email" id="fallback-email" style="width:100%;padding:10px;border:1px solid #ddd;border-radius:4px;" placeholder="your@email.com" /></div><button type="submit" style="width:100%;padding:12px;background:#007bff;color:white;border:none;border-radius:4px;font-weight:500;cursor:pointer;">Activate License</button></form><div id="fallback-message" style="margin-top:16px;padding:12px;border-radius:4px;display:none;"></div></div></div>';
-            root.innerHTML = fallbackHTML;
-            
-            // Add form handler
-            document.getElementById('fallback-license-form').addEventListener('submit', function(e) {
-              e.preventDefault();
-              var key = document.getElementById('fallback-license-key').value;
-              var email = document.getElementById('fallback-email').value;
-              var msgDiv = document.getElementById('fallback-message');
-              msgDiv.style.display = 'block';
-              msgDiv.style.background = '#d4edda';
-              msgDiv.style.color = '#155724';
-              msgDiv.textContent = 'License activation is processing. Please restart the application.';
-              // Store in localStorage as fallback
-              try {
-                localStorage.setItem('fallback_license_key', key);
-                if (email) localStorage.setItem('fallback_license_email', email);
-              } catch(err) {
-                console.error('Could not save to localStorage:', err);
-              }
-            });
-          }
-        }
-      }, 3000);
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      console.log('[Electron] License page loaded via HTTP server');
     }
   } catch (e) {
     console.error('[Electron Fallback] Error:', e);
@@ -105,32 +61,18 @@ function fixPathsInHtml(htmlContent, filePath) {
 })();
 </script>`;
     } else {
-      // For root/index page: redirect to license if React doesn't hydrate
+      // For root/index page: Simple logging only (HTTP server handles everything)
       electronScript = `
 <script>
-// Fallback redirect for Electron if React doesn't hydrate
+// Electron environment detection and logging
 (function() {
   try {
-    if (window.location.protocol === 'file:') {
-      var currentPath = window.location.pathname;
-      if ((currentPath === '/' || currentPath.endsWith('/index.html') || currentPath === '') && 
-          !currentPath.includes('license')) {
-        console.log('[Electron Fallback] Detected Electron environment, will redirect to license page');
-        setTimeout(function() {
-          if (window.location.pathname === '/' || window.location.pathname.endsWith('/index.html') || 
-              window.location.pathname === '' || window.location.pathname === currentPath) {
-            console.log('[Electron Fallback] React did not hydrate, redirecting to license page');
-            // Try multiple path formats for license page
-            var licensePaths = ['./license/index.html', './license/', 'license/index.html', 'license/'];
-            var currentBase = window.location.href.substring(0, window.location.href.lastIndexOf('/'));
-            // Try the first path, if it fails, the did-fail-load handler will catch it
-            window.location.href = licensePaths[0];
-          }
-        }, 2000);
-      }
+    if (typeof window !== 'undefined' && window.electronAPI) {
+      console.log('[Electron] Detected Electron environment');
+      console.log('[Electron] Using HTTP server:', window.location.href);
     }
   } catch (e) {
-    console.error('[Electron Fallback] Error:', e);
+    console.error('[Electron] Error:', e);
   }
 })();
 </script>`;
