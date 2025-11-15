@@ -15,10 +15,10 @@
     "start": "next start",
     "lint": "eslint .",
     "seed:license": "node scripts/seed-license.js",
-    "dist": "npm run build:export && electron-builder",
-    "dist:win": "npm run build:export && electron-builder --win --dir",
-    "dist:mac": "npm run build:export && electron-builder --mac",
-    "dist:linux": "npm run build:export && electron-builder --linux",
+    "dist": "node scripts/clear-electron-cache.js && npm run build:export && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
+    "dist:win": "node scripts/clear-electron-cache.js && npm run build:export && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --dir",
+    "dist:mac": "node scripts/clear-electron-cache.js && npm run build:export && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
+    "dist:linux": "node scripts/clear-electron-cache.js && npm run build:export && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --linux",
     "tauri:build": "tauri build",
     "tauri:build:win": "cross-env CC=gcc AR=ar tauri build --target x86_64-pc-windows-gnu"
   },
@@ -116,6 +116,10 @@
       ],
       "forceCodeSigning": false
     },
+    "electronDownload": {
+      "cache": "./.electron-cache"
+    },
+    "beforeBuild": "node scripts/clear-electron-cache.js",
     "directories": {
       "buildResources": "assets",
       "output": "dist"
