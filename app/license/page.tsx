@@ -27,37 +27,89 @@ export default function LicensePage() {
   const [success, setSuccess] = useState(false);
   const router = useRouter();
 
-  // Check if license already exists on mount
+  console.log('[LicensePage] Component rendered, checking:', checking);
+
+  // Check if license already exists on mount - with aggressive timeout
   useEffect(() => {
+    console.log('[LicensePage] useEffect started - checking for existing license');
+    
+    // Set immediate timeout to show form quickly (500ms)
+    const immediateTimeout = setTimeout(() => {
+      console.log('[LicensePage] Immediate timeout (500ms) - setting checking to false');
+      setChecking(false);
+    }, 500);
+    
     const checkExistingLicense = async () => {
+      console.log('[LicensePage] checkExistingLicense started');
       try {
-        const stored = await getStoredLicense();
+        console.log('[LicensePage] Getting stored license from IndexedDB...');
+        
+        // Add timeout to getStoredLicense call (1 second max)
+        const licensePromise = getStoredLicense();
+        const timeoutPromise = new Promise<null>((resolve) => {
+          setTimeout(() => {
+            console.warn('[LicensePage] getStoredLicense timeout after 1 second');
+            resolve(null);
+          }, 1000);
+        });
+        
+        const stored = await Promise.race([licensePromise, timeoutPromise]);
+        console.log('[LicensePage] Stored license result:', stored ? 'found' : 'not found', stored);
+        
         if (stored && isLicenseValid(stored)) {
+          console.log('[LicensePage] License is valid, redirecting to dashboard');
           // License is valid, redirect to dashboard
-          router.push("/dashboard");
+          if (typeof window !== 'undefined' && (window as any).electronAPI) {
+            console.log('[LicensePage] Using window.location for Electron redirect');
+            window.location.href = "./dashboard/";
+          } else {
+            console.log('[LicensePage] Using router.push for web redirect');
+            router.push("/dashboard");
+          }
           return;
         }
+        console.log('[LicensePage] No valid license found, will show form');
       } catch (error) {
-        console.error("Error checking existing license:", error);
+        console.error("[LicensePage] Error checking existing license:", error);
       } finally {
+        console.log('[LicensePage] Finally block - setting checking to false');
+        clearTimeout(immediateTimeout);
         setChecking(false);
       }
     };
 
-    checkExistingLicense();
+    // Add longer timeout as backup (2 seconds)
+    const backupTimeout = setTimeout(() => {
+      console.warn('[LicensePage] Backup timeout (2s) - forcing checking to false');
+      setChecking(false);
+    }, 2000);
+
+    checkExistingLicense().finally(() => {
+      clearTimeout(backupTimeout);
+    });
   }, [router]);
 
   // Get MAC address on mount
   useEffect(() => {
+    console.log('[LicensePage] Fetching MAC address...');
     const fetchMacAddress = async () => {
       try {
         const mac = await getMacAddress();
+        console.log('[LicensePage] MAC address fetched:', mac ? 'success' : 'failed');
         setMacAddress(mac);
       } catch (error) {
-        console.error("Error getting MAC address:", error);
+        console.error("[LicensePage] Error getting MAC address:", error);
       }
     };
-    fetchMacAddress();
+    
+    // Add timeout for MAC address fetch
+    const timeout = setTimeout(() => {
+      console.warn('[LicensePage] MAC address fetch timeout');
+    }, 2000);
+    
+    fetchMacAddress().finally(() => {
+      clearTimeout(timeout);
+    });
   }, []);
 
   const handleActivate = async (e: React.FormEvent) => {
@@ -92,15 +144,19 @@ export default function LicensePage() {
   };
 
   if (checking) {
+    console.log('[LicensePage] Rendering loading state (checking:', checking, ')');
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-muted-foreground">Checking license...</p>
+          <p className="text-xs text-muted-foreground">This should only take a moment...</p>
         </div>
       </div>
     );
   }
+  
+  console.log('[LicensePage] Rendering license form - checking:', checking, 'loading:', loading, 'error:', error);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">

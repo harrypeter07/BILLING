@@ -6,19 +6,19 @@
   "scripts": {
     "dev": "concurrently \"npm run dev:next\" \"npm run dev:electron\"",
     "dev:next": "next dev",
-    "dev:electron": "wait-on http://localhost:3000 && cross-env NODE_ENV=development electron .",
+    "dev:electron": "wait-on http://localhost:3000 ; cross-env NODE_ENV=development electron .",
     "dev:tauri": "tauri dev",
     "build": "next build",
-    "build:export": "node scripts/prepare-electron-build.js && cross-env ELECTRON_BUILD=true next build && node scripts/restore-api-routes.js",
-    "build:tauri": "node scripts/prepare-electron-build.js && cross-env TAURI_BUILD=true next build && node scripts/restore-api-routes.js",
+    "build:export": "node scripts/prepare-electron-build.js ; cross-env ELECTRON_BUILD=true next build ; node scripts/restore-api-routes.js",
+    "build:tauri": "node scripts/prepare-electron-build.js ; cross-env TAURI_BUILD=true next build ; node scripts/restore-api-routes.js",
     "export": "cross-env TAURI_BUILD=true next build",
     "start": "next start",
     "lint": "eslint .",
     "seed:license": "node scripts/seed-license.js",
-    "dist": "node scripts/clear-electron-cache.js && npm run build:export && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder",
-    "dist:win": "node scripts/clear-electron-cache.js && npm run build:export && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win --dir",
-    "dist:mac": "node scripts/clear-electron-cache.js && npm run build:export && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
-    "dist:linux": "node scripts/clear-electron-cache.js && npm run build:export && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --linux",
+    "dist": "node scripts/clear-electron-cache.js ; npm run build:export ; cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder",
+    "dist:win": "node scripts/build-electron-win.js",
+    "dist:mac": "node scripts/clear-electron-cache.js ; npm run build:export ; cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac",
+    "dist:linux": "node scripts/clear-electron-cache.js ; npm run build:export ; cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --linux",
     "tauri:build": "tauri build",
     "tauri:build:win": "cross-env CC=gcc AR=ar tauri build --target x86_64-pc-windows-gnu"
   },
@@ -122,7 +122,7 @@
     "beforeBuild": "node scripts/clear-electron-cache.js",
     "directories": {
       "buildResources": "assets",
-      "output": "dist"
+      "output": "dist/temp-build-1763209271318"
     },
     "files": [
       "out/**/*",
