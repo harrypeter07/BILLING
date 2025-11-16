@@ -467,38 +467,13 @@ const startNextServer = async () => {
       
       if (portInUse) {
         console.log(`[Electron] ⚠ Port ${PORT} is already in use, finding available port...`);
-        const availablePort = await findAvailablePort(PORT);
+        // Find an available port (try 3000-3009)
+        const availablePort = await findAvailablePort(PORT, 10);
         if (availablePort) {
           actualPort = availablePort;
           console.log(`[Electron] ✅ Found available port: ${actualPort}`);
         } else {
-          console.error('[Electron] ❌ Could not find available port, trying to use existing server on port 3000');
-          // If we can't find a port, try to use the existing server
-          // Check if it's our own server by making a test request
-          try {
-            const testReq = http.get(`http://localhost:${PORT}`, (res) => {
-              console.log(`[Electron] ✅ Existing server found on port ${PORT}, reusing it`);
-              // Restore original working directory
-              process.chdir(originalCwd);
-              // Reset flag
-              setTimeout(() => {
-                isServerStarting = false;
-              }, 1000);
-              return `http://localhost:${PORT}`;
-            });
-            testReq.on('error', () => {
-              throw new Error(`Port ${PORT} is in use by another application`);
-            });
-            testReq.setTimeout(2000, () => {
-              testReq.destroy();
-              throw new Error(`Port ${PORT} is in use but not responding`);
-            });
-            // Wait a bit for the test request
-            await new Promise(resolve => setTimeout(resolve, 500));
-            actualPort = PORT; // Use existing port
-          } catch (error) {
-            throw new Error(`Port ${PORT} is in use and not accessible: ${error.message}`);
-          }
+          throw new Error(`Could not find available port starting from ${PORT}`);
         }
       }
       
