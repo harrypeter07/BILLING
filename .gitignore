@@ -38,6 +38,7 @@ app/firebase/*.json
 *.AppImage
 *.deb
 *.rpm
+.electron-cache/
 
 # tauri build artifacts
 /src-tauri/target/
