@@ -21,16 +21,10 @@ async function build() {
     require('./clear-electron-cache.js');
     console.log('');
 
-    // Step 2: Build export
-    console.log('Step 2: Building Next.js static export...');
-    execSync('node scripts/prepare-electron-build.js', { stdio: 'inherit' });
-    execSync('npx cross-env ELECTRON_BUILD=true next build', { stdio: 'inherit' });
-    execSync('node scripts/restore-api-routes.js', { stdio: 'inherit' });
+    // Step 2: Build Next.js normally (NO static export - we run server inside Electron)
+    console.log('Step 2: Building Next.js (production build, no export)...');
     console.log('');
-    
-    // Step 2.5: Fix paths in HTML files for Electron file:// protocol
-    console.log('Step 2.5: Fixing absolute paths in HTML files for Electron...');
-    execSync('node scripts/fix-electron-paths.js', { stdio: 'inherit' });
+    execSync('npm run build', { stdio: 'inherit' });
     console.log('');
 
     // Step 3: Build Electron (try to delete old, then build to temp if needed)

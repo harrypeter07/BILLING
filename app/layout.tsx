@@ -76,7 +76,10 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
-      <body className="font-sans antialiased">
+      <body 
+        className="font-sans antialiased"
+        suppressHydrationWarning
+      >
         <LicenseGuard>
         {children}
         <div className="fixed bottom-3 right-3 rounded-md border bg-background/80 px-3 py-2 shadow">

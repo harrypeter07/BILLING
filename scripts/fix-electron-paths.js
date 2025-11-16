@@ -61,15 +61,24 @@ function fixPathsInHtml(htmlContent, filePath) {
 })();
 </script>`;
     } else {
-      // For root/index page: Simple logging only (HTTP server handles everything)
+      // For root/index page: Immediate redirect for Electron before React loads
+      // Electron uses HTTP server, so redirect to localhost:3000/dashboard
       electronScript = `
 <script>
-// Electron environment detection and logging
+// IMMEDIATE redirect for Electron (runs before React loads)
+// This runs BEFORE React loads, so no license check can happen
 (function() {
   try {
-    if (typeof window !== 'undefined' && window.electronAPI) {
-      console.log('[Electron] Detected Electron environment');
-      console.log('[Electron] Using HTTP server:', window.location.href);
+    if (typeof window !== 'undefined') {
+      const pathname = window.location.pathname;
+      
+      // Check for Electron
+      const isElectron = window.electronAPI;
+      if (isElectron && pathname === '/' && !pathname.includes('/dashboard')) {
+        console.log('[Electron] Detected - redirecting to dashboard');
+        window.location.replace('http://localhost:3000/dashboard');
+        return;
+      }
     }
   } catch (e) {
     console.error('[Electron] Error:', e);

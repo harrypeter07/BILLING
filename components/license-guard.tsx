@@ -9,66 +9,93 @@ interface LicenseGuardProps {
   children: React.ReactNode;
 }
 
-// Check if we're in Electron environment
-const isElectron = typeof window !== "undefined" && (window as any).electronAPI;
+// Check Electron at MODULE LEVEL (before React renders) - this is critical!
+// This runs immediately when the module loads, not waiting for useEffect
+const isElectron =
+  typeof window !== "undefined" &&
+  (
+    // preload-injected API (most reliable)
+    !!(window as any).electronAPI ||
+    // classic Electron flags
+    ((window as any).process?.type === "renderer") ||
+    // userAgent check (always present in Electron)
+    (navigator?.userAgent || "").includes("Electron")
+  );
+
+// Debug log at module level
+if (typeof window !== "undefined") {
+  const win = window as any;
+  console.log("[LicenseGuard MODULE] Checking Electron detection...");
+  console.log("[LicenseGuard MODULE] has electronAPI:", !!win.electronAPI);
+  console.log("[LicenseGuard MODULE] userAgent:", navigator?.userAgent || "");
+  console.log("[LicenseGuard MODULE] process.type:", win.process?.type);
+  console.log("[LicenseGuard MODULE] isElectron (module level):", isElectron);
+}
 
 export function LicenseGuard({ children }: LicenseGuardProps) {
-  const [checking, setChecking] = useState(true);
-  const [showWelcome, setShowWelcome] = useState(false); // Disable welcome screen
+  // EARLY RETURN - if Electron detected at module level, bypass immediately
+  // This runs BEFORE any React state or effects, preventing license check
+  if (isElectron) {
+    console.log("[LicenseGuard] ✅ Electron detected at module level - BYPASSING license check immediately");
+    return <>{children}</>;
+  }
+
+  // Additional runtime check as backup (in case module-level check missed it)
+  const [isDesktop, setIsDesktop] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const win = window as any;
+    const ua = navigator?.userAgent || "";
+
+    const runtimeElectron =
+      !!win.electronAPI ||
+      ua.includes("Electron") ||
+      (win.process && win.process.type === "renderer");
+
+    console.log("[LicenseGuard RUNTIME] userAgent:", ua);
+    console.log("[LicenseGuard RUNTIME] has electronAPI:", !!win.electronAPI);
+    console.log("[LicenseGuard RUNTIME] isElectron (runtime):", runtimeElectron);
+
+    if (runtimeElectron) {
+      console.log("[LicenseGuard RUNTIME] Electron detected - BYPASSING license check");
+      setIsDesktop(true);
+    }
+  }, []);
+
+  // If runtime check detected desktop, bypass
+  if (isDesktop) {
+    return <>{children}</>;
+  }
+
+  // --------------------
+  // WEB-ONLY LICENSE LOGIC BELOW (unchanged)
+  // --------------------
+  const [checking, setChecking] = useState(true);
+  const [showWelcome, setShowWelcome] = useState(false);
   
-  console.log('[LicenseGuard] Component rendered');
+  console.log('[LicenseGuard] Component rendered (web mode)');
   console.log('[LicenseGuard] Initial state - checking:', checking, 'showWelcome:', showWelcome);
-  console.log('[LicenseGuard] isElectron:', isElectron);
 
   // Get current path - use window.location in Electron, pathname in web
   const getCurrentPath = () => {
-    if (isElectron && typeof window !== 'undefined') {
-      // In Electron, use window.location.pathname
-      const path = window.location.pathname;
-      // Remove leading slash and handle index
-      return path === '/' || path === '' ? '/' : path.replace(/\/$/, '') || '/';
-    }
     return pathname || '/';
   };
 
   // Redirect function that works in both web and Electron
   const redirectToLicense = () => {
     console.log('[LicenseGuard] redirectToLicense called');
-    if (isElectron) {
-      // In Electron, use HTTP URL (server handles routing)
-      console.log('[LicenseGuard] Redirecting via window.location to http://localhost:3000/license');
-      window.location.href = "http://localhost:3000/license";
-    } else {
-      // In web, use Next.js router
-      console.log('[LicenseGuard] Redirecting via router.push to /license');
-      router.push("/license");
-    }
+    router.push("/license");
   };
 
   useEffect(() => {
     const currentPath = getCurrentPath();
-    console.log('[LicenseGuard] Effect started');
-    console.log('[LicenseGuard] isElectron:', isElectron);
-    console.log('[LicenseGuard] pathname (hook):', pathname);
-    console.log('[LicenseGuard] window.location.pathname:', typeof window !== 'undefined' ? window.location.pathname : 'N/A');
+    console.log('[LicenseGuard] Effect started (web mode)');
+    console.log('[LicenseGuard] pathname:', pathname);
     console.log('[LicenseGuard] currentPath (computed):', currentPath);
-    
-    // BYPASS LICENSE CHECK IN ELECTRON FOR NOW
-    if (isElectron) {
-      console.log('[LicenseGuard] ⚠ BYPASSING LICENSE CHECK IN ELECTRON - allowing immediate access');
-      console.log('[LicenseGuard] Setting checking=false and showWelcome=false immediately');
-      // Use setTimeout to ensure state updates happen
-      setTimeout(() => {
-        console.log('[LicenseGuard] State update timeout - ensuring checking is false');
-        setChecking(false);
-        setShowWelcome(false);
-      }, 0);
-      setChecking(false);
-      setShowWelcome(false);
-      return;
-    }
     
     // Skip license check on license page itself
     const isLicensePage = currentPath === "/license" || currentPath === "/license/" || 
@@ -179,13 +206,6 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
       }
     };
   }, [router, pathname]);
-
-  // In Electron, always show children immediately (bypass is active)
-  if (isElectron) {
-    console.log('[LicenseGuard] Electron detected - rendering children immediately (bypass active)');
-    console.log('[LicenseGuard] checking:', checking, 'showWelcome:', showWelcome);
-    return <>{children}</>;
-  }
 
   if (checking || showWelcome) {
     console.log('[LicenseGuard] Rendering loading state - checking:', checking, 'showWelcome:', showWelcome);

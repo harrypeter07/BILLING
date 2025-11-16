@@ -7,10 +7,28 @@ import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 
+// Check if we're in Electron environment
+const isElectron = typeof window !== "undefined" && (window as any).electronAPI;
+
 export default function LandingPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
+
+  // In Electron, immediately redirect to dashboard (before any other logic)
+  useEffect(() => {
+    if (isElectron) {
+      console.log('[LandingPage] Electron app detected - redirecting to dashboard immediately');
+      if (typeof window !== 'undefined') {
+        const currentPath = window.location.pathname;
+        // Only redirect if not already on dashboard
+        if (!currentPath.includes('/dashboard')) {
+          window.location.replace("http://localhost:3000/dashboard");
+        }
+      }
+      return;
+    }
+  }, [isElectron]);
 
   useEffect(() => {
     const checkAuth = async () => {

@@ -17,21 +17,30 @@ import { activateLicense, getStoredLicense, isLicenseValid } from "@/lib/utils/l
 import { getMacAddress } from "@/lib/utils/mac-address";
 import { Loader2, CheckCircle2, XCircle, Shield } from "lucide-react";
 
+// Check if we're in Electron environment
+const isElectron = typeof window !== "undefined" && (window as any).electronAPI;
+
 export default function LicensePage() {
   const [licenseKey, setLicenseKey] = useState("");
   const [email, setEmail] = useState("");
   const [macAddress, setMacAddress] = useState<string>("");
   const [loading, setLoading] = useState(false);
-  const [checking, setChecking] = useState(true);
+  const [checking, setChecking] = useState(!isElectron); // In Electron, start with false
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const router = useRouter();
 
-  console.log('[LicensePage] Component rendered, checking:', checking);
+  console.log('[LicensePage] Component rendered, checking:', checking, 'isElectron:', isElectron);
 
-  // Check if license already exists on mount - with aggressive timeout
+  // Check if license already exists on mount - skip in Electron
   useEffect(() => {
-    console.log('[LicensePage] useEffect started - checking for existing license');
+    if (isElectron) {
+      console.log('[LicensePage] Electron detected - skipping license check, showing form immediately');
+      setChecking(false);
+      return;
+    }
+
+    console.log('[LicensePage] useEffect started - checking for existing license (web mode)');
     
     // Set immediate timeout to show form quickly (500ms)
     const immediateTimeout = setTimeout(() => {
@@ -58,14 +67,7 @@ export default function LicensePage() {
         
         if (stored && isLicenseValid(stored)) {
           console.log('[LicensePage] License is valid, redirecting to dashboard');
-          // License is valid, redirect to dashboard
-          if (typeof window !== 'undefined' && (window as any).electronAPI) {
-            console.log('[LicensePage] Using window.location for Electron redirect');
-            window.location.href = "http://localhost:3000/dashboard";
-          } else {
-            console.log('[LicensePage] Using router.push for web redirect');
-            router.push("/dashboard");
-          }
+          router.push("/dashboard");
           return;
         }
         console.log('[LicensePage] No valid license found, will show form');
@@ -89,8 +91,19 @@ export default function LicensePage() {
     });
   }, [router]);
 
-  // Get MAC address on mount
+  // Get MAC address on mount - skip in Electron or make it non-blocking
   useEffect(() => {
+    if (isElectron) {
+      // In Electron, fetch MAC address in background, don't block UI
+      console.log('[LicensePage] Electron - fetching MAC address in background');
+      getMacAddress().then(mac => {
+        setMacAddress(mac);
+      }).catch(err => {
+        console.error("[LicensePage] Error getting MAC address:", err);
+      });
+      return;
+    }
+
     console.log('[LicensePage] Fetching MAC address...');
     const fetchMacAddress = async () => {
       try {
