@@ -60,9 +60,19 @@ const startNextServer = async () => {
     console.log('[Electron] Starting Next.js server...');
     console.log('[Electron] App path:', appPath);
     
-    // Find available port first
-    serverPort = await getPort({ port: getPort.makeRange(3000, 3100) });
-    console.log(`[Electron] Found available port: ${serverPort}`);
+    // Find available port first (try 3000-3100)
+    for (let port = 3000; port <= 3100; port++) {
+      const availablePort = await getPort({ port });
+      if (availablePort === port) {
+        serverPort = availablePort;
+        console.log(`[Electron] Found available port: ${serverPort}`);
+        break;
+      }
+    }
+    
+    if (!serverPort) {
+      throw new Error('Could not find available port in range 3000-3100');
+    }
     
     // Change to app directory
     const originalCwd = process.cwd();

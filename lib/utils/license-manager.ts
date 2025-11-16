@@ -199,35 +199,46 @@ export async function checkLicenseOnLaunch(): Promise<{
         getStoredLicense(),
         new Promise<null>((resolve) => {
           setTimeout(() => {
-            console.warn("getStoredLicense timed out");
+            console.warn("[LicenseManager] getStoredLicense timed out");
             resolve(null);
-          }, 2000); // 2 second timeout for IndexedDB access
+          }, 2000);
         }),
       ]);
     } catch (error) {
-      console.error("Error getting stored license:", error);
-      storedLicense = null;
-    }
-
-    if (!storedLicense) {
+      console.error("[LicenseManager] Error getting stored license:", error);
       return { valid: false, requiresActivation: true };
     }
 
-    // Check if license is expired locally
-    if (!isLicenseValid(storedLicense)) {
-      return { valid: false, licenseInfo: storedLicense, requiresActivation: true };
+    // No stored license found
+    if (!storedLicense) {
+      console.log("[LicenseManager] No stored license found");
+      return { valid: false, requiresActivation: true };
     }
 
+    console.log("[LicenseManager] Found stored license for:", storedLicense.clientName);
+
+    // Check if license is expired locally
+    if (!isLicenseValid(storedLicense)) {
+      console.warn("[LicenseManager] Stored license is expired or invalid");
+      return { 
+        valid: false, 
+        licenseInfo: storedLicense, 
+        requiresActivation: true 
+      };
+    }
+
+    console.log("[LicenseManager] Stored license is valid locally");
+
     // Try to validate online (optional - for revocation check)
-    // Add timeout to prevent hanging on network requests
+    // This runs in background and doesn't block if offline
     try {
       const macAddressPromise = Promise.race([
         getMacAddress(),
         new Promise<string>((resolve) => {
           setTimeout(() => {
-            console.warn("getMacAddress timed out, using stored MAC");
+            console.warn("[LicenseManager] getMacAddress timed out, using stored MAC");
             resolve(storedLicense!.macAddress);
-          }, 2000); // 2 second timeout
+          }, 2000);
         }),
       ]);
 
@@ -242,19 +253,57 @@ export async function checkLicenseOnLaunch(): Promise<{
         onlineValidationPromise,
         new Promise<{ valid: boolean; error?: string }>((resolve) => {
           setTimeout(() => {
-            console.warn("Online validation timed out, using offline license");
-            resolve({ valid: false, error: "Timeout" });
-          }, 3000); // 3 second timeout for network request
+            console.warn("[LicenseManager] Online validation timed out");
+            // Return a specific timeout indicator
+            resolve({ valid: false, error: "TIMEOUT" });
+          }, 3000);
         }),
       ]);
 
+      // Check if it was a timeout
+      if (onlineValidation.error === "TIMEOUT") {
+        console.log("[LicenseManager] Online validation timed out, using offline license");
+        // Use stored license (offline mode)
+        return {
+          valid: true,
+          licenseInfo: storedLicense,
+          requiresActivation: false,
+        };
+      }
+
+      // Check if license was revoked online
       if (!onlineValidation.valid) {
-        // License revoked or invalid online, but allow offline use
-        // In strict mode, you might want to return requiresActivation: true
-        console.warn("License validation failed online, but allowing offline use");
-      } else if (onlineValidation.licenseData) {
-        // Update local license if online version is newer
-        await storeLicense(onlineValidation.licenseData);
+        console.warn("[LicenseManager] License is invalid online:", onlineValidation.error);
+        
+        // Check if it's a critical error (revoked, not found)
+        if (onlineValidation.error?.includes("revoked") || 
+            onlineValidation.error?.includes("not found")) {
+          console.error("[LicenseManager] License revoked or not found, requiring reactivation");
+          return { 
+            valid: false, 
+            licenseInfo: storedLicense, 
+            requiresActivation: true 
+          };
+        }
+        
+        // For other errors (network, etc), allow offline use
+        console.log("[LicenseManager] Network error, allowing offline use");
+        return {
+          valid: true,
+          licenseInfo: storedLicense,
+          requiresActivation: false,
+        };
+      }
+
+      // Online validation successful
+      if (onlineValidation.licenseData) {
+        console.log("[LicenseManager] Online validation successful, updating local license");
+        
+        // Update local license asynchronously (don't wait)
+        storeLicense(onlineValidation.licenseData).catch(err => {
+          console.error("[LicenseManager] Failed to update local license:", err);
+        });
+        
         return {
           valid: true,
           licenseInfo: onlineValidation.licenseData,
@@ -262,18 +311,19 @@ export async function checkLicenseOnLaunch(): Promise<{
         };
       }
     } catch (error) {
-      // Offline - use stored license
-      console.log("Offline mode: using stored license", error);
+      // Network error - use stored license (offline mode)
+      console.log("[LicenseManager] Network error during online validation, using offline license:", error);
     }
 
-    // Use stored license (offline mode)
+    // Default: Use stored license (offline mode)
+    console.log("[LicenseManager] Using stored license (offline mode)");
     return {
       valid: true,
       licenseInfo: storedLicense,
       requiresActivation: false,
     };
   } catch (error) {
-    console.error("Error checking license on launch:", error);
+    console.error("[LicenseManager] Critical error checking license:", error);
     return { valid: false, requiresActivation: true };
   }
 }
