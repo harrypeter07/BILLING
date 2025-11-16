@@ -45,68 +45,83 @@ export default function StorePage() {
     e.preventDefault()
     setIsLoading(true)
     try {
-      {
-        // Supabase mode
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          toast({ title: "Error", description: "Not authenticated", variant: "destructive" })
-          return
-        }
-        
-        if (currentStore) {
-          // Update existing store
-          const { data, error: updateError } = await supabase
-            .from("stores")
-            .update({
-              name: formData.name,
-              address: formData.address,
-              gstin: formData.gstin,
-              phone: formData.phone,
-            })
-            .eq("id", currentStore.id)
-            .select()
-            .single()
-          
-          if (updateError) throw updateError
-          
-          if (data) {
-            setCurrentStore(data as any)
-            localStorage.setItem("currentStoreId", data.id)
-            toast({ title: "Success", description: "Store updated successfully" })
-            // Wait a bit for state to update, then redirect
-            await new Promise(resolve => setTimeout(resolve, 500))
-            router.push("/dashboard")
-            router.refresh()
-          }
-        } else {
-          // Create new store
-          const storeCode = generateStoreCode(formData.name)
-          const { data, error } = await supabase.from("stores").insert({
-            name: formData.name,
-            store_code: storeCode,
-            admin_user_id: user.id,
-            address: formData.address,
-            gstin: formData.gstin,
-            phone: formData.phone,
-          }).select().single()
-          
-          if (error) throw error
-          if (data) {
-            setCurrentStore(data as any)
-            localStorage.setItem("currentStoreId", data.id)
-            toast({ title: "Success", description: "Store created successfully" })
-            // Wait a bit for state to update, then redirect
-            await new Promise(resolve => setTimeout(resolve, 500))
-            router.push("/dashboard")
-            router.refresh()
-          }
-        }
+      const storeCode = currentStore?.store_code || generateStoreCode(formData.name)
+      
+      // Prepare store data
+      const storeData: Store = {
+        id: currentStore?.id || crypto.randomUUID(),
+        name: formData.name,
+        store_code: storeCode,
+        admin_user_id: currentStore?.admin_user_id || "", // Will be set when syncing to Supabase
+        address: formData.address || null,
+        gstin: formData.gstin || null,
+        phone: formData.phone || null,
+        created_at: currentStore?.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       }
+      
+      // ALWAYS save to local database (Dexie) first - default storage
+      await db.stores.put(storeData)
+      console.log("[StorePage] Store saved to local database (Dexie)")
+      
+      // Update context and localStorage
+      setCurrentStore(storeData)
+      localStorage.setItem("currentStoreId", storeData.id)
+      
+      // Refresh the page context to ensure store is loaded everywhere
+      router.refresh()
+      
+      toast({ 
+        title: "Success", 
+        description: currentStore ? "Store updated successfully in local database" : "Store created successfully in local database" 
+      })
+      
+      // Don't redirect - let user stay on settings page to see other settings
+      // User can click "Sync to Supabase" button if they want to sync
     } catch (error: any) {
       toast({
         title: "Error",
         description: error.message || "Failed to save store",
+        variant: "destructive",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSyncToSupabase = async () => {
+    if (!currentStore) {
+      toast({ 
+        title: "Error", 
+        description: "No store to sync. Please save the store first.", 
+        variant: "destructive" 
+      })
+      return
+    }
+
+    setIsLoading(true)
+    try {
+      const { syncStoreToSupabase } = await import("@/lib/utils/supabase-sync")
+      const result = await syncStoreToSupabase(currentStore)
+      
+      if (result.success) {
+        toast({ 
+          title: "Success", 
+          description: "Store synced to Supabase successfully" 
+        })
+        // Refresh to update context
+        router.refresh()
+      } else {
+        toast({
+          title: "Sync Failed",
+          description: result.error || "Failed to sync store to Supabase",
+          variant: "destructive",
+        })
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to sync store",
         variant: "destructive",
       })
     } finally {
@@ -184,6 +199,24 @@ export default function StorePage() {
               {isLoading ? "Saving..." : currentStore ? "Update Store" : "Create Store"}
             </Button>
           </form>
+          
+          {/* Sync to Supabase button - only show if store exists */}
+          {currentStore && (
+            <div className="mt-4 pt-4 border-t">
+              <p className="text-sm text-muted-foreground mb-2">
+                Store is saved locally. Click below to sync to Supabase cloud storage.
+              </p>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={handleSyncToSupabase}
+                disabled={isLoading}
+                className="w-full"
+              >
+                {isLoading ? "Syncing..." : "Sync to Supabase"}
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

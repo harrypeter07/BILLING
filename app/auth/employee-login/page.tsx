@@ -10,6 +10,8 @@ import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { createClient } from "@/lib/supabase/client"
 import { toast } from "sonner"
+import Link from "next/link"
+import { ArrowLeft } from "lucide-react"
 
 export default function EmployeeLoginPage() {
   const [storeName, setStoreName] = useState("")
@@ -303,10 +305,22 @@ export default function EmployeeLoginPage() {
     <div className="flex min-h-screen w-full items-center justify-center bg-muted/40 p-6">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Employee Login</CardTitle>
-          <CardDescription>
-            Enter your store name or store code, employee ID, and password to login
-          </CardDescription>
+          <div className="flex items-center gap-2 mb-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => router.push("/")}
+              className="h-8 w-8"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex-1">
+              <CardTitle>Employee Login</CardTitle>
+              <CardDescription>
+                Enter your store name or store code, employee ID, and password to login
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
@@ -356,6 +370,21 @@ export default function EmployeeLoginPage() {
               {isLoading ? "Logging in..." : "Login"}
             </Button>
           </form>
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-center gap-4 pt-2">
+              <Link href="/" className="text-xs text-muted-foreground hover:text-primary">
+                Home
+              </Link>
+              <span className="text-xs text-muted-foreground">•</span>
+              <Link href="/auth/login" className="text-xs text-muted-foreground hover:text-primary">
+                Admin/Public Login
+              </Link>
+              <span className="text-xs text-muted-foreground">•</span>
+              <Link href="/auth/customer-login" className="text-xs text-muted-foreground hover:text-primary">
+                Customer Login
+              </Link>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

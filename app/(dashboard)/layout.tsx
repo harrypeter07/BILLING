@@ -34,50 +34,62 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         
         const userRole = profile?.role || "admin"
         
-        // Only check store for admin users (not employees, they handle it differently)
+          // Only check store for admin users (not employees, they handle it differently)
         if ((userRole === "admin" || !profile) && authType !== "employee") {
-          const isExcel = typeof window !== 'undefined' && localStorage.getItem('databaseType') !== 'supabase'
-          
+          // Check Dexie (local database) FIRST - default storage
           let hasStore = false
-          if (isExcel) {
-            // Excel mode - check Dexie
+          let storeId: string | null = null
+          
+          try {
             const { db } = await import("@/lib/dexie-client")
-            const stores = await db.stores.toArray()
-            hasStore = stores && stores.length > 0
-            if (hasStore) {
-              localStorage.setItem("currentStoreId", stores[0].id)
+            const dexieStores = await db.stores.toArray()
+            if (dexieStores && dexieStores.length > 0) {
+              hasStore = true
+              storeId = dexieStores[0].id
+              localStorage.setItem("currentStoreId", storeId)
             }
-          } else {
-            // Supabase mode
-            const { data: stores } = await supabase
+          } catch (dexieError) {
+            console.warn("[DashboardLayout] Error checking Dexie stores:", dexieError)
+          }
+          
+          // Only check Supabase if database type is set to Supabase
+          const dbType = typeof window !== 'undefined' ? localStorage.getItem('databaseType') : null
+          if (dbType === 'supabase') {
+            const { data: supabaseStores } = await supabase
               .from("stores")
               .select("*")
               .eq("admin_user_id", user.id)
               .limit(1)
             
-            hasStore = stores && stores.length > 0
-            if (hasStore) {
-              localStorage.setItem("currentStoreId", stores[0].id)
+            if (supabaseStores && supabaseStores.length > 0) {
+              hasStore = true
+              storeId = supabaseStores[0].id
+              localStorage.setItem("currentStoreId", storeId)
             }
           }
           
           // Only redirect to store setup if:
-          // 1. No store exists
-          // 2. Not already on the store setup page or settings pages
-          // 3. Trying to access main dashboard or other non-settings pages
+          // 1. No store exists in local database (Dexie)
+          // 2. Not already on the store setup page or any settings page
+          // 3. Not on the dashboard page (allow dashboard to show even without store)
           if (!hasStore) {
-            // Allow access to store setup and settings pages
-            if (pathname?.includes("/settings/store") || pathname?.includes("/settings")) {
-              // Already on store setup page, allow it
+            // Allow access to store setup and all settings pages
+            if (pathname?.includes("/settings")) {
+              // Already on settings page, allow it
               return
             }
-            // Redirect to store setup if on any other page
-            router.push("/settings/store")
-            return
+            // Only redirect if trying to access other pages (not dashboard, not settings)
+            if (pathname !== "/dashboard" && pathname !== "/") {
+              router.push("/settings/store")
+              return
+            }
+            // Allow dashboard to show even without store (it can show a message)
           }
           
           // Store exists - ensure currentStoreId is set in localStorage
-          // This is already done above, but just to be sure
+          if (hasStore && storeId) {
+            localStorage.setItem("currentStoreId", storeId)
+          }
         }
       }
     }

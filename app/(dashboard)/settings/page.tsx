@@ -5,19 +5,23 @@ import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Building2, User, Palette, Store } from "lucide-react"
+import { Building2, User, Palette, Store, Cloud, Database } from "lucide-react"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useStore } from "@/lib/utils/store-context"
 import { useRouter } from "next/navigation"
+import { useToast } from "@/hooks/use-toast"
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState<any>(null)
   const [settings, setSettings] = useState<any>(null)
   const [user, setUser] = useState<any>(null)
+  const [isSyncing, setIsSyncing] = useState(false)
   const { currentStore } = useStore()
   const router = useRouter()
+  const { toast } = useToast()
   const isExcel = false
+  const dbType = getDatabaseType()
 
   // Only admin can access settings
   useEffect(() => {
@@ -79,6 +83,41 @@ export default function SettingsPage() {
       }
     })()
   }, [isExcel])
+
+  const handleSyncAllToSupabase = async () => {
+    setIsSyncing(true)
+    try {
+      // Sync stores first
+      const stores = await db.stores.toArray()
+      if (stores.length > 0) {
+        const { syncStoreToSupabase } = await import("@/lib/utils/supabase-sync")
+        for (const store of stores) {
+          await syncStoreToSupabase(store)
+        }
+      }
+
+      // Sync employees
+      const { syncAllEmployeesToSupabase } = await import("@/lib/utils/supabase-sync")
+      const employeeResult = await syncAllEmployeesToSupabase()
+      
+      // Sync products, customers, invoices via sync manager
+      const { syncManager } = await import("@/lib/sync/sync-manager")
+      await syncManager.syncAll()
+
+      toast({
+        title: "Sync Complete",
+        description: `Synced ${stores.length} stores, ${employeeResult.synced} employees, and all other data to Supabase`,
+      })
+    } catch (error: any) {
+      toast({
+        title: "Sync Failed",
+        description: error.message || "Failed to sync data to Supabase",
+        variant: "destructive",
+      })
+    } finally {
+      setIsSyncing(false)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -209,6 +248,57 @@ export default function SettingsPage() {
             <Button asChild className="w-full bg-transparent" variant="outline">
               <Link href="/settings/store">{currentStore ? "Manage Store" : "Create Store"}</Link>
             </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              <CardTitle>Database & Sync</CardTitle>
+            </div>
+            <CardDescription>
+              {dbType === 'supabase' 
+                ? "Currently using Supabase cloud storage" 
+                : "Currently using local storage (IndexedDB)"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2 text-sm mb-4">
+              <div>
+                <p className="font-medium">Current Database</p>
+                <p className="text-muted-foreground">{dbType === 'supabase' ? 'Supabase (Cloud)' : 'Local (IndexedDB)'}</p>
+              </div>
+              <div>
+                <p className="font-medium">Storage Location</p>
+                <p className="text-muted-foreground">
+                  {dbType === 'supabase' 
+                    ? 'Data stored in Supabase cloud' 
+                    : 'Data stored locally in browser'}
+                </p>
+              </div>
+            </div>
+            {dbType !== 'supabase' && (
+              <div className="space-y-2">
+                <Button 
+                  onClick={handleSyncAllToSupabase}
+                  disabled={isSyncing}
+                  className="w-full"
+                  variant="outline"
+                >
+                  <Cloud className="h-4 w-4 mr-2" />
+                  {isSyncing ? "Syncing..." : "Sync All Data to Supabase"}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Sync all current local data (stores, employees, products, customers, invoices) to Supabase cloud storage
+                </p>
+              </div>
+            )}
+            {dbType === 'supabase' && (
+              <p className="text-xs text-muted-foreground">
+                All data is automatically saved to Supabase. No sync needed.
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

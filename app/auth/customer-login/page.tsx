@@ -9,6 +9,8 @@ import { useRouter } from "next/navigation"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { createClient } from "@/lib/supabase/client"
+import Link from "next/link"
+import { ArrowLeft } from "lucide-react"
 
 export default function CustomerLoginPage() {
   const [email, setEmail] = useState("")
@@ -111,8 +113,20 @@ export default function CustomerLoginPage() {
     <div className="flex min-h-screen w-full items-center justify-center bg-muted/40 p-6">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Customer Login</CardTitle>
-          <CardDescription>Enter your email to receive a magic link</CardDescription>
+          <div className="flex items-center gap-2 mb-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => router.push("/")}
+              className="h-8 w-8"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex-1">
+              <CardTitle>Customer Login</CardTitle>
+              <CardDescription>Enter your email to receive a magic link</CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleRequestMagicLink} className="space-y-4">
@@ -145,6 +159,21 @@ export default function CustomerLoginPage() {
               {isLoading ? "Sending..." : "Send Magic Link"}
             </Button>
           </form>
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center justify-center gap-4 pt-2">
+              <Link href="/" className="text-xs text-muted-foreground hover:text-primary">
+                Home
+              </Link>
+              <span className="text-xs text-muted-foreground">•</span>
+              <Link href="/auth/login" className="text-xs text-muted-foreground hover:text-primary">
+                Admin/Public Login
+              </Link>
+              <span className="text-xs text-muted-foreground">•</span>
+              <Link href="/auth/employee-login" className="text-xs text-muted-foreground hover:text-primary">
+                Employee Login
+              </Link>
+            </div>
+          </div>
         </CardContent>
       </Card>
     </div>

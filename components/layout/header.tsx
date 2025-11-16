@@ -18,6 +18,7 @@ import { SyncStatus } from "@/components/sync-status"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
+import { getDatabaseType } from "@/lib/utils/db-mode"
 
 interface HeaderProps {
   title?: string
@@ -29,6 +30,7 @@ export function Header({ title }: HeaderProps) {
   const [initials, setInitials] = useState<string>("U")
   const [hasMounted, setHasMounted] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [databaseType, setDatabaseType] = useState<'Local' | 'Supabase'>('Local');
   const { role, isAdmin, isEmployee, isPublic, isLoading: roleLoading } = useUserRole();
   const { toast } = useToast();
 
@@ -65,6 +67,29 @@ export function Header({ title }: HeaderProps) {
 
   useEffect(() => {
     setHasMounted(true);
+    
+    // Get current database type
+    const dbType = getDatabaseType();
+    setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
+    
+    // Listen for database type changes
+    const handleStorageChange = () => {
+      const dbType = getDatabaseType();
+      setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    
+    // Also check periodically (in case changed in same tab)
+    const interval = setInterval(() => {
+      const dbType = getDatabaseType();
+      setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
+    }, 1000);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -106,6 +131,16 @@ export function Header({ title }: HeaderProps) {
       <div className="flex items-center gap-4">{title && <h1 className="text-2xl font-bold">{title}</h1>}</div>
 
       <div className="flex items-center gap-4">
+        {/* Show current database type */}
+        {hasMounted && (
+          <Badge 
+            variant={databaseType === 'Supabase' ? "default" : "secondary"} 
+            className="text-xs font-semibold"
+          >
+            {databaseType}
+          </Badge>
+        )}
+        
         {/* Show role badge prominently */}
         {role && !roleLoading && (
           <Badge 

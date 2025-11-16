@@ -14,7 +14,7 @@ import { useState, useEffect } from "react"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { db } from "@/lib/dexie-client"
 import { toast } from "sonner"
-import { CheckCircle2, LogOut } from "lucide-react"
+import { CheckCircle2, LogOut, ArrowLeft } from "lucide-react"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -293,12 +293,24 @@ export default function LoginPage() {
 
         <Card>
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-bold">Admin/Public Login</CardTitle>
-            <CardDescription>
-              {currentUser 
-                ? "You are already logged in. Logout to sign in with a different account."
-                : "Enter your credentials to access your billing dashboard"}
-            </CardDescription>
+            <div className="flex items-center gap-2 mb-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => router.push("/")}
+                className="h-8 w-8"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex-1">
+                <CardTitle className="text-2xl font-bold">Admin/Public Login</CardTitle>
+                <CardDescription>
+                  {currentUser 
+                    ? "You are already logged in. Logout to sign in with a different account."
+                    : "Enter your credentials to access your billing dashboard"}
+                </CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleLogin} className="space-y-4">

@@ -1,29 +1,18 @@
 /**
  * Get MAC address of the device
  * 
- * In browser/Tauri environment, we'll use a fallback approach since direct MAC access isn't available.
+ * In browser environment, we'll use a fallback approach since direct MAC access isn't available.
  * We generate a device fingerprint based on available browser APIs.
  */
 
 export async function getMacAddress(): Promise<string> {
-  // Check if we're in Electron environment (legacy support)
+  // Check if we're in Electron environment
   if (typeof window !== "undefined" && (window as any).electron) {
     try {
       const mac = await (window as any).electron.getMacAddress();
       if (mac) return mac;
     } catch (error) {
       console.error("Error getting MAC address from Electron:", error);
-    }
-  }
-
-  // Check if we're in Tauri environment
-  if (typeof window !== "undefined" && (window as any).__TAURI__) {
-    // Tauri environment - use device fingerprint
-    try {
-      const fingerprint = await generateDeviceFingerprint();
-      return fingerprint;
-    } catch (error) {
-      console.error("Error generating device fingerprint in Tauri:", error);
     }
   }
 

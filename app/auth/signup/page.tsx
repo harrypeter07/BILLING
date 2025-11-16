@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
+import { ArrowLeft } from "lucide-react"
 
 export default function SignupPage() {
   const [email, setEmail] = useState("")
@@ -76,8 +77,20 @@ export default function SignupPage() {
       <div className="w-full max-w-md">
         <Card>
           <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
-            <CardDescription>Sign up as Admin or Public user (Employees and Customers login with provided credentials)</CardDescription>
+            <div className="flex items-center gap-2 mb-2">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => router.push("/")}
+                className="h-8 w-8"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+              <div className="flex-1">
+                <CardTitle className="text-2xl font-bold">Create an account</CardTitle>
+                <CardDescription>Sign up as Admin or Public user (Employees and Customers login with provided credentials)</CardDescription>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSignup} className="space-y-4">
@@ -156,11 +169,26 @@ export default function SignupPage() {
                 {isLoading ? "Creating account..." : "Create account"}
               </Button>
             </form>
-            <div className="mt-4 text-center text-sm text-muted-foreground">
-              Already have an account?{" "}
-              <Link href="/auth/login" className="font-medium text-primary underline-offset-4 hover:underline">
-                Sign in
-              </Link>
+            <div className="mt-4 space-y-2">
+              <div className="text-center text-sm text-muted-foreground">
+                Already have an account?{" "}
+                <Link href="/auth/login" className="font-medium text-primary underline-offset-4 hover:underline">
+                  Sign in
+                </Link>
+              </div>
+              <div className="flex items-center justify-center gap-4 pt-2">
+                <Link href="/" className="text-xs text-muted-foreground hover:text-primary">
+                  Home
+                </Link>
+                <span className="text-xs text-muted-foreground">•</span>
+                <Link href="/auth/employee-login" className="text-xs text-muted-foreground hover:text-primary">
+                  Employee Login
+                </Link>
+                <span className="text-xs text-muted-foreground">•</span>
+                <Link href="/auth/customer-login" className="text-xs text-muted-foreground hover:text-primary">
+                  Customer Login
+                </Link>
+              </div>
             </div>
           </CardContent>
         </Card>
