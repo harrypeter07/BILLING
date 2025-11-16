@@ -338,6 +338,10 @@ export default function LoginPage() {
                 </Link>
               </div>
               <div className="flex items-center justify-center gap-4 pt-2">
+                <Link href="/" className="text-xs text-muted-foreground hover:text-primary">
+                  Home
+                </Link>
+                <span className="text-xs text-muted-foreground">•</span>
                 <Link href="/auth/employee-login" className="text-xs text-muted-foreground hover:text-primary">
                   Employee Login
                 </Link>

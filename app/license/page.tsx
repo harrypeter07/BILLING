@@ -66,8 +66,8 @@ export default function LicensePage() {
         console.log('[LicensePage] Stored license result:', stored ? 'found' : 'not found', stored);
         
         if (stored && isLicenseValid(stored)) {
-          console.log('[LicensePage] License is valid, redirecting to dashboard');
-          router.push("/dashboard");
+          console.log('[LicensePage] License is valid, redirecting to homepage');
+          router.push("/");
           return;
         }
         console.log('[LicensePage] No valid license found, will show form');
@@ -142,9 +142,9 @@ export default function LicensePage() {
 
       if (result.success) {
         setSuccess(true);
-        // Redirect to dashboard after a short delay
+        // Redirect to homepage after a short delay
         setTimeout(() => {
-          router.push("/dashboard");
+          router.push("/");
         }, 2000);
       } else {
         setError(result.error || "Failed to activate license");

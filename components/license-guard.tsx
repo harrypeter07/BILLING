@@ -62,6 +62,12 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
         setChecking(false);
         setIsValid(true);
         
+        // If we're on root path and license is valid, ensure we stay on homepage
+        if (pathname === "/" || pathname === "") {
+          console.log('[LicenseGuard] License valid on homepage, staying on homepage');
+          // Already on homepage, no redirect needed
+        }
+        
       } catch (error) {
         console.error("[LicenseGuard] Error verifying license:", error);
         if (isMounted) {
