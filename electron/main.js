@@ -60,23 +60,21 @@ const startNextServer = async () => {
     console.log('[Electron] Starting Next.js server...');
     console.log('[Electron] App path:', appPath);
     
-    // Find available port (getPort will find first available port)
-    // Try preferred port 3000 first, then let getPort find any available port
-    serverPort = await getPort({ port: 3000 });
-    // If 3000 is taken, getPort returns next available port (might be > 3100)
-    // So we check and try to find one in our preferred range
-    if (serverPort > 3100) {
-      // If getPort returned a port outside our range, try to find one in range
-      for (let port = 3000; port <= 3100; port++) {
-        const testPort = await getPort({ port });
-        if (testPort === port) {
-          serverPort = testPort;
-          break;
-        }
+    // Find available port in range 3000-3100
+    // Try ports sequentially in the range
+    serverPort = null;
+    for (let port = 3000; port <= 3100; port++) {
+      const availablePort = await getPort({ port });
+      if (availablePort === port) {
+        serverPort = availablePort;
+        break;
       }
-      if (serverPort > 3100) {
-        throw new Error('Could not find available port in range 3000-3100');
-      }
+    }
+
+    // Fallback: if no port in range, use any available port
+    if (!serverPort || serverPort > 3100) {
+      console.warn('[Electron] No port available in range 3000-3100, using any available port');
+      serverPort = await getPort();
     }
     console.log(`[Electron] Found available port: ${serverPort}`);
     

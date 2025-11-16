@@ -129,7 +129,10 @@ export async function getStoredLicense(): Promise<LicenseInfo | null> {
     if (license.encryptedData) {
       const decrypted = decryptLicenseData(license.encryptedData);
       if (decrypted) {
-        return decrypted;
+        return {
+          ...decrypted,
+          status: decrypted.status as "active" | "expired" | "revoked",
+        };
       }
     }
 
@@ -292,11 +295,9 @@ export async function checkLicenseOnLaunch(): Promise<{
       }
 
       // Online validation successful - check both valid and licenseData
-      // Type guard: check if licenseData exists in the response
-      if (onlineValidation.valid && 'licenseData' in onlineValidation && onlineValidation.licenseData) {
+      if (onlineValidation.valid && onlineValidation.licenseData) {
         console.log("[LicenseManager] Online validation successful, updating local license");
         
-        // Update local license asynchronously (don't wait)
         storeLicense(onlineValidation.licenseData).catch(err => {
           console.error("[LicenseManager] Failed to update local license:", err);
         });
@@ -307,10 +308,15 @@ export async function checkLicenseOnLaunch(): Promise<{
           requiresActivation: false,
         };
       }
-      
-      // If valid is true but licenseData is undefined, fall through to offline mode
-      if (onlineValidation.valid && !('licenseData' in onlineValidation && onlineValidation.licenseData)) {
-        console.warn("[LicenseManager] Online validation returned valid but no licenseData, using offline license");
+
+      // Edge case: online validation says valid but no license data
+      if (onlineValidation.valid && !onlineValidation.licenseData) {
+        console.warn("[LicenseManager] Online validation valid but no license data, using stored license");
+        return {
+          valid: true,
+          licenseInfo: storedLicense,
+          requiresActivation: false,
+        };
       }
     } catch (error) {
       // Network error - use stored license (offline mode)
