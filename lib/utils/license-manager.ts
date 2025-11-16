@@ -4,6 +4,18 @@ import { getMacAddress } from "./mac-address";
 import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { db as firestoreDb } from "@/lib/firebase";
 
+/**
+ * Helper to create a timeout promise
+ */
+function createTimeout<T>(ms: number, value: T, message?: string): Promise<T> {
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      if (message) console.warn(message);
+      resolve(value);
+    }, ms);
+  });
+}
+
 export interface LicenseInfo {
   licenseKey: string;
   macAddress: string;
@@ -128,7 +140,7 @@ export async function getStoredLicense(): Promise<LicenseInfo | null> {
       clientName: license.clientName,
       activatedOn: license.activatedOn,
       expiresOn: license.expiresOn,
-      status: license.status,
+      status: license.status as "active" | "expired" | "revoked", // Type assertion for TypeScript
     };
   } catch (error) {
     console.error("Error getting stored license:", error);
@@ -197,12 +209,7 @@ export async function checkLicenseOnLaunch(): Promise<{
     try {
       storedLicense = await Promise.race([
         getStoredLicense(),
-        new Promise<null>((resolve) => {
-          setTimeout(() => {
-            console.warn("[LicenseManager] getStoredLicense timed out");
-            resolve(null);
-          }, 2000);
-        }),
+        createTimeout(2000, null, "[LicenseManager] getStoredLicense timed out"),
       ]);
     } catch (error) {
       console.error("[LicenseManager] Error getting stored license:", error);
@@ -234,12 +241,7 @@ export async function checkLicenseOnLaunch(): Promise<{
     try {
       const macAddressPromise = Promise.race([
         getMacAddress(),
-        new Promise<string>((resolve) => {
-          setTimeout(() => {
-            console.warn("[LicenseManager] getMacAddress timed out, using stored MAC");
-            resolve(storedLicense!.macAddress);
-          }, 2000);
-        }),
+        createTimeout(2000, storedLicense!.macAddress, "[LicenseManager] getMacAddress timed out, using stored MAC"),
       ]);
 
       const macAddress = await macAddressPromise;
@@ -251,13 +253,7 @@ export async function checkLicenseOnLaunch(): Promise<{
 
       const onlineValidation = await Promise.race([
         onlineValidationPromise,
-        new Promise<{ valid: boolean; error?: string }>((resolve) => {
-          setTimeout(() => {
-            console.warn("[LicenseManager] Online validation timed out");
-            // Return a specific timeout indicator
-            resolve({ valid: false, error: "TIMEOUT" });
-          }, 3000);
-        }),
+        createTimeout(3000, { valid: false, error: "TIMEOUT" }, "[LicenseManager] Online validation timed out"),
       ]);
 
       // Check if it was a timeout
@@ -295,8 +291,9 @@ export async function checkLicenseOnLaunch(): Promise<{
         };
       }
 
-      // Online validation successful
-      if (onlineValidation.licenseData) {
+      // Online validation successful - check both valid and licenseData
+      // Type guard: check if licenseData exists in the response
+      if (onlineValidation.valid && 'licenseData' in onlineValidation && onlineValidation.licenseData) {
         console.log("[LicenseManager] Online validation successful, updating local license");
         
         // Update local license asynchronously (don't wait)
@@ -309,6 +306,11 @@ export async function checkLicenseOnLaunch(): Promise<{
           licenseInfo: onlineValidation.licenseData,
           requiresActivation: false,
         };
+      }
+      
+      // If valid is true but licenseData is undefined, fall through to offline mode
+      if (onlineValidation.valid && !('licenseData' in onlineValidation && onlineValidation.licenseData)) {
+        console.warn("[LicenseManager] Online validation returned valid but no licenseData, using offline license");
       }
     } catch (error) {
       // Network error - use stored license (offline mode)
