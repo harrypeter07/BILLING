@@ -6,7 +6,8 @@ const fs = require('fs');
 const http = require('http');
 const { createServer } = require('http');
 const { parse } = require('url');
-const getPort = require('get-port');
+const getPortModule = require('get-port');
+const getPort = getPortModule.default || getPortModule;
 
 let mainWindow;
 let nextProcess;
