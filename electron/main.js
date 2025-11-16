@@ -15,31 +15,9 @@ let isCreatingWindow = false; // Prevent multiple window creation
 let isServerStarting = false; // Prevent multiple server starts
 
 const isDev = process.env.NODE_ENV === 'development';
-const PORT = 3000;
+const getPort = require('get-port');
 
-// Helper function to check if a port is in use
-const checkPortInUse = (port) => {
-  return new Promise((resolve) => {
-    const server = http.createServer();
-    server.listen(port, () => {
-      server.once('close', () => resolve(false));
-      server.close();
-    });
-    server.on('error', () => resolve(true));
-  });
-};
-
-// Helper function to find an available port
-const findAvailablePort = async (startPort = 3000, maxAttempts = 10) => {
-  for (let i = 0; i < maxAttempts; i++) {
-    const port = startPort + i;
-    const inUse = await checkPortInUse(port);
-    if (!inUse) {
-      return port;
-    }
-  }
-  return null;
-};
+let serverPort = 3000; // Will be set dynamically
 
 // Fix cache permission issues by setting cache directory to user's temp folder
 // This prevents "Access is denied" errors when Electron tries to create cache
@@ -156,8 +134,8 @@ const createWindow = () => {
     });
   }
 
-  // URL will be set after server starts
-  let startUrl = 'http://localhost:3000';
+  // URL will be set after server starts (will use dynamic port)
+  let startUrl = `http://localhost:${serverPort}`;
 
   console.log('[Electron] isDev:', isDev);
   console.log('[Electron] __dirname:', __dirname);
@@ -365,6 +343,13 @@ const createWindow = () => {
         });
       };
       
+      // Update serverPort from URL if it changed
+      const urlMatch = url.match(/localhost:(\d+)/);
+      if (urlMatch) {
+        serverPort = parseInt(urlMatch[1], 10);
+        console.log(`[Electron] Updated serverPort to: ${serverPort}`);
+      }
+      
       // Check server multiple times with delays
       let attempts = 0;
       const maxAttempts = 10;
@@ -414,7 +399,7 @@ const startNextServer = async () => {
   // Prevent multiple server starts
   if (isServerStarting) {
     console.log('[Electron] Server already starting, returning existing promise...');
-    return Promise.resolve(`http://localhost:${PORT}`);
+    return Promise.resolve(`http://localhost:${serverPort}`);
   }
   
   if (!isDev) {
@@ -461,21 +446,9 @@ const startNextServer = async () => {
       
       const handle = nextApp.getRequestHandler();
       
-      // Check if port is already in use
-      const portInUse = await checkPortInUse(PORT);
-      let actualPort = PORT;
-      
-      if (portInUse) {
-        console.log(`[Electron] ⚠ Port ${PORT} is already in use, finding available port...`);
-        // Find an available port (try 3000-3009)
-        const availablePort = await findAvailablePort(PORT, 10);
-        if (availablePort) {
-          actualPort = availablePort;
-          console.log(`[Electron] ✅ Found available port: ${actualPort}`);
-        } else {
-          throw new Error(`Could not find available port starting from ${PORT}`);
-        }
-      }
+      // Find available port dynamically using get-port (tries 3000-3100)
+      serverPort = await getPort({ port: getPort.makeRange(3000, 3100) });
+      console.log(`[Electron] ✅ Found available port: ${serverPort}`);
       
       // Create HTTP server
       httpServer = createServer((req, res) => {
@@ -485,13 +458,13 @@ const startNextServer = async () => {
       
       // Start server on the determined port
       await new Promise((resolve, reject) => {
-        httpServer.listen(actualPort, (err) => {
+        httpServer.listen(serverPort, 'localhost', (err) => {
           if (err) {
-            console.error(`[Electron] ❌ Failed to start server on port ${actualPort}:`, err);
+            console.error(`[Electron] ❌ Failed to start server on port ${serverPort}:`, err);
             reject(err);
             return;
           }
-          console.log(`[Electron] ✅ Next.js server started on http://localhost:${actualPort}`);
+          console.log(`[Electron] ✅ Next.js server started on http://localhost:${serverPort}`);
           resolve();
         });
       });
@@ -504,7 +477,7 @@ const startNextServer = async () => {
         isServerStarting = false;
       }, 1000);
       
-      return `http://localhost:${actualPort}`;
+      return `http://localhost:${serverPort}`;
       
     } catch (error) {
       console.error('[Electron] ❌ Error starting Next.js server:', error);
@@ -522,7 +495,7 @@ const startNextServer = async () => {
         stdio: 'pipe',
         env: {
           ...process.env,
-          PORT: PORT.toString(),
+          PORT: serverPort.toString(),
           NODE_ENV: 'production',
         },
       });
@@ -533,7 +506,7 @@ const startNextServer = async () => {
         
         const checkServer = () => {
           return new Promise((resolveCheck) => {
-            const req = http.get(`http://localhost:${PORT}`, (res) => {
+            const req = http.get(`http://localhost:${serverPort}`, (res) => {
               resolveCheck(true);
             });
             req.on('error', () => resolveCheck(false));
@@ -549,13 +522,13 @@ const startNextServer = async () => {
             const isReady = await checkServer();
             if (isReady) {
               console.log('[Electron] ✅ Fallback server is ready');
-              resolve(`http://localhost:${PORT}`);
+              resolve(`http://localhost:${serverPort}`);
               return;
             }
             await new Promise(r => setTimeout(r, 1000));
           }
           console.warn('[Electron] ⚠ Fallback server timeout, but returning URL anyway');
-          resolve(`http://localhost:${PORT}`);
+          resolve(`http://localhost:${serverPort}`);
         };
         
         nextProcess.stdout.on('data', (data) => {
@@ -579,7 +552,10 @@ const startNextServer = async () => {
   }
   
   // In dev mode, server is already running
-  return Promise.resolve(`http://localhost:${PORT}`);
+  if (isDev) {
+    serverPort = 3000;
+  }
+  return Promise.resolve(`http://localhost:${serverPort}`);
 };
 
 // Start Next.js dev server in development

@@ -33,51 +33,16 @@ if (typeof window !== "undefined") {
 }
 
 export function LicenseGuard({ children }: LicenseGuardProps) {
-  // EARLY RETURN - if Electron detected at module level, bypass immediately
-  // This runs BEFORE any React state or effects, preventing license check
-  if (isElectron) {
-    console.log("[LicenseGuard] ✅ Electron detected at module level - BYPASSING license check immediately");
-    return <>{children}</>;
-  }
+  // REMOVED: Electron bypass - now license check works in Electron too
+  // License checking will now work in both web and Electron environments
 
-  // Additional runtime check as backup (in case module-level check missed it)
-  const [isDesktop, setIsDesktop] = useState(false);
+  // License checking now works in both web and Electron
   const router = useRouter();
   const pathname = usePathname();
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const win = window as any;
-    const ua = navigator?.userAgent || "";
-
-    const runtimeElectron =
-      !!win.electronAPI ||
-      ua.includes("Electron") ||
-      (win.process && win.process.type === "renderer");
-
-    console.log("[LicenseGuard RUNTIME] userAgent:", ua);
-    console.log("[LicenseGuard RUNTIME] has electronAPI:", !!win.electronAPI);
-    console.log("[LicenseGuard RUNTIME] isElectron (runtime):", runtimeElectron);
-
-    if (runtimeElectron) {
-      console.log("[LicenseGuard RUNTIME] Electron detected - BYPASSING license check");
-      setIsDesktop(true);
-    }
-  }, []);
-
-  // If runtime check detected desktop, bypass
-  if (isDesktop) {
-    return <>{children}</>;
-  }
-
-  // --------------------
-  // WEB-ONLY LICENSE LOGIC BELOW (unchanged)
-  // --------------------
   const [checking, setChecking] = useState(true);
   const [showWelcome, setShowWelcome] = useState(false);
   
-  console.log('[LicenseGuard] Component rendered (web mode)');
+  console.log('[LicenseGuard] Component rendered (works in both web and Electron)');
   console.log('[LicenseGuard] Initial state - checking:', checking, 'showWelcome:', showWelcome);
 
   // Get current path - use window.location in Electron, pathname in web
@@ -174,10 +139,13 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
           return;
         }
 
-        // License is valid, allow access
-        console.log('[LicenseGuard] License valid, allowing access');
+        // License is valid, redirect to home page (/) to show app info
+        console.log('[LicenseGuard] License valid, redirecting to home page...');
         setChecking(false);
         setShowWelcome(false);
+        // Redirect to home page instead of allowing immediate access
+        router.push('/');
+        return;
       } catch (error) {
         console.error("Error verifying license:", error);
         // Clear timeouts

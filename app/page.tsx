@@ -15,20 +15,8 @@ export default function LandingPage() {
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
 
-  // In Electron, immediately redirect to dashboard (before any other logic)
-  useEffect(() => {
-    if (isElectron) {
-      console.log('[LandingPage] Electron app detected - redirecting to dashboard immediately');
-      if (typeof window !== 'undefined') {
-        const currentPath = window.location.pathname;
-        // Only redirect if not already on dashboard
-        if (!currentPath.includes('/dashboard')) {
-          window.location.replace("http://localhost:3000/dashboard");
-        }
-      }
-      return;
-    }
-  }, [isElectron]);
+  // REMOVED: Electron redirect to dashboard
+  // Now Electron goes through license check first, then shows home page
 
   useEffect(() => {
     const checkAuth = async () => {
