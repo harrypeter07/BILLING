@@ -15,43 +15,68 @@ class StorageManager {
     }
   }
 
+  private async getCounts() {
+    try {
+      const [products, customers, invoices, invoiceItems] = await Promise.all([
+        db.products.count(),
+        db.customers.count(),
+        db.invoices.count(),
+        db.invoice_items.count(),
+      ])
+      return {
+        products,
+        customers,
+        invoices,
+        invoice_items: invoiceItems,
+      }
+    } catch (error) {
+      console.warn("[StorageManager] Failed to compute counts:", error)
+      return { products: 0, customers: 0, invoices: 0, invoice_items: 0 }
+    }
+  }
+
+  private async notifySavedWithCounts(ok = true) {
+    const counts = await this.getCounts()
+    this.notifySaved(ok, counts)
+  }
+
   async addProduct(product: Product) {
     await db.products.put(product)
-    this.notifySaved(true)
+    await this.notifySavedWithCounts(true)
   }
   async updateProduct(product: Product) {
     await db.products.put(product)
-    this.notifySaved(true)
+    await this.notifySavedWithCounts(true)
   }
   async deleteProduct(id: string) {
     await db.products.delete(id)
-    this.notifySaved(true)
+    await this.notifySavedWithCounts(true)
   }
 
   async addCustomer(customer: any) {
     await db.customers.put(customer)
-    this.notifySaved(true)
+    await this.notifySavedWithCounts(true)
   }
   async updateCustomer(customer: any) {
     await db.customers.put(customer)
-    this.notifySaved(true)
+    await this.notifySavedWithCounts(true)
   }
   async deleteCustomer(id: string) {
     await db.customers.delete(id)
-    this.notifySaved(true)
+    await this.notifySavedWithCounts(true)
   }
 
   async addEmployee(employee: any) {
     await db.employees?.put?.(employee)
-    this.notifySaved(true)
+    await this.notifySavedWithCounts(true)
   }
   async updateEmployee(employee: any) {
     await db.employees?.put?.(employee)
-    this.notifySaved(true)
+    await this.notifySavedWithCounts(true)
   }
   async deleteEmployee(id: string) {
     await db.employees?.delete?.(id)
-    this.notifySaved(true)
+    await this.notifySavedWithCounts(true)
   }
 
   async addInvoice(invoice: any, items: any[]) {
@@ -73,7 +98,7 @@ class StorageManager {
       }))
       await db.invoice_items.bulkPut(invoiceItems)
     }
-    this.notifySaved(true)
+    await this.notifySavedWithCounts(true)
   }
 
   async updateInvoice(invoice: any, items: any[]) {
@@ -89,13 +114,13 @@ class StorageManager {
       }))
       await db.invoice_items.bulkPut(invoiceItems)
     }
-    this.notifySaved(true)
+    await this.notifySavedWithCounts(true)
   }
 
   async deleteInvoice(id: string) {
     await db.invoices.delete(id)
     await db.invoice_items.where("invoice_id").equals(id).delete()
-    this.notifySaved(true)
+    await this.notifySavedWithCounts(true)
   }
 
   // Deprecated no-op retained for compatibility with UI buttons

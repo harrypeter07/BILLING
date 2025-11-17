@@ -2,15 +2,20 @@
 
 ## Table of Contents
 1. [Overview](#overview)
-2. [Application Architecture](#application-architecture)
-3. [Directory Structure](#directory-structure)
-4. [Authentication System](#authentication-system)
-5. [Data Layer](#data-layer)
-6. [Feature Modules](#feature-modules)
-7. [Routing & Navigation](#routing--navigation)
-8. [State Management](#state-management)
-9. [Known Issues & TODO](#known-issues--todo)
-10. [Setup & Configuration](#setup--configuration)
+2. [Quick Start Matrix](#quick-start-matrix)
+3. [Offline vs Online Flow](#offline-vs-online-flow)
+4. [Authentication, Licensing & Admin Provisioning](#authentication-licensing--admin-provisioning)
+5. [Application Architecture](#application-architecture)
+6. [Directory Structure](#directory-structure)
+7. [Application Flow](#application-flow)
+8. [Authentication System](#authentication-system)
+9. [Data Layer](#data-layer)
+10. [Feature Modules](#feature-modules)
+11. [Routing & Navigation](#routing--navigation)
+12. [State Management](#state-management)
+13. [Setup & Configuration](#setup--configuration)
+14. [Build & Distribution](#build--distribution)
+15. [Known Issues & TODO](#known-issues--todo)
 
 ---
 
@@ -24,6 +29,73 @@
 - **GST Invoice Generation**: Automated tax calculations and PDF generation
 - **Offline-First**: Works without internet, syncs when online
 - **PWA Support**: Installable Progressive Web App
+
+---
+
+## Quick Start Matrix
+
+| Scenario | What You Get | Prerequisites | Steps |
+| --- | --- | --- | --- |
+| **Offline-First (Default)** | Dexie/IndexedDB storage, Excel auto-export, no internet required | Chromium-based browser or packaged Electron build | `npm install && npm run dev`, keep `localStorage.databaseType` unset or `indexeddb`, login with licensed admin |
+| **Hybrid (Supabase Cloud)** | Real-time Supabase sync, multi-device access | Supabase project (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`), run `scripts/00_complete_setup.sql` | Set `localStorage.databaseType = 'supabase'` (or toggle in settings), run `npm run dev`, login via Supabase |
+| **Electron Desktop** | Offline desktop app (.exe/.dmg/AppImage) that bundles Dexie data | Node 18+, platform-specific build tools | `npm install`, `npm run dist:win` / `dist:mac` / `dist:linux`, installer outputs under `dist/` |
+
+---
+
+## Offline vs Online Flow
+
+### Offline (Dexie + Excel)
+1. **Data path**: UI → `storageManager` → Dexie tables (`lib/dexie-client.ts`) → Excel auto-export (`lib/excel-auto.ts`) when enabled.
+2. **Sync feedback**: Each Dexie write dispatches `sync:saved` with live record counts; `components/sync-status.tsx` renders the “Saved: xP…” banner.
+3. **Authentication**:
+   - Admins: Supabase credentials cached locally only when “Offline admin login” toggle is ON and a successful online login occurs.
+   - Employees: `localStorage.employeeSession` holds store + employee context.
+4. **Store context**: `StoreProvider` resolves `currentStoreId` from Dexie (fallback to Supabase if cloud mode).
+5. **Network loss**: App keeps working; offline login fallback (see below) prevents forced redirects; manual sync button can push accumulated data later.
+
+### Online (Supabase Cloud)
+1. **Data path**: UI → Supabase client or API routes under `app/api/*` → Supabase Postgres w/ RLS.
+2. **Session**: Supabase Auth cookies refreshed via middleware; user role fetched from `user_profiles`.
+3. **Store discovery**: Dashboard layout checks Dexie first, then Supabase when `localStorage.databaseType === 'supabase'`.
+4. **Mode switching**: `localStorage.databaseType` (default `indexeddb`) toggled from `Settings → Database & Sync`; header badge reads “Local” vs “Supabase”.
+5. **Hybrid sync**: Even in Supabase mode, Dexie can be used for fast local writes and background sync through `lib/sync/sync-manager`.
+
+---
+
+## Authentication, Licensing & Admin Provisioning
+
+### License Guard (Device Binding)
+- Licensing is enforced via Firestore (`components/license-guard.tsx` + `lib/utils/license-manager.ts`).
+- Each machine must have a valid license key + MAC address pair before the first admin signs in.
+- Use the provisioning script:
+  ```bash
+  npm run seed:license -- <LICENSE_KEY> <MAC_ADDRESS> "<CLIENT_NAME>" [expiresInDays]
+  ```
+  - `MAC_ADDRESS`: uppercase, no separators required (e.g., `D45D64012345`); obtain with `getmac` (Windows) or `ifconfig en0` (macOS).
+  - Provide Firebase Admin credentials with `GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json` or place the JSON under `app/firebase/`.
+  - Optional `expiresInDays` defaults to 365.
+- Script creates/updates `licenses` documents (status, activation, expiry). Console logs show `[License Seed] ...`.
+- At runtime, `LicenseGuard` validates remotely, caches locally, and logs messages such as `[LicenseManager] Stored license is valid locally`.
+
+### Admin Onboarding Flow
+1. Seed the license for the target machine.
+2. Sign up via `/auth/signup` (Supabase) and verify email.
+3. Login through `/auth/login`.
+4. Create the first store in `Settings → Store` (required for admin access).
+5. Optional: enable **Offline admin login** (in `Settings → Database & Sync`) to cache credentials for offline use.
+
+### Authentication Matrix
+| User Type | Auth Mechanism | Storage | Offline Experience | Notes |
+| --- | --- | --- | --- | --- |
+| Admin/Public | Supabase email/password | Supabase Auth cookies | ✅ (with offline toggle) | Offline login hashes existing credentials locally; Supabase remains source of truth. |
+| Employee | Store Code + Employee ID/Password | `localStorage.employeeSession` | ✅ | Validated via `/api/stores` + `/api/employees/lookup` (Supabase) with Dexie fallback. |
+| Customer | Email magic link (TODO API) | Supabase | ⚠️ | Placeholder API route; not fully implemented. |
+
+### Offline Admin Login Toggle
+1. Enable toggle at `Settings → Database & Sync`.
+2. Perform a successful Supabase login to cache hashed credentials + `currentStoreId` locally.
+3. When offline, the login form calls `attemptOfflineLogin`; matching hashes grant a 7-day offline session.
+4. Logging out or disabling the toggle wipes cached credentials.
 
 ---
 
@@ -128,6 +200,27 @@ billing-solutions/
 ├── next.config.mjs
 └── tsconfig.json
 ```
+
+---
+
+## Application Flow
+
+### End-to-End Lifecycle
+1. **License Provisioning** → Run `npm run seed:license -- <LICENSE_KEY> <MAC> "<CLIENT_NAME>"` to allow the device to start.
+2. **Admin Signup** → Visit `/auth/signup`, verify email via Supabase, then login at `/auth/login`.
+3. **Store Setup** → Navigate to `Settings → Store` and create the default store; the ID is persisted in Dexie + `localStorage.currentStoreId`.
+4. **Database Mode Selection** → Stay in IndexedDB (default) or enable Supabase mode via `Settings → Database & Sync`.
+5. **Employee Onboarding** → Admin creates employees under `/employees`; IDs/passwords auto-generate. Employees login using Store Code + Employee ID.
+6. **Product/Inventory Management** → `/products` and `/inventory` use Dexie in “Local Mode” or Supabase queries in “Supabase Mode” (see badge on page header).
+7. **Invoice Creation** → `/invoices/new` loads customers/products from the current datasource, generates invoice numbers, and saves to Dexie/Supabase.
+8. **Synchronization** → Header “Sync now” button triggers `syncManager.syncAll()` to push Dexie changes upstream; `SyncStatus` badge reflects record counts.
+9. **Reporting & Export** → `/reports/*` aggregates data from the active datasource; PDF/Excel exports are accessible per module.
+10. **Distribution** → Deploy web build (`npm run build && npm start`) or ship Electron binaries via `npm run dist:win|mac|linux`.
+
+### Operational Tips
+- **Mode Awareness**: Header badge + settings card show “Local/IndexedDB” vs “Supabase”.
+- **Logs**: DevTools prints rich context (e.g., `[ProductsPage][Dexie] fetched 33 products`, `[LicenseManager] Online validation successful`).
+- **Offline Login**: Enable the toggle before going offline so credentials are cached.
 
 ---
 
@@ -519,14 +612,58 @@ npm run dev
 
 Visit `http://localhost:3000`
 
-### Build & Deploy
+## Build & Distribution
 
+### Local Development
+```bash
+npm install
+npm run dev      # Next.js dev server + Electron shell (waits for http://localhost:3000)
+```
+Set these env vars (if applicable):
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `GOOGLE_APPLICATION_CREDENTIALS` (for license seeding/tests)
+
+### Production Web Build
 ```bash
 npm run build
 npm start
 ```
+> Note: `next.config.mjs` uses `ignoreDuringBuilds: true` for ESLint/TS; resolve warnings before shipping.
 
-**Note**: Next.js config has `ignoreDuringBuilds: true` for ESLint/TypeScript errors. Fix these before production deployment.
+### Electron Packaging & Windows .exe Generation
+1. **Prepare static Next.js export**  
+   ```bash
+   npm run build:export
+   ```
+   - Runs `scripts/prepare-electron-build.js`, builds with `ELECTRON_BUILD=true`, then restores API routes.
+2. **Bundle for Windows**  
+   ```bash
+   npm run dist:win
+   ```
+   - Invokes `scripts/build-electron-win.js`, clears caches, rebuilds, and runs `electron-builder` with Windows targets (outputs installer/portable dir under `dist/`).
+3. **Other platforms**  
+   ```bash
+   npm run dist:mac
+   npm run dist:linux
+   npm run dist       # all configured targets
+   ```
+4. **Post-build checklist**
+   - Confirm Dexie/local storage works inside Electron.
+   - Ensure any required Firebase credentials or config files are bundled as specified in `package.json→build.files`.
+   - Launch the packaged app; verify `LicenseGuard` logs show successful validation.
+
+### License Seeding Script Recap
+```bash
+node scripts/seed-license.js <licenseKey> <macAddress> <clientName> [expiresInDays]
+# or via npm alias
+npm run seed:license -- <licenseKey> <macAddress> "<clientName>" 730
+```
+Steps:
+1. Install Firebase Admin dependency if missing (`npm install firebase-admin`).
+2. Provide service account JSON via `GOOGLE_APPLICATION_CREDENTIALS` or place it under `app/firebase/`.
+3. Run the script; Firestore `licenses` doc is created/updated.
+4. Start the app on that machine; `LicenseGuard` caches the license locally and logs status in DevTools.
 
 ---
 
