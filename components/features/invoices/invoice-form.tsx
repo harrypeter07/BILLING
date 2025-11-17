@@ -11,8 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Plus, Trash2, Search, X, Package } from "lucide-react"
+import { Plus, Trash2, Search } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { calculateLineItem, roundToTwo } from "@/lib/utils/gst-calculator"
 import { Switch } from "@/components/ui/switch"
@@ -109,7 +108,6 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
   const [isSameState, setIsSameState] = useState(true)
   const [notes, setNotes] = useState("")
   const [terms, setTerms] = useState("")
-  const [showProductWindow, setShowProductWindow] = useState(false)
   const [productSearchTerm, setProductSearchTerm] = useState("")
 
   const [lineItems, setLineItems] = useState<LineItem[]>([
@@ -182,19 +180,38 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [products])
 
+  const recentProducts = useMemo(() => {
+    const ordered = [...lineItems]
+      .map((item) => item.product_id)
+      .filter((id): id is string => Boolean(id))
+      .reverse()
+    const uniqueIds = Array.from(new Set(ordered))
+    const mapped = uniqueIds
+      .map((id) => products.find((p) => p.id === id))
+      .filter((p): p is Product => Boolean(p))
+    return mapped.slice(0, 8)
+  }, [lineItems, products])
+
+  const alphabeticalProducts = useMemo(
+    () =>
+      [...products].sort((a, b) => a.name.localeCompare(b.name)),
+    [products],
+  )
+
   // Filter products based on search
   const filteredProducts = useMemo(() => {
-    const availableProducts = products.filter(p => p.stock_quantity === undefined || p.stock_quantity > 0)
+    const availableProducts = alphabeticalProducts.filter(
+      (p) => p.stock_quantity === undefined || p.stock_quantity > 0,
+    )
     if (!productSearchTerm) return availableProducts
     const search = productSearchTerm.toLowerCase()
     return availableProducts.filter(
-      p => (
+      (p) =>
         p.name.toLowerCase().includes(search) ||
         p.sku?.toLowerCase().includes(search) ||
-        p.category?.toLowerCase().includes(search)
-      )
+        p.category?.toLowerCase().includes(search),
     )
-  }, [products, productSearchTerm])
+  }, [alphabeticalProducts, productSearchTerm])
 
   // Add product to invoice
   const addProductToInvoice = (product: Product) => {
@@ -209,7 +226,6 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
       hsn_code: product.hsn_code || "",
     }
     setLineItems([...lineItems, newLineItem])
-    setShowProductWindow(false)
     setProductSearchTerm("")
     toast({ title: "Product added", description: `${product.name} added to invoice` })
   }
@@ -359,388 +375,413 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
   }
 
   return (
-    <>
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* Quick Customer Form - Always Visible */}
-      <InlineCustomerForm
-        onCustomerCreated={(newCustomer) => {
-          // Add new customer to local list
-          setLocalCustomers([...localCustomers, newCustomer])
-          // Select the newly created customer
-          setCustomerId(newCustomer.id)
-          // Notify parent if callback provided
-          if (onCustomersUpdate) {
-            onCustomersUpdate([...localCustomers, newCustomer])
-          }
-        }}
-      />
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="grid gap-4 xl:grid-cols-[280px_minmax(420px,1fr)_320px]">
+        {/* Left column: customer + invoice meta */}
+        <div className="space-y-3">
+          <InlineCustomerForm
+            onCustomerCreated={(newCustomer) => {
+              setLocalCustomers([...localCustomers, newCustomer])
+              setCustomerId(newCustomer.id)
+              onCustomersUpdate?.([...localCustomers, newCustomer])
+            }}
+          />
 
-      {/* Invoice Details */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Invoice Details</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="invoice_number">Invoice Number</Label>
-              <Input
-                id="invoice_number"
-                value={invoiceNumber}
-                onChange={(e) => setInvoiceNumber(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="invoice_date">Invoice Date</Label>
-              <Input
-                id="invoice_date"
-                type="date"
-                value={invoiceDate}
-                onChange={(e) => setInvoiceDate(e.target.value)}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="due_date">Due Date</Label>
-              <Input id="due_date" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="customer">Customer</Label>
-              <Select value={customerId} onValueChange={setCustomerId}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select customer" />
-                </SelectTrigger>
-                <SelectContent>
-                  {localCustomers.map((customer) => (
-                    <SelectItem key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2">
-                <Switch id="gst_invoice" checked={isGstInvoice} onCheckedChange={setIsGstInvoice} />
-                <Label htmlFor="gst_invoice">GST Invoice</Label>
-              </div>
-              {isGstInvoice && (
-                <div className="flex items-center gap-2">
-                  <Switch id="same_state" checked={isSameState} onCheckedChange={setIsSameState} />
-                  <Label htmlFor="same_state">Same State (CGST+SGST)</Label>
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Invoice Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="invoice_number" className="text-xs">
+                    Invoice Number
+                  </Label>
+                  <Input
+                    id="invoice_number"
+                    value={invoiceNumber}
+                    onChange={(e) => setInvoiceNumber(e.target.value)}
+                    required
+                    className="h-9 text-sm"
+                  />
                 </div>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="invoice_date" className="text-xs">
+                      Date
+                    </Label>
+                    <Input
+                      id="invoice_date"
+                      type="date"
+                      value={invoiceDate}
+                      onChange={(e) => setInvoiceDate(e.target.value)}
+                      required
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="due_date" className="text-xs">
+                      Due
+                    </Label>
+                    <Input
+                      id="due_date"
+                      type="date"
+                      value={dueDate}
+                      onChange={(e) => setDueDate(e.target.value)}
+                      className="h-9 text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="customer" className="text-xs">
+                    Customer
+                  </Label>
+                  <Select value={customerId} onValueChange={setCustomerId}>
+                    <SelectTrigger className="h-9 text-sm">
+                      <SelectValue placeholder="Select customer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {localCustomers.map((customer) => (
+                        <SelectItem key={customer.id} value={customer.id}>
+                          {customer.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-      {/* Line Items */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Line Items</CardTitle>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowProductWindow(true)}
-              className="gap-2"
-            >
-              <Package className="h-4 w-4" />
-              Browse Products
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-[200px]">Product</TableHead>
-                  <TableHead>Description</TableHead>
-                  <TableHead className="w-[100px]">Qty</TableHead>
-                  <TableHead className="w-[120px]">Price</TableHead>
-                  <TableHead className="w-[100px]">Disc %</TableHead>
-                  {isGstInvoice && <TableHead className="w-[100px]">GST %</TableHead>}
-                  <TableHead className="w-[120px]">Total</TableHead>
-                  <TableHead className="w-[50px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lineItems.map((item) => {
-                  const calc = calculateLineItem({
-                    unitPrice: item.unit_price,
-                    discountPercent: item.discount_percent,
-                    gstRate: item.gst_rate,
-                    quantity: item.quantity,
-                  })
-                  return (
-                    <TableRow key={item.id}>
-                      <TableCell>
-                        <Select
-                          value={item.product_id || ""}
-                          onValueChange={(value) => updateLineItem(item.id, "product_id", value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Select" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {products.map((product) => (
-                              <SelectItem key={product.id} value={product.id}>
-                                {product.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          value={item.description}
-                          onChange={(e) => updateLineItem(item.id, "description", e.target.value)}
-                          placeholder="Description"
-                          required
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.quantity}
-                          onChange={(e) => updateLineItem(item.id, "quantity", Number.parseFloat(e.target.value) || 0)}
-                          required
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={item.unit_price}
-                          onChange={(e) =>
-                            updateLineItem(item.id, "unit_price", Number.parseFloat(e.target.value) || 0)
-                          }
-                          required
-                        />
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          type="number"
-                          min="0"
-                          max="100"
-                          step="0.01"
-                          value={item.discount_percent}
-                          onChange={(e) =>
-                            updateLineItem(item.id, "discount_percent", Number.parseFloat(e.target.value) || 0)
-                          }
-                        />
-                      </TableCell>
-                      {isGstInvoice && (
-                        <TableCell>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={item.gst_rate}
-                            onChange={(e) =>
-                              updateLineItem(item.id, "gst_rate", Number.parseFloat(e.target.value) || 0)
-                            }
-                          />
-                        </TableCell>
-                      )}
-                      <TableCell className="font-medium">₹{calc.lineTotal.toFixed(2)}</TableCell>
-                      <TableCell>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeLineItem(item.id)}
-                          disabled={lineItems.length === 1}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-          </div>
-
-          <Button type="button" variant="outline" onClick={addLineItem} className="mt-4 bg-transparent">
-            <Plus className="mr-2 h-4 w-4" />
-            Add Line Item
-          </Button>
-        </CardContent>
-      </Card>
-
-      {/* Totals */}
-      <Card>
-        <CardContent className="p-6">
-          <div className="ml-auto max-w-sm space-y-2">
-            <div className="flex justify-between">
-              <span>Subtotal:</span>
-              <span className="font-medium">₹{totals.subtotal.toFixed(2)}</span>
-            </div>
-            {isGstInvoice && (
-              <>
-                {isSameState ? (
-                  <>
-                    <div className="flex justify-between">
-                      <span>CGST:</span>
-                      <span className="font-medium">₹{totals.cgst.toFixed(2)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>SGST:</span>
-                      <span className="font-medium">₹{totals.sgst.toFixed(2)}</span>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex justify-between">
-                    <span>IGST:</span>
-                    <span className="font-medium">₹{totals.igst.toFixed(2)}</span>
+              <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                <div className="flex items-center gap-2 text-xs">
+                  <Switch id="gst_invoice" checked={isGstInvoice} onCheckedChange={setIsGstInvoice} />
+                  <Label htmlFor="gst_invoice" className="text-xs">
+                    GST Invoice
+                  </Label>
+                </div>
+                {isGstInvoice && (
+                  <div className="flex items-center gap-2 text-xs">
+                    <Switch id="same_state" checked={isSameState} onCheckedChange={setIsSameState} />
+                    <Label htmlFor="same_state" className="text-xs">
+                      Same State
+                    </Label>
                   </div>
                 )}
-              </>
-            )}
-            <div className="flex justify-between border-t pt-2 text-lg font-bold">
-              <span>Total:</span>
-              <span>₹{totals.total.toFixed(2)}</span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* Notes and Terms */}
-      <Card>
-        <CardContent className="space-y-4 p-6">
-          <div className="space-y-2">
-            <Label htmlFor="notes">Notes</Label>
-            <Textarea
-              id="notes"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Additional notes for the customer..."
-              rows={3}
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="terms">Terms & Conditions</Label>
-            <Textarea
-              id="terms"
-              value={terms}
-              onChange={(e) => setTerms(e.target.value)}
-              placeholder="Payment terms and conditions..."
-              rows={3}
-            />
-          </div>
-        </CardContent>
-      </Card>
+          <Card>
+            <CardContent className="space-y-2 p-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="notes" className="text-xs">
+                  Notes
+                </Label>
+                <Textarea
+                  id="notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  className="text-sm"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="terms" className="text-xs">
+                  Terms
+                </Label>
+                <Textarea
+                  id="terms"
+                  value={terms}
+                  onChange={(e) => setTerms(e.target.value)}
+                  rows={2}
+                  className="text-sm"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
-      {/* Actions */}
-      <div className="flex gap-4">
-        <Button type="submit" disabled={isLoading}>
-          {isLoading ? "Creating..." : "Create Invoice"}
-        </Button>
-        <Button type="button" variant="outline" onClick={() => router.back()} disabled={isLoading}>
-          Cancel
-        </Button>
-      </div>
-    </form>
+        {/* Center column: product browser */}
+        <div className="space-y-3">
+          <Card className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Select Products</CardTitle>
+              <p className="text-xs text-muted-foreground">Search or tap to add items instantly</p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search name, SKU, or category"
+                  value={productSearchTerm}
+                  onChange={(e) => setProductSearchTerm(e.target.value)}
+                  className="pl-9 h-9 text-sm"
+                />
+              </div>
 
-    {/* Product Selection Window */}
-    <Dialog open={showProductWindow} onOpenChange={setShowProductWindow}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-hidden flex flex-col">
-        <DialogHeader>
-          <DialogTitle>Select Products</DialogTitle>
-        </DialogHeader>
-        <div className="flex flex-col gap-4 flex-1 overflow-hidden">
-          {/* Search Bar */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search products by name, SKU, or category..."
-              value={productSearchTerm}
-              onChange={(e) => setProductSearchTerm(e.target.value)}
-              className="pl-9"
-            />
-          </div>
+              {recentProducts.length > 0 && !productSearchTerm && (
+                <div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                    <span>Recently added</span>
+                    <span>{recentProducts.length} items</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {recentProducts.map((product) => (
+                      <button
+                        key={product.id}
+                        type="button"
+                        onClick={() => addProductToInvoice(product)}
+                        className="rounded-md border px-3 py-2 text-left text-xs hover:bg-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-primary"
+                      >
+                        <p className="font-medium truncate">{product.name}</p>
+                        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                          <span>₹{product.price.toLocaleString()}</span>
+                          {product.unit && <span>{product.unit}</span>}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-          {/* Frequently Bought Items */}
-          {frequentlyBoughtProducts.length > 0 && !productSearchTerm && (
-            <div>
-              <h3 className="text-sm font-semibold mb-2 text-muted-foreground">Frequently Bought</h3>
-              <div className="flex flex-wrap gap-2">
-                {frequentlyBoughtProducts.map((product) => (
-                  <Button
-                    key={product.id}
-                    type="button"
-                    variant="outline"
-                    onClick={() => addProductToInvoice(product)}
-                    className="h-auto flex-col items-start p-3 gap-1 text-left"
-                  >
-                    <span className="font-medium">{product.name}</span>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>₹{product.price.toLocaleString()}</span>
-                      {product.stock_quantity !== undefined && (
-                        <Badge variant={product.stock_quantity > 10 ? "default" : "secondary"}>
-                          {product.stock_quantity} {product.unit}
-                        </Badge>
-                      )}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{productSearchTerm ? "Matching products" : "All products (A-Z)"}</span>
+                  <span>{filteredProducts.length} items</span>
+                </div>
+                <div className="max-h-[520px] overflow-y-auto pr-1">
+                  {filteredProducts.length === 0 ? (
+                    <div className="py-12 text-center text-xs text-muted-foreground">
+                      {productSearchTerm ? "No products found" : "No products available"}
                     </div>
-                  </Button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* All Products Grid */}
-          <div className="flex-1 overflow-y-auto">
-            <h3 className="text-sm font-semibold mb-2 text-muted-foreground">
-              {productSearchTerm ? "Search Results" : "All Products"}
-            </h3>
-            {filteredProducts.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                {productSearchTerm ? "No products found" : "No products available"}
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
-                {filteredProducts.map((product) => (
-                  <Button
-                    key={product.id}
-                    type="button"
-                    variant="outline"
-                    onClick={() => addProductToInvoice(product)}
-                    className="h-auto flex-col items-start p-3 gap-1 text-left hover:bg-primary hover:text-primary-foreground"
-                  >
-                    <span className="font-medium text-sm">{product.name}</span>
-                    <div className="flex flex-col gap-1 text-xs text-muted-foreground w-full">
-                      <span>₹{product.price.toLocaleString()}</span>
-                      {product.stock_quantity !== undefined && (
-                        <Badge 
-                          variant={product.stock_quantity > 10 ? "default" : product.stock_quantity > 0 ? "secondary" : "destructive"}
-                          className="w-fit text-xs"
+                  ) : (
+                    <div className="grid grid-cols-3 gap-2">
+                      {filteredProducts.map((product) => (
+                        <button
+                          key={product.id}
+                          type="button"
+                          onClick={() => addProductToInvoice(product)}
+                          className="rounded-md border px-3 py-2 text-left hover:bg-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-primary"
                         >
-                          {product.stock_quantity} {product.unit}
-                        </Badge>
-                      )}
-                      {product.category && (
-                        <span className="text-xs opacity-75">{product.category}</span>
-                      )}
+                          <p className="text-sm font-medium truncate">{product.name}</p>
+                          <div className="mt-1 text-[11px] text-muted-foreground space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span>₹{product.price.toLocaleString()}</span>
+                              {product.category && <span className="truncate max-w-[80px]">{product.category}</span>}
+                            </div>
+                            {product.stock_quantity !== undefined && (
+                              <Badge
+                                variant={
+                                  product.stock_quantity > 10
+                                    ? "default"
+                                    : product.stock_quantity > 0
+                                      ? "secondary"
+                                      : "destructive"
+                                }
+                                className="text-[10px] font-normal"
+                              >
+                                {product.stock_quantity} {product.unit}
+                              </Badge>
+                            )}
+                          </div>
+                        </button>
+                      ))}
                     </div>
-                  </Button>
-                ))}
+                  )}
+                </div>
               </div>
-            )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Right column: line items + totals */}
+        <div className="space-y-3">
+          <Card className="h-full">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Invoice Items</CardTitle>
+              <p className="text-xs text-muted-foreground">Tap products or edit manually</p>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="rounded-md border">
+                <div className="max-h-[380px] overflow-y-auto">
+                  <Table className="text-xs">
+                    <TableHeader className="bg-muted/30 sticky top-0 z-10">
+                      <TableRow>
+                        <TableHead className="w-[160px]">Product</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead className="w-[70px] text-center">Qty</TableHead>
+                        <TableHead className="w-[80px] text-center">Rate</TableHead>
+                        <TableHead className="w-[70px] text-center">Disc%</TableHead>
+                        {isGstInvoice && <TableHead className="w-[60px] text-center">GST</TableHead>}
+                        <TableHead className="w-[90px] text-right">Amount</TableHead>
+                        <TableHead className="w-[40px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {lineItems.map((item) => {
+                        const calc = calculateLineItem({
+                          unitPrice: item.unit_price,
+                          discountPercent: item.discount_percent,
+                          gstRate: item.gst_rate,
+                          quantity: item.quantity,
+                        })
+                        return (
+                          <TableRow key={item.id}>
+                            <TableCell>
+                              <Select
+                                value={item.product_id || ""}
+                                onValueChange={(value) => updateLineItem(item.id, "product_id", value)}
+                              >
+                                <SelectTrigger className="h-8 text-xs">
+                                  <SelectValue placeholder="Pick" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-60">
+                                  {products.map((product) => (
+                                    <SelectItem key={product.id} value={product.id}>
+                                      {product.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                value={item.description}
+                                onChange={(e) => updateLineItem(item.id, "description", e.target.value)}
+                                placeholder="Description"
+                                required
+                                className="h-8 text-xs"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.quantity}
+                                onChange={(e) =>
+                                  updateLineItem(item.id, "quantity", Number.parseFloat(e.target.value) || 0)
+                                }
+                                required
+                                className="h-8 text-xs text-center"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={item.unit_price}
+                                onChange={(e) =>
+                                  updateLineItem(item.id, "unit_price", Number.parseFloat(e.target.value) || 0)
+                                }
+                                required
+                                className="h-8 text-xs text-center"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Input
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                value={item.discount_percent}
+                                onChange={(e) =>
+                                  updateLineItem(
+                                    item.id,
+                                    "discount_percent",
+                                    Number.parseFloat(e.target.value) || 0,
+                                  )
+                                }
+                                className="h-8 text-xs text-center"
+                              />
+                            </TableCell>
+                            {isGstInvoice && (
+                              <TableCell>
+                                <Input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={item.gst_rate}
+                                  onChange={(e) =>
+                                    updateLineItem(item.id, "gst_rate", Number.parseFloat(e.target.value) || 0)
+                                  }
+                                  className="h-8 text-xs text-center"
+                                />
+                              </TableCell>
+                            )}
+                            <TableCell className="text-right font-medium">
+                              ₹{calc.lineTotal.toFixed(2)}
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => removeLineItem(item.id)}
+                                disabled={lineItems.length === 1}
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+
+              <Button type="button" variant="outline" onClick={addLineItem} className="w-full bg-transparent text-xs">
+                <Plus className="mr-2 h-3.5 w-3.5" />
+                Add Line Item
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="space-y-2 p-4 text-sm">
+              <div className="flex justify-between">
+                <span>Subtotal</span>
+                <span className="font-medium">₹{totals.subtotal.toFixed(2)}</span>
+              </div>
+              {isGstInvoice && (
+                <>
+                  {isSameState ? (
+                    <>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>CGST</span>
+                        <span>₹{totals.cgst.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>SGST</span>
+                        <span>₹{totals.sgst.toFixed(2)}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>IGST</span>
+                      <span>₹{totals.igst.toFixed(2)}</span>
+                    </div>
+                  )}
+                </>
+              )}
+              <div className="flex justify-between border-t pt-2 text-base font-semibold">
+                <span>Total</span>
+                <span>₹{totals.total.toFixed(2)}</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="flex flex-col gap-2">
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? "Creating..." : "Create Invoice"}
+            </Button>
+            <Button type="button" variant="outline" onClick={() => router.back()} disabled={isLoading}>
+              Cancel
+            </Button>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
-    </>
+      </div>
+    </form>
   )
 }
