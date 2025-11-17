@@ -26,7 +26,14 @@ export default function InventoryPage() {
   const [products, setProducts] = useState<InventoryProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const databaseType = getDatabaseType()
+  const [databaseType, setDatabaseType] = useState(getDatabaseType())
+
+  useEffect(() => {
+    const updateDbType = () => setDatabaseType(getDatabaseType())
+    updateDbType()
+    window.addEventListener("storage", updateDbType)
+    return () => window.removeEventListener("storage", updateDbType)
+  }, [])
 
   useEffect(() => {
     let isActive = true
@@ -34,8 +41,9 @@ export default function InventoryPage() {
       try {
         setLoading(true)
         setError(null)
-        if (databaseType === "excel") {
+        if (databaseType === "indexeddb") {
           const list = await db.products.toArray()
+          console.log("[InventoryPage] Loaded products from IndexedDB:", list.length)
           if (!isActive) return
           setProducts(list as InventoryProduct[])
         } else {
@@ -53,6 +61,7 @@ export default function InventoryPage() {
             .eq("user_id", user.id)
             .order("updated_at", { ascending: false })
           if (fetchError) throw fetchError
+          console.log("[InventoryPage] Loaded products from Supabase:", data?.length || 0)
           if (isActive) setProducts((data || []) as InventoryProduct[])
         }
       } catch (err: any) {
@@ -175,7 +184,7 @@ export default function InventoryPage() {
           </p>
         </div>
         <Badge variant="secondary" className="w-fit">
-          {databaseType === "excel" ? "Excel Mode" : "Supabase Mode"}
+          {databaseType === "indexeddb" ? "Local Mode" : "Supabase Mode"}
         </Badge>
       </div>
 

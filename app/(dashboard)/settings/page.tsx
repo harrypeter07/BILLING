@@ -11,6 +11,8 @@ import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useStore } from "@/lib/utils/store-context"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
+import { Switch } from "@/components/ui/switch"
+import { isOfflineLoginEnabled, setOfflineLoginEnabled } from "@/lib/utils/offline-auth"
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState<any>(null)
@@ -22,6 +24,11 @@ export default function SettingsPage() {
   const { toast } = useToast()
   const isExcel = false
   const dbType = getDatabaseType()
+  const [offlineEnabled, setOfflineEnabled] = useState(false)
+
+  useEffect(() => {
+    setOfflineEnabled(isOfflineLoginEnabled())
+  }, [])
 
   // Only admin can access settings
   useEffect(() => {
@@ -299,6 +306,29 @@ export default function SettingsPage() {
                 All data is automatically saved to Supabase. No sync needed.
               </p>
             )}
+            <div className="mt-6 rounded-lg border bg-muted/30 p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Offline admin login</p>
+                  <p className="text-xs text-muted-foreground">
+                    Store a hashed password locally so you can sign in without internet. Turn off to remove saved secrets.
+                  </p>
+                </div>
+                <Switch
+                  checked={offlineEnabled}
+                  onCheckedChange={(checked) => {
+                    setOfflineEnabled(checked)
+                    setOfflineLoginEnabled(checked)
+                    toast({
+                      title: checked ? "Offline login enabled" : "Offline login disabled",
+                      description: checked
+                        ? "Your next successful login will refresh the offline credential."
+                        : "All offline credentials were cleared.",
+                    })
+                  }}
+                />
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>

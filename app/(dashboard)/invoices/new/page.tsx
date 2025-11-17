@@ -17,27 +17,21 @@ export default function NewInvoicePage() {
   const router = useRouter()
   
   
-  // Check if user is employee - only employees can create invoices
+  // Ensure user is authenticated (admin or employee)
   useEffect(() => {
     const checkAccess = async () => {
       const authType = localStorage.getItem("authType")
-      if (authType !== "employee") {
-        // Check if admin user
+      if (authType === "employee") {
+        return
+      }
+      try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          const { data: profile } = await supabase
-            .from("user_profiles")
-            .select("role")
-            .eq("id", user.id)
-            .single()
-          const role = profile?.role || "admin"
-          // Admin cannot create invoices - redirect to invoices list
-          if (role === "admin") {
-            router.push("/invoices")
-            return
-          }
+        if (!user) {
+          router.push("/auth/login")
         }
+      } catch (error) {
+        console.warn("[NewInvoice] Supabase unavailable during access check:", error)
       }
     }
     checkAccess()

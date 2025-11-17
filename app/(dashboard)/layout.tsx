@@ -7,6 +7,7 @@ import { StoreProvider } from "@/lib/utils/store-context"
 import { useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
+import { getOfflineSession, isOfflineLoginEnabled, saveOfflineSession } from "@/lib/utils/offline-auth"
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -19,8 +20,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       if (authType !== "employee") {
         // Check Supabase auth
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        let user = null
+        try {
+          const { data } = await supabase.auth.getUser()
+          user = data.user
+        } catch (error) {
+          console.warn("[DashboardLayout] Supabase auth unavailable:", error)
+          const offlineSession = getOfflineSession()
+          if (offlineSession) {
+            console.log("[DashboardLayout] Continuing with offline session")
+            return
+          }
+          router.push("/auth/login")
+          return
+        }
         if (!user) {
+          const offlineSession = getOfflineSession()
+          if (offlineSession) {
+            console.log("[DashboardLayout] No Supabase user but offline session active")
+            return
+          }
           router.push("/auth/login")
           return
         }
@@ -31,7 +50,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           .select("role")
           .eq("id", user.id)
           .single()
-        
         const userRole = profile?.role || "admin"
         
           // Only check store for admin users (not employees, they handle it differently)
@@ -90,6 +108,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           if (hasStore && storeId) {
             localStorage.setItem("currentStoreId", storeId)
           }
+        }
+        if (isOfflineLoginEnabled() && user.email) {
+          const storedStoreId = localStorage.getItem("currentStoreId")
+          saveOfflineSession({
+            email: user.email,
+            role: userRole,
+            storeId: storedStoreId,
+          })
         }
       }
     }

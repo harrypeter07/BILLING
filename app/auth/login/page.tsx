@@ -11,10 +11,17 @@ import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
-import { getDatabaseType } from "@/lib/utils/db-mode"
 import { db } from "@/lib/dexie-client"
 import { toast } from "sonner"
 import { CheckCircle2, LogOut, ArrowLeft } from "lucide-react"
+import {
+  attemptOfflineLogin,
+  clearOfflineSession,
+  getOfflineSession,
+  isOfflineLoginEnabled,
+  persistOfflineCredential,
+  saveOfflineSession,
+} from "@/lib/utils/offline-auth"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -24,7 +31,12 @@ export default function LoginPage() {
   const [currentUser, setCurrentUser] = useState<any>(null)
   const [currentRole, setCurrentRole] = useState<string | null>(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
+  const [offlineEnabled, setOfflineEnabled] = useState(false)
   const router = useRouter()
+
+  useEffect(() => {
+    setOfflineEnabled(isOfflineLoginEnabled())
+  }, [])
 
   // Check if user is already logged in and redirect
   useEffect(() => {
@@ -59,7 +71,23 @@ export default function LoginPage() {
 
         // Check for Supabase user
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
+        let userResponse
+        try {
+          userResponse = await supabase.auth.getUser()
+        } catch (error) {
+          console.warn("[Login] Supabase unavailable, checking offline session", error)
+          const offlineSession = getOfflineSession()
+          if (offlineSession) {
+            setCurrentUser({ email: offlineSession.email, name: offlineSession.email })
+            setCurrentRole(offlineSession.role)
+            router.push("/dashboard")
+            router.refresh()
+            setCheckingAuth(false)
+            return
+          }
+          throw error
+        }
+        const { data: { user } } = userResponse
         
         if (user) {
           const { data: profile } = await supabase
@@ -138,6 +166,23 @@ export default function LoginPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const tryOfflineFallback = async () => {
+    try {
+      console.log("[Login] Attempting offline login fallback")
+      const result = await attemptOfflineLogin(email, password)
+      if (result.success) {
+        toast.success("Logged in (offline mode)")
+        router.push("/dashboard")
+        router.refresh()
+        return true
+      }
+      return false
+    } catch (error) {
+      console.error("[Login] Offline fallback failed:", error)
+      return false
+    }
+  }
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     const supabase = createClient()
@@ -145,6 +190,7 @@ export default function LoginPage() {
     setError(null)
 
     try {
+      let resolvedStoreId: string | null = localStorage.getItem("currentStoreId")
       const { error } = await supabase.auth.signInWithPassword({
         email,
         password,
@@ -189,6 +235,7 @@ export default function LoginPage() {
             // Store exists, save first store to localStorage
             const store = stores[0]
             localStorage.setItem("currentStoreId", store.id)
+            resolvedStoreId = store.id
             console.log("[Login] Store found, redirecting admin to /admin/analytics")
             router.push("/admin/analytics")
           } else {
@@ -212,6 +259,7 @@ export default function LoginPage() {
             // Store exists, save to localStorage and go to admin analytics
             const store = stores[0]
             localStorage.setItem("currentStoreId", store.id)
+            resolvedStoreId = store.id
             console.log("[Login] Store found, redirecting admin to /admin/analytics")
             router.push("/admin/analytics")
           }
@@ -220,13 +268,24 @@ export default function LoginPage() {
           console.log("[Login] Public user detected, redirecting to /dashboard")
           router.push("/dashboard")
         }
+        if (offlineEnabled) {
+          await persistOfflineCredential(email, password, { role: userRole, storeId: resolvedStoreId })
+          saveOfflineSession({
+            email,
+            role: userRole,
+            storeId: resolvedStoreId,
+          })
+        }
       } else {
         console.log("[Login] Warning: User not found after successful login")
         router.push("/dashboard")
       }
       router.refresh()
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : "An error occurred")
+      const offlineSuccess = await tryOfflineFallback()
+      if (!offlineSuccess) {
+        setError(error instanceof Error ? error.message : "An error occurred")
+      }
     } finally {
       setIsLoading(false)
     }
@@ -244,6 +303,7 @@ export default function LoginPage() {
       await supabase.auth.signOut()
     }
     
+    clearOfflineSession()
     setCurrentUser(null)
     setCurrentRole(null)
     router.refresh()

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
+import { getOfflineSession } from "@/lib/utils/offline-auth"
 
 export type UserRole = "admin" | "employee" | "public" | null
 
@@ -29,9 +30,27 @@ export function useUserRole(): UserRoleInfo {
         return
       }
 
+      const offlineSession = getOfflineSession()
+      if (offlineSession && !navigator.onLine) {
+        setRole(offlineSession.role as UserRole)
+        setIsLoading(false)
+        return
+      }
+
       // Check for Supabase user
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
+      let user = null
+      try {
+        const { data } = await supabase.auth.getUser()
+        user = data.user
+      } catch (error) {
+        console.warn("[useUserRole] Supabase unavailable:", error)
+        if (offlineSession) {
+          setRole(offlineSession.role as UserRole)
+          setIsLoading(false)
+          return
+        }
+      }
       
       if (!user) {
         setRole(null)

@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell } from "lucide-react"
+import { Bell, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -19,6 +19,7 @@ import { useUserRole } from "@/lib/hooks/use-user-role"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { getDatabaseType } from "@/lib/utils/db-mode"
+import { clearOfflineSession } from "@/lib/utils/offline-auth"
 
 interface HeaderProps {
   title?: string
@@ -31,6 +32,7 @@ export function Header({ title }: HeaderProps) {
   const [hasMounted, setHasMounted] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [databaseType, setDatabaseType] = useState<'Local' | 'Supabase'>('Local');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { role, isAdmin, isEmployee, isPublic, isLoading: roleLoading } = useUserRole();
   const { toast } = useToast();
 
@@ -104,6 +106,7 @@ export function Header({ title }: HeaderProps) {
     // Sign out from Supabase
     const supabase = createClient()
     await supabase.auth.signOut()
+    clearOfflineSession()
 
     // Redirect to login
     router.push("/auth/login")
@@ -124,6 +127,13 @@ export function Header({ title }: HeaderProps) {
     } finally {
       setIsSyncing(false)
     }
+  }
+
+  const handleRefresh = () => {
+    setIsRefreshing(true)
+    console.log("[Header] Manual refresh triggered")
+    router.refresh()
+    setTimeout(() => setIsRefreshing(false), 800)
   }
 
   return (
@@ -150,6 +160,19 @@ export function Header({ title }: HeaderProps) {
             {role.charAt(0).toUpperCase() + role.slice(1)}
           </Badge>
         )}
+
+        {/* Manual refresh button */}
+        <Button
+          variant="outline"
+          size="sm"
+          className="bg-transparent"
+          onClick={handleRefresh}
+          disabled={isRefreshing}
+          title="Reload current data"
+        >
+          <RefreshCw className="mr-2 h-4 w-4" />
+          {isRefreshing ? "Refreshing..." : "Refresh"}
+        </Button>
 
         {/* Manual sync button */}
         {(isEmployee || isAdmin) && (
