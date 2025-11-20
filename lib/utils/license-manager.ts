@@ -1,7 +1,6 @@
 import { db, type License } from "@/lib/db/dexie";
 import { encryptLicenseData, decryptLicenseData } from "./license-encryption";
-import { getMacAddress } from "./mac-address";
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, type QueryConstraint } from "firebase/firestore";
 import { db as firestoreDb } from "@/lib/firebase";
 
 /**
@@ -30,16 +29,20 @@ export interface LicenseInfo {
  */
 export async function validateLicenseOnline(
   licenseKey: string,
-  macAddress: string
+  macAddress?: string
 ): Promise<{ valid: boolean; licenseData?: LicenseInfo; error?: string }> {
   try {
     const licensesRef = collection(firestoreDb, "licenses");
-    const q = query(
-      licensesRef,
+    const constraints: QueryConstraint[] = [
       where("licenseKey", "==", licenseKey),
-      where("macAddress", "==", macAddress),
-      where("status", "==", "active")
-    );
+      where("status", "==", "active"),
+    ];
+
+    if (macAddress) {
+      constraints.push(where("macAddress", "==", macAddress));
+    }
+
+    const q = query(licensesRef, ...constraints);
 
     const querySnapshot = await getDocs(q);
 
@@ -60,7 +63,7 @@ export async function validateLicenseOnline(
 
     const licenseInfo: LicenseInfo = {
       licenseKey: licenseData.licenseKey,
-      macAddress: licenseData.macAddress,
+      macAddress: licenseData.macAddress || macAddress || "ANY",
       clientName: licenseData.clientName || "Unknown",
       activatedOn: licenseData.activatedOn?.toDate?.()?.toISOString() || licenseData.activatedOn,
       expiresOn: expiresOn.toISOString(),
@@ -177,8 +180,7 @@ export async function activateLicense(
   email?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const macAddress = await getMacAddress();
-    const validation = await validateLicenseOnline(licenseKey, macAddress);
+    const validation = await validateLicenseOnline(licenseKey);
 
     if (!validation.valid || !validation.licenseData) {
       return {
@@ -242,16 +244,8 @@ export async function checkLicenseOnLaunch(): Promise<{
     // Try to validate online (optional - for revocation check)
     // This runs in background and doesn't block if offline
     try {
-      const macAddressPromise = Promise.race([
-        getMacAddress(),
-        createTimeout(2000, storedLicense!.macAddress, "[LicenseManager] getMacAddress timed out, using stored MAC"),
-      ]);
-
-      const macAddress = await macAddressPromise;
-      
       const onlineValidationPromise = validateLicenseOnline(
-        storedLicense.licenseKey,
-        macAddress
+        storedLicense.licenseKey
       );
 
       const onlineValidation = await Promise.race([
