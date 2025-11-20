@@ -120,7 +120,9 @@
           ]
         }
       ],
-      "forceCodeSigning": false
+      "forceCodeSigning": false,
+      "signAndEditExecutable": false,
+      "signExts": []
     },
     "electronDownload": {
       "cache": "./.electron-cache"
@@ -160,6 +162,14 @@
       "!**/node_modules/**/.cache"
     ],
     "asar": true,
+    "asarUnpack": [
+      "**/node_modules/next/**",
+      "**/.next/**",
+      "**/app/**",
+      "**/components/**",
+      "**/lib/**",
+      "**/public/**"
+    ],
     "extraResources": [
       {
         "from": "public",
@@ -190,6 +200,7 @@
       "oneClick": false,
       "perMachine": false,
       "allowElevation": false,
+      "packElevateHelper": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,

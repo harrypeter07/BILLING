@@ -54,12 +54,39 @@ const startNextServer = async () => {
   }
 
   try {
-    const appPath = app.isPackaged 
-      ? path.join(process.resourcesPath, 'app')
-      : path.join(__dirname, '..');
+    let appPath;
+    if (app.isPackaged) {
+      // When packaged with ASAR, unpacked files are in app.asar.unpacked
+      // Next.js cannot run from inside ASAR, so we need to use unpacked directory
+      const resourcesPath = process.resourcesPath;
+      const unpackedPath = path.join(resourcesPath, 'app.asar.unpacked');
+      const asarPath = path.join(resourcesPath, 'app.asar');
+      
+      // Check if unpacked directory exists (when asarUnpack is used)
+      if (fs.existsSync(unpackedPath)) {
+        appPath = unpackedPath;
+        console.log('[Electron] Using unpacked ASAR directory');
+      } else if (fs.existsSync(asarPath)) {
+        // If ASAR exists but no unpacked, we need to use the app directory
+        // This shouldn't happen with our config, but handle it anyway
+        appPath = path.join(resourcesPath, 'app');
+        console.warn('[Electron] ASAR found but no unpacked directory - using app directory');
+      } else {
+        // Fallback to app directory
+        appPath = path.join(resourcesPath, 'app');
+        console.log('[Electron] Using app directory (no ASAR)');
+      }
+    } else {
+      appPath = path.join(__dirname, '..');
+    }
     
     console.log('[Electron] Starting Next.js server...');
     console.log('[Electron] App path:', appPath);
+    
+    // Verify the path exists
+    if (!fs.existsSync(appPath)) {
+      throw new Error(`App path does not exist: ${appPath}`);
+    }
     
     // Find available port in range 3000-3100
     // Try ports sequentially in the range
@@ -79,7 +106,7 @@ const startNextServer = async () => {
     }
     console.log(`[Electron] Found available port: ${serverPort}`);
     
-    // Change to app directory
+    // Change to app directory (now safe since we're using unpacked or regular app dir)
     const originalCwd = process.cwd();
     process.chdir(appPath);
     
