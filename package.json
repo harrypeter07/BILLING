@@ -130,7 +130,7 @@
     "beforeBuild": "node scripts/clear-electron-cache.js",
     "directories": {
       "buildResources": "resources",
-      "output": "dist"
+      "output": "dist/temp-build-1763663167491"
     },
     "files": [
       ".next/**/*",
@@ -161,15 +161,7 @@
       "!**/node_modules/**/*.log",
       "!**/node_modules/**/.cache"
     ],
-    "asar": true,
-    "asarUnpack": [
-      "**/node_modules/next/**",
-      "**/.next/**",
-      "**/app/**",
-      "**/components/**",
-      "**/lib/**",
-      "**/public/**"
-    ],
+    "asar": false,
     "extraResources": [
       {
         "from": "public",

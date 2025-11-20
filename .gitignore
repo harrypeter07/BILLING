@@ -44,3 +44,5 @@ app/firebase/*.json
 # tauri build artifacts
 /src-tauri/target/
 /.api-backup/
+
+/temp-asar-extract/
