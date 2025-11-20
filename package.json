@@ -130,7 +130,7 @@
     "beforeBuild": "node scripts/clear-electron-cache.js",
     "directories": {
       "buildResources": "resources",
-      "output": "dist/temp-build-1763663167491"
+      "output": "dist"
     },
     "files": [
       ".next/**/*",
