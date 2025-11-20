@@ -111,7 +111,16 @@ async function build() {
         
         console.log('Building to temporary directory to avoid file locks...');
         
-        execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win', { 
+        // Build directory first (faster)
+        console.log('Building directory structure...');
+        execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win --x64 --dir', { 
+          stdio: 'inherit',
+          env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', WIN_CSC_LINK: '' }
+        });
+        
+        // Then build installer (separate step for better control)
+        console.log('Building NSIS installer...');
+        execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win nsis', { 
           stdio: 'inherit',
           env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', WIN_CSC_LINK: '' }
         });
@@ -256,13 +265,23 @@ async function build() {
       // Normal build (no old EXE exists)
       console.log('Building normally (no old executable found)...');
       try {
-        execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win', { 
+        // Build directory first (faster)
+        console.log('Building directory structure...');
+        execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win --x64 --dir', { 
+          stdio: 'inherit',
+          env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', WIN_CSC_LINK: '' }
+        });
+        
+        // Then build installer (separate step for better control)
+        console.log('Building NSIS installer...');
+        execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win nsis', { 
           stdio: 'inherit',
           env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', WIN_CSC_LINK: '' }
         });
         
         console.log('\n✓ Build complete!');
         console.log('Executable location: dist/win-unpacked/Billing Solutions.exe');
+        console.log('Installer location: dist/Billing Solutions Setup 0.1.0.exe');
       } catch (error) {
         // Check if exe was created despite the error (winCodeSign errors are non-fatal)
         if (fs.existsSync(exePath)) {

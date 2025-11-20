@@ -103,6 +103,8 @@
     "productName": "Billing Solutions",
     "npmRebuild": false,
     "nodeGypRebuild": false,
+    "buildDependenciesFromSource": false,
+    "compression": "store",
     "win": {
       "target": [
         {
@@ -118,6 +120,7 @@
           ]
         }
       ],
+      "sign": false,
       "forceCodeSigning": false
     },
     "electronDownload": {
@@ -125,8 +128,8 @@
     },
     "beforeBuild": "node scripts/clear-electron-cache.js",
     "directories": {
-      "buildResources": "assets",
-      "output": "dist/temp-build-1763209271318"
+      "buildResources": "resources",
+      "output": "dist"
     },
     "files": [
       ".next/**/*",
@@ -141,15 +144,32 @@
       "tsconfig.json",
       "tailwind.config.ts",
       "postcss.config.mjs",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "!**/src",
+      "!**/tests",
+      "!**/*.map",
+      "!**/README.md",
+      "!**/node_modules/**/test",
+      "!**/node_modules/**/docs",
+      "!**/node_modules/**/examples",
+      "!**/node_modules/**/*.md",
+      "!**/node_modules/**/.git",
+      "!**/node_modules/**/.github",
+      "!**/node_modules/**/coverage",
+      "!**/node_modules/**/.nyc_output",
+      "!**/node_modules/**/*.log",
+      "!**/node_modules/**/.cache"
     ],
-    "asar": false,
+    "asar": true,
     "extraResources": [
       {
         "from": "public",
         "to": "public",
         "filter": [
-          "**/*"
+          "**/*",
+          "!**/*.log",
+          "!**/.cache",
+          "!**/temp"
         ]
       }
     ],
@@ -169,9 +189,15 @@
     },
     "nsis": {
       "oneClick": false,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowOverwrite": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
+      "createStartMenuShortcut": true,
+      "compression": "store",
+      "include": "installer.nsh",
+      "logLevel": "debug"
     }
   }
 }
