@@ -78,9 +78,13 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
   const [invoiceNumber, setInvoiceNumber] = useState("")
   const [localCustomers, setLocalCustomers] = useState<Customer[]>(customers)
   
-  // Update local customers when prop changes
+  // Merge prop customers with local additions without removing new ones
   useEffect(() => {
-    setLocalCustomers(customers)
+    setLocalCustomers((prev) => {
+      const dedup = new Map<string, Customer>()
+      ;[...prev, ...customers].forEach((cust) => dedup.set(cust.id, cust))
+      return Array.from(dedup.values())
+    })
   }, [customers])
   
   useEffect(() => {
@@ -381,9 +385,10 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
         <div className="space-y-3">
           <InlineCustomerForm
             onCustomerCreated={(newCustomer) => {
-              setLocalCustomers([...localCustomers, newCustomer])
+              setLocalCustomers((prev) => [newCustomer, ...prev.filter((c) => c.id !== newCustomer.id)])
               setCustomerId(newCustomer.id)
-              onCustomersUpdate?.([...localCustomers, newCustomer])
+              const nextList = [newCustomer, ...localCustomers.filter((c) => c.id !== newCustomer.id)]
+              onCustomersUpdate?.(nextList)
             }}
           />
 

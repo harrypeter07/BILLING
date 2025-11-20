@@ -111,7 +111,7 @@ async function build() {
         
         console.log('Building to temporary directory to avoid file locks...');
         
-        execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win --dir', { 
+        execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win', { 
           stdio: 'inherit',
           env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', WIN_CSC_LINK: '' }
         });
@@ -256,7 +256,7 @@ async function build() {
       // Normal build (no old EXE exists)
       console.log('Building normally (no old executable found)...');
       try {
-        execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win --dir', { 
+        execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win', { 
           stdio: 'inherit',
           env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', WIN_CSC_LINK: '' }
         });

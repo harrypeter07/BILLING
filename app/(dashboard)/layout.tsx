@@ -31,6 +31,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             console.log("[DashboardLayout] Continuing with offline session")
             return
           }
+          if (typeof window !== "undefined" && !navigator.onLine) {
+            console.log("[DashboardLayout] Offline detected; skipping redirect")
+            return
+          }
           router.push("/auth/login")
           return
         }
@@ -38,6 +42,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           const offlineSession = getOfflineSession()
           if (offlineSession) {
             console.log("[DashboardLayout] No Supabase user but offline session active")
+            return
+          }
+          if (typeof window !== "undefined" && !navigator.onLine) {
+            console.log("[DashboardLayout] Offline without session; keeping user on page")
             return
           }
           router.push("/auth/login")

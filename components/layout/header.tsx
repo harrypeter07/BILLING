@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, RefreshCw } from "lucide-react"
+import { Bell, RefreshCw, WifiOff, Wifi } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -35,6 +35,7 @@ export function Header({ title }: HeaderProps) {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { role, isAdmin, isEmployee, isPublic, isLoading: roleLoading } = useUserRole();
   const { toast } = useToast();
+  const [isOnline, setIsOnline] = useState(true)
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -69,6 +70,7 @@ export function Header({ title }: HeaderProps) {
 
   useEffect(() => {
     setHasMounted(true);
+    setIsOnline(typeof navigator !== "undefined" ? navigator.onLine : true)
     
     // Get current database type
     const dbType = getDatabaseType();
@@ -81,6 +83,10 @@ export function Header({ title }: HeaderProps) {
     };
     
     window.addEventListener('storage', handleStorageChange);
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener("online", handleOnline)
+    window.addEventListener("offline", handleOffline)
     
     // Also check periodically (in case changed in same tab)
     const interval = setInterval(() => {
@@ -90,6 +96,8 @@ export function Header({ title }: HeaderProps) {
     
     return () => {
       window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener("online", handleOnline)
+      window.removeEventListener("offline", handleOffline)
       clearInterval(interval);
     };
   }, []);
@@ -160,6 +168,24 @@ export function Header({ title }: HeaderProps) {
             {role.charAt(0).toUpperCase() + role.slice(1)}
           </Badge>
         )}
+
+        {/* Connection status */}
+        <Badge
+          variant={isOnline ? "outline" : "destructive"}
+          className="flex items-center gap-1 text-xs font-semibold"
+        >
+          {isOnline ? (
+            <>
+              <Wifi className="h-3 w-3" />
+              Online
+            </>
+          ) : (
+            <>
+              <WifiOff className="h-3 w-3" />
+              Offline
+            </>
+          )}
+        </Badge>
 
         {/* Manual refresh button */}
         <Button
