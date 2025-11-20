@@ -120,7 +120,6 @@
           ]
         }
       ],
-      "sign": false,
       "forceCodeSigning": false
     },
     "electronDownload": {
@@ -191,13 +190,10 @@
       "oneClick": false,
       "perMachine": false,
       "allowElevation": false,
-      "allowOverwrite": true,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "compression": "store",
-      "include": "installer.nsh",
-      "logLevel": "debug"
+      "include": "installer.nsh"
     }
   }
 }
