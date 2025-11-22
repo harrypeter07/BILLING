@@ -133,23 +133,35 @@
       "output": "dist"
     },
     "files": [
-      ".next/**/*",
-      "app/**/*",
-      "components/**/*",
-      "lib/**/*",
-      "public/**/*",
-      "electron/**/*",
-      "package.json",
-      "package-lock.json",
-      "next.config.mjs",
-      "tsconfig.json",
-      "tailwind.config.ts",
-      "postcss.config.mjs",
-      "!**/src",
-      "!**/tests",
-      "!**/*.map",
-      "!**/README.md"
-    ],
+  ".next/**/*",
+  "public/**/*",
+  "electron/**/*",
+  "app/**/*",
+  "components/**/*",
+  "lib/**/*",
+
+
+  "package.json",
+  "next.config.mjs",
+  "tsconfig.json",
+  "tailwind.config.ts",
+  "postcss.config.mjs",
+
+ 
+  "!node_modules/**",
+  "!**/node_modules/**",
+  "!.next/cache/**",
+  "!**/*.map",
+  "!**/*.md",
+  "!**/README.md",
+  "!**/tests/**",
+  "!**/src/**",
+  "!**/.next/cache/**",
+  "!**/coverage/**",
+  "!**/.eslint*",
+  "!**/.vscode/**",
+  "!**/.git/**"
+],
     "asar": true,
     "asarUnpack": [
       ".next",
