@@ -32,9 +32,9 @@ console.log('[Electron] Cache directory:', userCachePath);
 console.log('[Electron] User data directory:', userDataPath);
 
 const getPreloadPath = () => {
-  return app.isPackaged 
-    ? path.join(__dirname, 'preload.js')
-    : path.join(__dirname, 'preload.js');
+  // In production, electron is unpacked, so __dirname points to resources/app.asar.unpacked/electron
+  // In dev, __dirname points to electron/
+  return path.join(__dirname, 'preload.js');
 };
 
 // Start Next.js server ONCE before creating window

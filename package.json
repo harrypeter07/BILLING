@@ -4,7 +4,6 @@
   "description": "Smart Billing for Small Businesses - Manage products, create GST invoices, track customers, and generate reports",
   "author": "Billing Solutions",
   "private": true,
-  "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:next\" \"npm run dev:electron\"",
     "dev:next": "next dev",
@@ -62,7 +61,6 @@
     "dexie": "latest",
     "embla-carousel-react": "8.5.1",
     "firebase-admin": "^13.6.0",
-    "get-port": "^7.1.0",
     "input-otp": "1.4.1",
     "jspdf": "latest",
     "jspdf-autotable": "latest",
@@ -91,7 +89,6 @@
     "@types/node": "^22",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "electron": "^39.1.1",
     "electron-builder": "^26.0.12",
     "postcss": "^8.5",
     "tailwindcss": "^4.1.9",
@@ -101,10 +98,11 @@
   "build": {
     "appId": "com.billingsolutions.app",
     "productName": "Billing Solutions",
+    "electronVersion": "39.1.1",
     "npmRebuild": false,
     "nodeGypRebuild": false,
     "buildDependenciesFromSource": false,
-    "compression": "store",
+    "compression": "maximum",
     "win": {
       "target": [
         {
@@ -133,35 +131,31 @@
       "output": "dist"
     },
     "files": [
-  ".next/**/*",
-  "public/**/*",
-  "electron/**/*",
-  "app/**/*",
-  "components/**/*",
-  "lib/**/*",
-
-
-  "package.json",
-  "next.config.mjs",
-  "tsconfig.json",
-  "tailwind.config.ts",
-  "postcss.config.mjs",
-
- 
-  "!node_modules/**",
-  "!**/node_modules/**",
-  "!.next/cache/**",
-  "!**/*.map",
-  "!**/*.md",
-  "!**/README.md",
-  "!**/tests/**",
-  "!**/src/**",
-  "!**/.next/cache/**",
-  "!**/coverage/**",
-  "!**/.eslint*",
-  "!**/.vscode/**",
-  "!**/.git/**"
-],
+      ".next/**/*",
+      "public/**/*",
+      "electron/**/*",
+      "app/**/*",
+      "components/**/*",
+      "lib/**/*",
+      "package.json",
+      "next.config.mjs",
+      "tsconfig.json",
+      "tailwind.config.ts",
+      "postcss.config.mjs",
+      "!node_modules/**",
+      "!**/node_modules/**",
+      "!.next/cache/**",
+      "!**/*.map",
+      "!**/*.md",
+      "!**/README.md",
+      "!**/tests/**",
+      "!**/src/**",
+      "!**/.next/cache/**",
+      "!**/coverage/**",
+      "!**/.eslint*",
+      "!**/.vscode/**",
+      "!**/.git/**"
+    ],
     "asar": true,
     "asarUnpack": [
       ".next",
@@ -201,7 +195,4 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "include": "installer.nsh"
-    }
-  }
-}
+      "include":

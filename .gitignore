@@ -2,7 +2,8 @@
 
 # dependencies
 /node_modules
-
+/electron/node_modules/*
+/electron/node_modules
 # next.js
 /.next/
 /out/
@@ -44,5 +45,5 @@ app/firebase/*.json
 # tauri build artifacts
 /src-tauri/target/
 /.api-backup/
-
+/electron/node_modules/
 /temp-asar-extract/

@@ -1,9 +1,11 @@
 {
-  "name": "billing-solutions-electron",
-  "version": "0.1.0",
-  "description": "Electron wrapper for Billing Solutions",
+  "name": "billing-electron",
+  "version": "1.0.0",
   "main": "main.js",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "get-port": "^7.1.0",
+    "next": "16.0.0",
+    "electron-store": "^8.1.0"
+  }
 }
-
-
