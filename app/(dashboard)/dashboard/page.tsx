@@ -1,6 +1,6 @@
 "use client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle, UserCog, Boxes } from "lucide-react";
+import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle, UserCog, Boxes, Shield, LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import { useEffect, useState } from 'react';
@@ -8,13 +8,20 @@ import { db } from '@/lib/dexie-client';
 import { createClient } from '@/lib/supabase/client';
 import { getDatabaseType } from '@/lib/utils/db-mode';
 import { useUserRole } from '@/lib/hooks/use-user-role';
+import { clearLicense, getStoredLicense } from "@/lib/utils/license-manager";
+import { useRouter } from "next/navigation";
+import { useToast } from "@/hooks/use-toast";
 
 export default function DashboardPage() {
   const [localStats, setLocalStats] = useState<any>(null);
   const [sbStats, setSbStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [licenseInfo, setLicenseInfo] = useState<any>(null);
+  const [clearingLicense, setClearingLicense] = useState(false);
   const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole();
   const dbType = getDatabaseType();
+  const router = useRouter();
+  const { toast } = useToast();
 
   useEffect(() => {
     // Local (IndexedDB) mode
@@ -63,6 +70,56 @@ export default function DashboardPage() {
       })();
     }
   }, [dbType]);
+
+  // Fetch license info for admins
+  useEffect(() => {
+    if (isAdmin) {
+      const fetchLicenseInfo = async () => {
+        try {
+          const license = await getStoredLicense();
+          setLicenseInfo(license);
+        } catch (error) {
+          console.error("Error fetching license info:", error);
+        }
+      };
+      fetchLicenseInfo();
+    }
+  }, [isAdmin]);
+
+  const handleClearLicense = async () => {
+    if (!confirm("Are you sure you want to logout/clear the license? This will require you to activate again.")) {
+      return;
+    }
+    setClearingLicense(true);
+    try {
+      const result = await clearLicense();
+      if (result.success) {
+        toast({
+          title: "License cleared",
+          description: "License has been removed. You will need to activate again.",
+        });
+        setLicenseInfo(null);
+        // Redirect to license page
+        setTimeout(() => {
+          router.push("/license");
+        }, 1000);
+      } else {
+        toast({
+          title: "Failed to clear license",
+          description: result.error || "An error occurred",
+          variant: "destructive",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "An unexpected error occurred",
+        variant: "destructive",
+      });
+    } finally {
+      setClearingLicense(false);
+    }
+  };
 
   const stats = dbType === 'supabase' ? sbStats : localStats;
   
@@ -250,6 +307,72 @@ export default function DashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* License Management - Only for Admins */}
+      {isAdmin && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              License Management
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {licenseInfo ? (
+              <div className="space-y-4">
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <p className="font-medium">Client Name</p>
+                    <p className="text-muted-foreground">{licenseInfo.clientName || "Not set"}</p>
+                  </div>
+                  <div>
+                    <p className="font-medium">License Key</p>
+                    <p className="text-muted-foreground font-mono text-xs break-all">{licenseInfo.licenseKey || "Not set"}</p>
+                  </div>
+                  <div>
+                    <p className="font-medium">Status</p>
+                    <p className="text-muted-foreground capitalize">{licenseInfo.status || "Unknown"}</p>
+                  </div>
+                  <div>
+                    <p className="font-medium">Expires On</p>
+                    <p className="text-muted-foreground">
+                      {licenseInfo.expiresOn ? new Date(licenseInfo.expiresOn).toLocaleDateString() : "Not set"}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={handleClearLicense}
+                  disabled={clearingLicense}
+                  variant="outline"
+                  className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                >
+                  {clearingLicense ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Clearing License...
+                    </>
+                  ) : (
+                    <>
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Logout License (For Testing)
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  This will completely remove the license from your computer. Use this for testing purposes.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">No license information found.</p>
+                <Button asChild variant="outline" className="w-full">
+                  <Link href="/license">Activate License</Link>
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

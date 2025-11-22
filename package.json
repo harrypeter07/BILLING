@@ -145,23 +145,16 @@
       "tsconfig.json",
       "tailwind.config.ts",
       "postcss.config.mjs",
-      "node_modules/**/*",
       "!**/src",
       "!**/tests",
       "!**/*.map",
-      "!**/README.md",
-      "!**/node_modules/**/test",
-      "!**/node_modules/**/docs",
-      "!**/node_modules/**/examples",
-      "!**/node_modules/**/*.md",
-      "!**/node_modules/**/.git",
-      "!**/node_modules/**/.github",
-      "!**/node_modules/**/coverage",
-      "!**/node_modules/**/.nyc_output",
-      "!**/node_modules/**/*.log",
-      "!**/node_modules/**/.cache"
+      "!**/README.md"
     ],
-    "asar": false,
+    "asar": true,
+    "asarUnpack": [
+      ".next",
+      "electron"
+    ],
     "extraResources": [
       {
         "from": "public",

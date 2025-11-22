@@ -56,25 +56,35 @@ const startNextServer = async () => {
   try {
     let appPath;
     if (app.isPackaged) {
-      // When packaged with ASAR, unpacked files are in app.asar.unpacked
-      // Next.js cannot run from inside ASAR, so we need to use unpacked directory
+      // When packaged, files are in resources/app.asar (ASAR enabled)
+      // .next and electron directories are unpacked for direct file access
       const resourcesPath = process.resourcesPath;
-      const unpackedPath = path.join(resourcesPath, 'app.asar.unpacked');
       const asarPath = path.join(resourcesPath, 'app.asar');
+      const unpackedPath = path.join(resourcesPath, 'app.asar.unpacked');
       
-      // Check if unpacked directory exists (when asarUnpack is used)
+      // Check if unpacked directory exists (for .next and electron)
       if (fs.existsSync(unpackedPath)) {
+        // Use unpacked path as base - .next is unpacked here
         appPath = unpackedPath;
-        console.log('[Electron] Using unpacked ASAR directory');
+        console.log('[Electron] Using unpacked app directory from resources');
       } else if (fs.existsSync(asarPath)) {
-        // If ASAR exists but no unpacked, we need to use the app directory
-        // This shouldn't happen with our config, but handle it anyway
-        appPath = path.join(resourcesPath, 'app');
-        console.warn('[Electron] ASAR found but no unpacked directory - using app directory');
+        // Fallback to ASAR if unpacked doesn't exist
+        appPath = asarPath;
+        console.log('[Electron] Using ASAR app directory from resources');
       } else {
-        // Fallback to app directory
-        appPath = path.join(resourcesPath, 'app');
-        console.log('[Electron] Using app directory (no ASAR)');
+        console.error('[Electron] App path does not exist (checked both ASAR and unpacked)');
+        console.error('[Electron] Resources path:', resourcesPath);
+        console.error('[Electron] Available in resources:', fs.existsSync(resourcesPath) ? fs.readdirSync(resourcesPath) : 'N/A');
+        throw new Error(`App path does not exist. Checked: ${asarPath} and ${unpackedPath}`);
+      }
+      
+      // Verify .next directory exists (required for Next.js server)
+      // It should be in unpacked directory since we configured asarUnpack
+      const nextBuildPath = path.join(appPath, '.next');
+      if (!fs.existsSync(nextBuildPath)) {
+        console.error('[Electron] .next build directory not found at:', nextBuildPath);
+        console.error('[Electron] Available files in app:', fs.existsSync(appPath) ? fs.readdirSync(appPath) : 'N/A');
+        throw new Error(`Next.js build directory (.next) not found at: ${nextBuildPath}. Please ensure the app is built correctly.`);
       }
     } else {
       appPath = path.join(__dirname, '..');
@@ -82,11 +92,7 @@ const startNextServer = async () => {
     
     console.log('[Electron] Starting Next.js server...');
     console.log('[Electron] App path:', appPath);
-    
-    // Verify the path exists
-    if (!fs.existsSync(appPath)) {
-      throw new Error(`App path does not exist: ${appPath}`);
-    }
+    console.log('[Electron] .next exists:', fs.existsSync(path.join(appPath, '.next')));
     
     // Find available port in range 3000-3100
     // Try ports sequentially in the range

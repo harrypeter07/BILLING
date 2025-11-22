@@ -13,9 +13,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { activateLicense, getStoredLicense, isLicenseValid } from "@/lib/utils/license-manager";
+import { activateLicense, getStoredLicense, isLicenseValid, clearLicense } from "@/lib/utils/license-manager";
 import { getMacAddress } from "@/lib/utils/mac-address";
-import { Loader2, CheckCircle2, XCircle, Shield } from "lucide-react";
+import { Loader2, CheckCircle2, XCircle, Shield, LogOut } from "lucide-react";
 
 // Check if we're in Electron environment
 const isElectron = typeof window !== "undefined" && (window as any).electronAPI;
@@ -28,6 +28,7 @@ export default function LicensePage() {
   const [checking, setChecking] = useState(!isElectron); // In Electron, start with false
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const router = useRouter();
 
   console.log('[LicensePage] Component rendered, checking:', checking, 'isElectron:', isElectron);
@@ -156,6 +157,34 @@ export default function LicensePage() {
     }
   };
 
+  const handleClearLicense = async () => {
+    if (!confirm("Are you sure you want to logout/clear the license? This will require you to activate again.")) {
+      return;
+    }
+
+    setClearing(true);
+    setError(null);
+    setSuccess(false);
+
+    try {
+      const result = await clearLicense();
+      if (result.success) {
+        setSuccess(true);
+        setError(null);
+        // Reload the page to show the activation form
+        setTimeout(() => {
+          window.location.reload();
+        }, 1000);
+      } else {
+        setError(result.error || "Failed to clear license");
+      }
+    } catch (err: any) {
+      setError(err.message || "An unexpected error occurred");
+    } finally {
+      setClearing(false);
+    }
+  };
+
   if (checking) {
     console.log('[LicensePage] Rendering loading state (checking:', checking, ')');
     return (
@@ -260,6 +289,32 @@ export default function LicensePage() {
           <div className="mt-6 text-center text-sm text-muted-foreground">
             <p>
               Need a license? Contact support for assistance.
+            </p>
+          </div>
+
+          {/* Logout License Button - For Testing */}
+          <div className="mt-4 border-t pt-4">
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+              onClick={handleClearLicense}
+              disabled={clearing || loading}
+            >
+              {clearing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Clearing License...
+                </>
+              ) : (
+                <>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Logout License (For Testing)
+                </>
+              )}
+            </Button>
+            <p className="mt-2 text-xs text-center text-muted-foreground">
+              This will completely remove the license from your computer
             </p>
           </div>
         </CardContent>

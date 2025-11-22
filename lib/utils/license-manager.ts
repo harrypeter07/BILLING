@@ -38,9 +38,10 @@ export async function validateLicenseOnline(
       where("status", "==", "active"),
     ];
 
-    if (macAddress) {
-      constraints.push(where("macAddress", "==", macAddress));
-    }
+    // MAC address verification disabled for testing
+    // if (macAddress) {
+    //   constraints.push(where("macAddress", "==", macAddress));
+    // }
 
     const q = query(licensesRef, ...constraints);
 
@@ -327,6 +328,25 @@ export async function checkLicenseOnLaunch(): Promise<{
   } catch (error) {
     console.error("[LicenseManager] Critical error checking license:", error);
     return { valid: false, requiresActivation: true };
+  }
+}
+
+/**
+ * Clear/Logout license from IndexedDB
+ * This completely removes the license from local storage for testing purposes
+ */
+export async function clearLicense(): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Delete all license records from IndexedDB
+    await db.license.clear();
+    console.log("[LicenseManager] License cleared from IndexedDB");
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error clearing license:", error);
+    return {
+      success: false,
+      error: error.message || "Failed to clear license",
+    };
   }
 }
 

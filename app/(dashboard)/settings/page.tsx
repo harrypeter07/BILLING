@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Building2, User, Palette, Store, Cloud, Database } from "lucide-react"
+import { Building2, User, Palette, Store, Cloud, Database, Shield, LogOut } from "lucide-react"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useStore } from "@/lib/utils/store-context"
@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { Switch } from "@/components/ui/switch"
 import { isOfflineLoginEnabled, setOfflineLoginEnabled } from "@/lib/utils/offline-auth"
+import { clearLicense, getStoredLicense } from "@/lib/utils/license-manager"
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState<any>(null)
@@ -25,9 +26,23 @@ export default function SettingsPage() {
   const isExcel = false
   const dbType = getDatabaseType()
   const [offlineEnabled, setOfflineEnabled] = useState(false)
+  const [licenseInfo, setLicenseInfo] = useState<any>(null)
+  const [clearingLicense, setClearingLicense] = useState(false)
 
   useEffect(() => {
     setOfflineEnabled(isOfflineLoginEnabled())
+  }, [])
+
+  useEffect(() => {
+    const fetchLicenseInfo = async () => {
+      try {
+        const license = await getStoredLicense()
+        setLicenseInfo(license)
+      } catch (error) {
+        console.error("Error fetching license info:", error)
+      }
+    }
+    fetchLicenseInfo()
   }, [])
 
   // Only admin can access settings
@@ -329,6 +344,91 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              <CardTitle>License Management</CardTitle>
+            </div>
+            <CardDescription>Manage your license key activation</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {licenseInfo ? (
+              <div className="space-y-2 text-sm mb-4">
+                <div>
+                  <p className="font-medium">Client Name</p>
+                  <p className="text-muted-foreground">{licenseInfo.clientName || "Not set"}</p>
+                </div>
+                <div>
+                  <p className="font-medium">License Key</p>
+                  <p className="text-muted-foreground font-mono text-xs">{licenseInfo.licenseKey || "Not set"}</p>
+                </div>
+                <div>
+                  <p className="font-medium">Device ID (MAC)</p>
+                  <p className="text-muted-foreground font-mono text-xs">{licenseInfo.macAddress || "Not set"}</p>
+                </div>
+                <div>
+                  <p className="font-medium">Status</p>
+                  <p className="text-muted-foreground capitalize">{licenseInfo.status || "Unknown"}</p>
+                </div>
+                <div>
+                  <p className="font-medium">Expires On</p>
+                  <p className="text-muted-foreground">
+                    {licenseInfo.expiresOn ? new Date(licenseInfo.expiresOn).toLocaleDateString() : "Not set"}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground mb-4">No license information found.</p>
+            )}
+            <Button
+              onClick={async () => {
+                if (!confirm("Are you sure you want to logout/clear the license? This will require you to activate again.")) {
+                  return
+                }
+                setClearingLicense(true)
+                try {
+                  const result = await clearLicense()
+                  if (result.success) {
+                    toast({
+                      title: "License cleared",
+                      description: "License has been removed. You will need to activate again.",
+                    })
+                    setLicenseInfo(null)
+                    // Redirect to license page
+                    setTimeout(() => {
+                      router.push("/license")
+                    }, 1000)
+                  } else {
+                    toast({
+                      title: "Failed to clear license",
+                      description: result.error || "An error occurred",
+                      variant: "destructive",
+                    })
+                  }
+                } catch (error: any) {
+                  toast({
+                    title: "Error",
+                    description: error.message || "An unexpected error occurred",
+                    variant: "destructive",
+                  })
+                } finally {
+                  setClearingLicense(false)
+                }
+              }}
+              disabled={clearingLicense || !licenseInfo}
+              className="w-full bg-transparent text-destructive hover:text-destructive hover:bg-destructive/10"
+              variant="outline"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              {clearingLicense ? "Clearing License..." : "Logout License (For Testing)"}
+            </Button>
+            <p className="mt-2 text-xs text-muted-foreground">
+              This will completely remove the license from your computer. Use this for testing purposes.
+            </p>
           </CardContent>
         </Card>
       </div>
