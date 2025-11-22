@@ -195,4 +195,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "include":
+      "include": "installer.nsh"
+    }
+  }
+}
