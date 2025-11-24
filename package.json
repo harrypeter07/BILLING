@@ -4,6 +4,7 @@
   "description": "Smart Billing for Small Businesses - Manage products, create GST invoices, track customers, and generate reports",
   "author": "Billing Solutions",
   "private": true,
+  "main": "electron/main.js",
   "scripts": {
     "dev": "concurrently \"npm run dev:next\" \"npm run dev:electron\"",
     "dev:next": "next dev",
@@ -143,7 +144,6 @@
       "tailwind.config.ts",
       "postcss.config.mjs",
       "!node_modules/**",
-      "!**/node_modules/**",
       "!.next/cache/**",
       "!**/*.map",
       "!**/*.md",
@@ -159,7 +159,16 @@
     "asar": true,
     "asarUnpack": [
       ".next",
-      "electron"
+      "electron/main.js",
+      "electron/preload.js",
+      "electron/package.json"
+    ],
+    "extraFiles": [
+      {
+        "from": "electron/node_modules",
+        "to": "electron/node_modules",
+        "filter": ["**/*"]
+      }
     ],
     "extraResources": [
       {
