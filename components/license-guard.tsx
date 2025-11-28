@@ -1,19 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { checkLicenseOnLaunch } from "@/lib/utils/license-manager";
+import { checkLicenseOnLaunch, getStoredLicense, isLicenseValid } from "@/lib/utils/license-manager";
 import { Loader2 } from "lucide-react";
 
 interface LicenseGuardProps {
   children: React.ReactNode;
 }
 
+// Global cache to prevent re-checking on every navigation
+let licenseCache: { valid: boolean; timestamp: number } | null = null;
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
 export function LicenseGuard({ children }: LicenseGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [checking, setChecking] = useState(true);
   const [isValid, setIsValid] = useState(false);
+  const hasCheckedRef = useRef(false);
   
   console.log('[LicenseGuard] Rendered - pathname:', pathname);
 
@@ -26,18 +31,74 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
       return;
     }
 
+    // If we already validated and cache is still valid, skip re-check
+    if (hasCheckedRef.current && licenseCache && 
+        (Date.now() - licenseCache.timestamp) < CACHE_DURATION && 
+        licenseCache.valid) {
+      console.log('[LicenseGuard] Using cached license validation');
+      setChecking(false);
+      setIsValid(true);
+      return;
+    }
+
     let isMounted = true;
 
     const verifyLicense = async () => {
       console.log('[LicenseGuard] Starting license verification...');
       
       try {
-        // Add timeout to prevent hanging
+        // First, quickly check if we have a valid stored license (fast path)
+        try {
+          const storedLicense = await Promise.race([
+            getStoredLicense(),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000)),
+          ]);
+
+          if (storedLicense && isLicenseValid(storedLicense)) {
+            console.log('[LicenseGuard] Found valid stored license, allowing access');
+            if (isMounted) {
+              setChecking(false);
+              setIsValid(true);
+              hasCheckedRef.current = true;
+              licenseCache = { valid: true, timestamp: Date.now() };
+            }
+            
+            // Do online validation in background (non-blocking)
+            checkLicenseOnLaunch().then((result) => {
+              if (result.valid && !result.requiresActivation) {
+                licenseCache = { valid: true, timestamp: Date.now() };
+              } else if (result.requiresActivation) {
+                // Only update cache if license was revoked
+                licenseCache = { valid: false, timestamp: Date.now() };
+                console.warn('[LicenseGuard] Background check found license requires activation');
+              }
+            }).catch((err) => {
+              console.warn('[LicenseGuard] Background license check failed:', err);
+              // Don't redirect on background check failure
+            });
+            
+            return;
+          }
+        } catch (err) {
+          console.warn('[LicenseGuard] Quick check failed, doing full check:', err);
+        }
+
+        // Full license check with timeout
         const timeoutPromise = new Promise<{ valid: boolean; requiresActivation: boolean }>((resolve) => {
           setTimeout(() => {
             console.warn("[LicenseGuard] License check timed out");
-            resolve({ valid: false, requiresActivation: true });
-          }, 3000); // 3 second timeout
+            // On timeout, check if we have a stored license
+            getStoredLicense().then((stored) => {
+              if (stored && isLicenseValid(stored)) {
+                // Allow access with stored license (offline mode)
+                resolve({ valid: true, requiresActivation: false });
+              } else {
+                resolve({ valid: false, requiresActivation: true });
+              }
+            }).catch(() => {
+              resolve({ valid: false, requiresActivation: true });
+            });
+          }, 5000); // Increased timeout to 5 seconds
         });
 
         const result = await Promise.race([
@@ -53,6 +114,8 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
           console.log('[LicenseGuard] License invalid, redirecting to /license');
           setChecking(false);
           setIsValid(false);
+          hasCheckedRef.current = true;
+          licenseCache = { valid: false, timestamp: Date.now() };
           router.push("/license");
           return;
         }
@@ -61,18 +124,34 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
         console.log('[LicenseGuard] License valid, allowing access');
         setChecking(false);
         setIsValid(true);
-        
-        // If we're on root path and license is valid, ensure we stay on homepage
-        if (pathname === "/" || pathname === "") {
-          console.log('[LicenseGuard] License valid on homepage, staying on homepage');
-          // Already on homepage, no redirect needed
-        }
+        hasCheckedRef.current = true;
+        licenseCache = { valid: true, timestamp: Date.now() };
         
       } catch (error) {
         console.error("[LicenseGuard] Error verifying license:", error);
+        
+        // On error, check if we have a stored license (offline fallback)
+        try {
+          const storedLicense = await getStoredLicense();
+          if (storedLicense && isLicenseValid(storedLicense)) {
+            console.log('[LicenseGuard] Error occurred but stored license is valid, allowing access');
+            if (isMounted) {
+              setChecking(false);
+              setIsValid(true);
+              hasCheckedRef.current = true;
+              licenseCache = { valid: true, timestamp: Date.now() };
+            }
+            return;
+          }
+        } catch (storedErr) {
+          console.error("[LicenseGuard] Error checking stored license:", storedErr);
+        }
+        
         if (isMounted) {
           setChecking(false);
           setIsValid(false);
+          hasCheckedRef.current = true;
+          licenseCache = { valid: false, timestamp: Date.now() };
           router.push("/license");
         }
       }

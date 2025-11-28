@@ -55,12 +55,15 @@ const startNextServer = async () => {
 
   try {
     let appPath;
+    let resourcesPath;
+    let asarPath;
+    let unpackedPath;
     if (app.isPackaged) {
       // When packaged, files are in resources/app.asar (ASAR enabled)
       // .next and electron directories are unpacked for direct file access
-      const resourcesPath = process.resourcesPath;
-      const asarPath = path.join(resourcesPath, 'app.asar');
-      const unpackedPath = path.join(resourcesPath, 'app.asar.unpacked');
+      resourcesPath = process.resourcesPath;
+      asarPath = path.join(resourcesPath, 'app.asar');
+      unpackedPath = path.join(resourcesPath, 'app.asar.unpacked');
       
       // Check if unpacked directory exists (for .next and electron)
       if (fs.existsSync(unpackedPath)) {
@@ -115,6 +118,30 @@ const startNextServer = async () => {
     // Change to app directory (now safe since we're using unpacked or regular app dir)
     const originalCwd = process.cwd();
     process.chdir(appPath);
+    
+    // In packaged mode, we need to make sure Next.js can find its modules
+    // They might be in the ASAR, so we need to add the ASAR path to NODE_PATH
+    if (app.isPackaged && resourcesPath) {
+      const electronNodeModules = path.join(asarPath, 'electron', 'node_modules');
+      const nodePath = process.env.NODE_PATH || '';
+      const paths = nodePath ? nodePath.split(path.delimiter) : [];
+      if (!paths.includes(electronNodeModules)) {
+        paths.push(electronNodeModules);
+      }
+      // Also add the unpacked node_modules if it exists
+      const unpackedNodeModules = unpackedPath ? path.join(unpackedPath, 'node_modules') : null;
+      if (unpackedNodeModules && fs.existsSync(unpackedNodeModules) && !paths.includes(unpackedNodeModules)) {
+        paths.push(unpackedNodeModules);
+      }
+      process.env.NODE_PATH = paths.join(path.delimiter);
+      // Add to module.paths for require resolution
+      if (!module.paths.includes(electronNodeModules)) {
+        module.paths.push(electronNodeModules);
+      }
+      if (unpackedNodeModules && fs.existsSync(unpackedNodeModules) && !module.paths.includes(unpackedNodeModules)) {
+        module.paths.push(unpackedNodeModules);
+      }
+    }
     
     // Start Next.js programmatically
     const next = require('next');

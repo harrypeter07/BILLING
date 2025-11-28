@@ -1,9 +1,126 @@
 const { execSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
+
+const TEMP_BUILD_PREFIX = 'temp-build-';
+const MAX_TEMP_BUILDS = 5;
 
 // Helper to wait
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function ensureDir(targetPath) {
+  fs.mkdirSync(targetPath, { recursive: true });
+}
+
+function copyFileIfExists(src, dest) {
+  if (!fs.existsSync(src)) {
+    return;
+  }
+  ensureDir(path.dirname(dest));
+  fs.copyFileSync(src, dest);
+}
+
+function cleanupOldTempBuilds(distDir, keep = MAX_TEMP_BUILDS) {
+  let entries = [];
+  try {
+    entries = fs.readdirSync(distDir);
+  } catch (err) {
+    console.warn('⚠ Could not read dist directory for cleanup:', err.message);
+    return;
+  }
+
+  const tempDirs = entries
+    .filter(name => name.startsWith(TEMP_BUILD_PREFIX))
+    .map(name => {
+      const dirPath = path.join(distDir, name);
+      let mtime = 0;
+      try {
+        mtime = fs.statSync(dirPath).mtimeMs;
+      } catch (err) {
+        // If stat fails, push zero to remove soon
+      }
+      return { name, dirPath, mtime };
+    })
+    .sort((a, b) => b.mtime - a.mtime);
+
+  const stale = tempDirs.slice(keep);
+  stale.forEach(({ name, dirPath }) => {
+    try {
+      fs.rmSync(dirPath, { recursive: true, force: true });
+      console.log(`- Removed old temp build ${name}`);
+    } catch (err) {
+      console.warn(`⚠ Could not remove ${name}:`, err.message);
+    }
+  });
+}
+
+function archiveBuildArtifacts(distDir, finalDir) {
+  if (!fs.existsSync(finalDir)) {
+    console.warn('⚠ Cannot archive build: final output folder not found');
+    return null;
+  }
+
+  const timestamp = Date.now();
+  const folderName = `${TEMP_BUILD_PREFIX}${timestamp}`;
+  const folderPath = path.join(distDir, folderName);
+  const winArchivePath = path.join(folderPath, 'win-unpacked');
+
+  try {
+    ensureDir(winArchivePath);
+    fs.cpSync(finalDir, winArchivePath, { recursive: true });
+    console.log(`\n✓ Copied win-unpacked to ${folderName}`);
+  } catch (err) {
+    console.warn(`⚠ Could not copy win-unpacked to ${folderName}:`, err.message);
+    return null;
+  }
+
+  const artifacts = [
+    'Billing Solutions Setup 0.1.0.exe',
+    'Billing Solutions Setup 0.1.0.exe.blockmap',
+    'billing-solutions-0.1.0-x64.nsis.7z',
+    'latest.yml',
+    'builder-debug.yml',
+    'builder-effective-config.yaml',
+  ];
+
+  artifacts.forEach(file => {
+    const src = path.join(distDir, file);
+    const dest = path.join(folderPath, file);
+    copyFileIfExists(src, dest);
+  });
+
+  console.log(`✓ Archived installer artifacts to ${folderName}`);
+
+  cleanupOldTempBuilds(distDir);
+  return folderName;
+}
+
+function ensureNextInUnpacked(targetDir) {
+  const unpackedPath = path.join(targetDir, 'resources', 'app.asar.unpacked');
+  const nextSource = path.join(__dirname, '..', '.next');
+  const nextDest = path.join(unpackedPath, '.next');
+
+  if (!fs.existsSync(nextSource)) {
+    console.warn('⚠ .next build directory not found at project root, skipping copy');
+    return;
+  }
+
+  if (!fs.existsSync(unpackedPath)) {
+    console.warn('⚠ Unpacked resources directory not found, skipping .next copy:', unpackedPath);
+    return;
+  }
+
+  try {
+    if (fs.existsSync(nextDest)) {
+      fs.rmSync(nextDest, { recursive: true, force: true });
+    }
+    fs.cpSync(nextSource, nextDest, { recursive: true });
+    console.log('✓ .next directory copied to unpacked resources');
+  } catch (copyErr) {
+    console.error('✗ Failed to copy .next directory:', copyErr.message);
+  }
 }
 
 async function build() {
@@ -30,7 +147,6 @@ async function build() {
     // Step 3: Build Electron (try to delete old, then build to temp if needed)
     console.log('Step 3: Building Electron executable...');
     
-    const fs = require('fs');
     const distDir = path.join(__dirname, '../dist');
     const finalDir = path.join(distDir, 'win-unpacked');
     const tempDir = path.join(distDir, 'win-unpacked-temp');
@@ -171,6 +287,8 @@ async function build() {
               fs.renameSync(actualTempDir, finalDir);
               console.log('✓ Moved executable to final location');
               
+              ensureNextInUnpacked(finalDir);
+              
               // Cleanup temp build directory
               const tempBuildParent = path.join(distDir, tempDirs[0]);
               try {
@@ -226,6 +344,7 @@ async function build() {
                   }
                 }
                 console.log('✓ Copied other files to final location');
+                ensureNextInUnpacked(finalDir);
               } catch (copyErr) {
                 console.error('✗ Could not copy files:', copyErr.message);
                 console.log('\n⚠ Build succeeded but could not move to final location.');
@@ -279,6 +398,22 @@ async function build() {
           env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', WIN_CSC_LINK: '' }
         });
         
+        // Step 4: Ensure .next is in unpacked location
+        console.log('\nStep 4: Ensuring .next directory is in unpacked location...');
+        const unpackedPath = path.join(finalDir, 'resources', 'app.asar.unpacked');
+        const nextSource = path.join(__dirname, '..', '.next');
+        const nextDest = path.join(unpackedPath, '.next');
+        
+        if (fs.existsSync(nextSource) && fs.existsSync(unpackedPath)) {
+          if (fs.existsSync(nextDest)) {
+            fs.rmSync(nextDest, { recursive: true, force: true });
+          }
+          fs.cpSync(nextSource, nextDest, { recursive: true });
+          console.log('✓ .next directory copied to unpacked location');
+        } else {
+          console.warn('⚠ .next source or unpacked path not found, skipping copy');
+        }
+        
         console.log('\n✓ Build complete!');
         console.log('Executable location: dist/win-unpacked/Billing Solutions.exe');
         console.log('Installer location: dist/Billing Solutions Setup 0.1.0.exe');
@@ -288,11 +423,16 @@ async function build() {
           console.log('\n⚠ Build completed with warnings (winCodeSign symlink errors are non-fatal)');
           console.log('✓ Executable was created successfully!');
           console.log('Executable location: dist/win-unpacked/Billing Solutions.exe');
-          process.exit(0);
         } else {
           throw error; // Re-throw if exe wasn't created
         }
       }
+    }
+
+    const archivedFolder = archiveBuildArtifacts(distDir, finalDir);
+    if (archivedFolder) {
+      console.log(`\nNew build snapshot: dist/${archivedFolder}`);
+      console.log('Each build now has an isolated archive for troubleshooting locked executables.');
     }
   } catch (error) {
     console.error('\n✗ Build failed:', error.message);

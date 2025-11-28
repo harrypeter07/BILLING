@@ -167,7 +167,9 @@
       {
         "from": "electron/node_modules",
         "to": "electron/node_modules",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "extraResources": [
