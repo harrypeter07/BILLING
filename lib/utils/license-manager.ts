@@ -86,14 +86,47 @@ export async function validateLicenseOnline(
  */
 export async function storeLicense(licenseInfo: LicenseInfo): Promise<void> {
   try {
-    const encryptedData = encryptLicenseData(licenseInfo);
+    // Verify database is ready
+    if (!db) {
+      throw new Error("Database instance not available");
+    }
+    
+    if (!db.license) {
+      throw new Error("License table not available in database");
+    }
+    
+    // Wait for database to be ready (in case it's still opening)
+    try {
+      await db.open();
+    } catch (openError: any) {
+      // Database might already be open, that's fine
+      if (!openError.message?.includes("already open")) {
+        console.warn("[LicenseManager] Database open warning:", openError.message);
+      }
+    }
+
+    // Encrypt license data
+    let encryptedData: string;
+    try {
+      encryptedData = encryptLicenseData(licenseInfo);
+    } catch (encryptError: any) {
+      console.error("Error encrypting license data:", encryptError);
+      throw new Error(`Encryption failed: ${encryptError.message || "Unknown error"}`);
+    }
+
     const now = new Date().toISOString();
 
     // Check if license already exists
-    const existing = await db.license
-      .where("licenseKey")
-      .equals(licenseInfo.licenseKey)
-      .first();
+    let existing;
+    try {
+      existing = await db.license
+        .where("licenseKey")
+        .equals(licenseInfo.licenseKey)
+        .first();
+    } catch (queryError: any) {
+      console.error("Error querying existing license:", queryError);
+      throw new Error(`Database query failed: ${queryError.message || "Unknown error"}`);
+    }
 
     const licenseRecord: License = {
       licenseKey: licenseInfo.licenseKey,
@@ -107,14 +140,30 @@ export async function storeLicense(licenseInfo: LicenseInfo): Promise<void> {
       updated_at: now,
     };
 
-    if (existing?.id) {
-      await db.license.update(existing.id, licenseRecord);
-    } else {
-      await db.license.add(licenseRecord);
+    try {
+      if (existing?.id) {
+        await db.license.update(existing.id, licenseRecord);
+        console.log("[LicenseManager] Updated existing license in database");
+      } else {
+        await db.license.add(licenseRecord);
+        console.log("[LicenseManager] Added new license to database");
+      }
+    } catch (dbError: any) {
+      console.error("Error writing to database:", dbError);
+      console.error("Database error details:", {
+        name: dbError.name,
+        message: dbError.message,
+        stack: dbError.stack,
+      });
+      throw new Error(`Database write failed: ${dbError.message || "Unknown error"}`);
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error storing license:", error);
-    throw new Error("Failed to store license");
+    // Re-throw with more context if it's already our custom error
+    if (error.message && error.message.includes("failed")) {
+      throw error;
+    }
+    throw new Error(`Failed to store license: ${error.message || "Unknown error"}`);
   }
 }
 

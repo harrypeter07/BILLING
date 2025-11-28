@@ -139,10 +139,13 @@ export default function LicensePage() {
     setLoading(true);
 
     try {
+      console.log('[LicensePage] Activating license:', licenseKey.trim());
       const result = await activateLicense(licenseKey.trim(), email.trim() || undefined);
+      console.log('[LicensePage] Activation result:', result);
 
       if (result.success) {
         setSuccess(true);
+        console.log('[LicensePage] License activated successfully');
         // Redirect to homepage after a short delay
         setTimeout(() => {
           router.push("/");

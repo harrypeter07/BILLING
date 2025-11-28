@@ -58,10 +58,13 @@
     "cmdk": "1.0.4",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
+    "crypto-js": "^4.2.0",
     "date-fns": "4.1.0",
     "dexie": "latest",
+    "electron-store": "^8.2.0",
     "embla-carousel-react": "8.5.1",
     "firebase-admin": "^13.6.0",
+    "get-port": "^7.1.0",
     "input-otp": "1.4.1",
     "jspdf": "latest",
     "jspdf-autotable": "latest",
@@ -111,12 +114,6 @@
           "arch": [
             "x64"
           ]
-        },
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
         }
       ],
       "forceCodeSigning": false,
@@ -129,7 +126,7 @@
     "beforeBuild": "node scripts/clear-electron-cache.js",
     "directories": {
       "buildResources": "resources",
-      "output": "dist"
+      "output": "dist/temp-build-1764352018323"
     },
     "files": [
       ".next/**/*",
@@ -143,7 +140,16 @@
       "tsconfig.json",
       "tailwind.config.ts",
       "postcss.config.mjs",
-      "!node_modules/**",
+      "node_modules/**/*",
+      "!node_modules/.cache/**",
+      "!node_modules/**/test/**",
+      "!node_modules/**/tests/**",
+      "!node_modules/**/*.test.js",
+      "!node_modules/**/*.spec.js",
+      "!node_modules/**/README.md",
+      "!node_modules/**/CHANGELOG.md",
+      "!node_modules/**/LICENSE",
+      "!node_modules/**/LICENSE.md",
       "!.next/cache/**",
       "!**/*.map",
       "!**/*.md",
@@ -161,16 +167,14 @@
       ".next",
       "electron/main.js",
       "electron/preload.js",
-      "electron/package.json"
-    ],
-    "extraFiles": [
-      {
-        "from": "electron/node_modules",
-        "to": "electron/node_modules",
-        "filter": [
-          "**/*"
-        ]
-      }
+      "node_modules/next",
+      "node_modules/react",
+      "node_modules/react-dom",
+      "node_modules/get-port",
+      "node_modules/electron-store",
+      "node_modules/crypto-js",
+      "node_modules/@swc",
+      "node_modules/@next"
     ],
     "extraResources": [
       {

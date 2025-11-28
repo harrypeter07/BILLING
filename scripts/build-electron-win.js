@@ -22,80 +22,8 @@ function copyFileIfExists(src, dest) {
   fs.copyFileSync(src, dest);
 }
 
-function cleanupOldTempBuilds(distDir, keep = MAX_TEMP_BUILDS) {
-  let entries = [];
-  try {
-    entries = fs.readdirSync(distDir);
-  } catch (err) {
-    console.warn('⚠ Could not read dist directory for cleanup:', err.message);
-    return;
-  }
-
-  const tempDirs = entries
-    .filter(name => name.startsWith(TEMP_BUILD_PREFIX))
-    .map(name => {
-      const dirPath = path.join(distDir, name);
-      let mtime = 0;
-      try {
-        mtime = fs.statSync(dirPath).mtimeMs;
-      } catch (err) {
-        // If stat fails, push zero to remove soon
-      }
-      return { name, dirPath, mtime };
-    })
-    .sort((a, b) => b.mtime - a.mtime);
-
-  const stale = tempDirs.slice(keep);
-  stale.forEach(({ name, dirPath }) => {
-    try {
-      fs.rmSync(dirPath, { recursive: true, force: true });
-      console.log(`- Removed old temp build ${name}`);
-    } catch (err) {
-      console.warn(`⚠ Could not remove ${name}:`, err.message);
-    }
-  });
-}
-
-function archiveBuildArtifacts(distDir, finalDir) {
-  if (!fs.existsSync(finalDir)) {
-    console.warn('⚠ Cannot archive build: final output folder not found');
-    return null;
-  }
-
-  const timestamp = Date.now();
-  const folderName = `${TEMP_BUILD_PREFIX}${timestamp}`;
-  const folderPath = path.join(distDir, folderName);
-  const winArchivePath = path.join(folderPath, 'win-unpacked');
-
-  try {
-    ensureDir(winArchivePath);
-    fs.cpSync(finalDir, winArchivePath, { recursive: true });
-    console.log(`\n✓ Copied win-unpacked to ${folderName}`);
-  } catch (err) {
-    console.warn(`⚠ Could not copy win-unpacked to ${folderName}:`, err.message);
-    return null;
-  }
-
-  const artifacts = [
-    'Billing Solutions Setup 0.1.0.exe',
-    'Billing Solutions Setup 0.1.0.exe.blockmap',
-    'billing-solutions-0.1.0-x64.nsis.7z',
-    'latest.yml',
-    'builder-debug.yml',
-    'builder-effective-config.yaml',
-  ];
-
-  artifacts.forEach(file => {
-    const src = path.join(distDir, file);
-    const dest = path.join(folderPath, file);
-    copyFileIfExists(src, dest);
-  });
-
-  console.log(`✓ Archived installer artifacts to ${folderName}`);
-
-  cleanupOldTempBuilds(distDir);
-  return folderName;
-}
+// Note: we used to archive NSIS installers into per-build temp folders.
+// Now we only care about the main exe + required files, so no extra archiving.
 
 function ensureNextInUnpacked(targetDir) {
   const unpackedPath = path.join(targetDir, 'resources', 'app.asar.unpacked');
@@ -113,13 +41,65 @@ function ensureNextInUnpacked(targetDir) {
   }
 
   try {
+    // Remove existing .next directory if it exists
     if (fs.existsSync(nextDest)) {
-      fs.rmSync(nextDest, { recursive: true, force: true });
+      console.log('Removing existing .next directory...');
+      fs.rmSync(nextDest, { recursive: true, force: true, maxRetries: 3, retryDelay: 500 });
     }
-    fs.cpSync(nextSource, nextDest, { recursive: true });
-    console.log('✓ .next directory copied to unpacked resources');
+    
+    // Create destination directory
+    ensureDir(nextDest);
+    
+    // Copy recursively with better error handling
+    console.log('Copying .next directory...');
+    const copyRecursive = (src, dest) => {
+      const entries = fs.readdirSync(src, { withFileTypes: true });
+      for (const entry of entries) {
+        const srcPath = path.join(src, entry.name);
+        const destPath = path.join(dest, entry.name);
+        
+        try {
+          if (entry.isDirectory()) {
+            if (!fs.existsSync(destPath)) {
+              fs.mkdirSync(destPath, { recursive: true });
+            }
+            copyRecursive(srcPath, destPath);
+          } else {
+            fs.copyFileSync(srcPath, destPath);
+          }
+        } catch (err) {
+          console.warn(`⚠ Could not copy ${entry.name}:`, err.message);
+        }
+      }
+    };
+    
+    copyRecursive(nextSource, nextDest);
+    
+    // Verify critical files exist
+    const criticalFiles = [
+      'server/pages-manifest.json',
+      'static',
+      'BUILD_ID',
+      'build-manifest.json'
+    ];
+    
+    let allFilesExist = true;
+    for (const file of criticalFiles) {
+      const filePath = path.join(nextDest, file);
+      if (!fs.existsSync(filePath)) {
+        console.warn(`⚠ Critical file missing: ${file}`);
+        allFilesExist = false;
+      }
+    }
+    
+    if (allFilesExist) {
+      console.log('✓ .next directory copied to unpacked resources (all critical files verified)');
+    } else {
+      console.warn('⚠ .next directory copied but some critical files are missing');
+    }
   } catch (copyErr) {
     console.error('✗ Failed to copy .next directory:', copyErr.message);
+    console.error('Stack:', copyErr.stack);
   }
 }
 
@@ -216,10 +196,11 @@ async function build() {
         const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
         originalOutput = packageJson.build?.directories?.output;
         
-        // Change output to temp directory
+        // Change output to temp directory with timestamp
+        const timestamp = Date.now();
         if (!packageJson.build) packageJson.build = {};
         if (!packageJson.build.directories) packageJson.build.directories = {};
-        packageJson.build.directories.output = 'dist/temp-build-' + Date.now();
+        packageJson.build.directories.output = `dist/temp-build-${timestamp}`;
         
         // Save modified package.json
         const packageJsonBackup = JSON.stringify(packageJson, null, 2);
@@ -230,13 +211,6 @@ async function build() {
         // Build directory first (faster)
         console.log('Building directory structure...');
         execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win --x64 --dir', { 
-          stdio: 'inherit',
-          env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', WIN_CSC_LINK: '' }
-        });
-        
-        // Then build installer (separate step for better control)
-        console.log('Building NSIS installer...');
-        execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win nsis', { 
           stdio: 'inherit',
           env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', WIN_CSC_LINK: '' }
         });
@@ -381,42 +355,137 @@ async function build() {
         throw buildError;
       }
     } else {
-      // Normal build (no old EXE exists)
-      console.log('Building normally (no old executable found)...');
+      // Normal build (no old EXE exists) - but still use temp folder for consistency
+      console.log('Building to temp folder (no old executable found)...');
+      
+      const timestamp = Date.now();
+      const tempBuildDir = path.join(distDir, `temp-build-${timestamp}`);
+      
       try {
-        // Build directory first (faster)
-        console.log('Building directory structure...');
-        execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win --x64 --dir', { 
-          stdio: 'inherit',
-          env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', WIN_CSC_LINK: '' }
-        });
+        // Temporarily modify package.json to use temp directory
+        const packageJsonPath = path.join(__dirname, '../package.json');
+        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+        const originalOutput = packageJson.build?.directories?.output;
         
-        // Then build installer (separate step for better control)
-        console.log('Building NSIS installer...');
-        execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win nsis', { 
-          stdio: 'inherit',
-          env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', WIN_CSC_LINK: '' }
-        });
+        if (!packageJson.build) packageJson.build = {};
+        if (!packageJson.build.directories) packageJson.build.directories = {};
+        packageJson.build.directories.output = `dist/temp-build-${timestamp}`;
+        fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
         
-        // Step 4: Ensure .next is in unpacked location
-        console.log('\nStep 4: Ensuring .next directory is in unpacked location...');
-        const unpackedPath = path.join(finalDir, 'resources', 'app.asar.unpacked');
-        const nextSource = path.join(__dirname, '..', '.next');
-        const nextDest = path.join(unpackedPath, '.next');
-        
-        if (fs.existsSync(nextSource) && fs.existsSync(unpackedPath)) {
-          if (fs.existsSync(nextDest)) {
-            fs.rmSync(nextDest, { recursive: true, force: true });
+        try {
+          // Build directory structure
+          console.log('Building directory structure...');
+          execSync('npx cross-env CSC_IDENTITY_AUTO_DISCOVERY=false WIN_CSC_LINK= electron-builder --win --x64 --dir', { 
+            stdio: 'inherit',
+            env: { ...process.env, CSC_IDENTITY_AUTO_DISCOVERY: 'false', WIN_CSC_LINK: '' }
+          });
+          
+          // Find the actual build directory
+          const tempDirs = fs.readdirSync(distDir).filter(dir => {
+            const fullPath = path.join(distDir, dir);
+            return fs.statSync(fullPath).isDirectory() && dir.startsWith('temp-build-');
+          }).sort().reverse();
+          
+          if (tempDirs.length > 0) {
+            const actualTempDir = path.join(distDir, tempDirs[0], 'win-unpacked');
+            const actualTempExe = path.join(actualTempDir, 'Billing Solutions.exe');
+            
+            if (fs.existsSync(actualTempExe)) {
+              // Move to final location with retry logic
+              let moved = false;
+              if (fs.existsSync(finalDir)) {
+                // Try to remove old directory with retries
+                for (let i = 0; i < 3; i++) {
+                  try {
+                    fs.rmSync(finalDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 1000 });
+                    console.log('✓ Removed old directory');
+                    break;
+                  } catch (rmErr) {
+                    if (i < 2) {
+                      console.log(`Attempt ${i + 1} to remove old directory failed, retrying...`);
+                      await sleep(2000);
+                      require('./kill-electron-processes.js');
+                      await sleep(1000);
+                    } else {
+                      // Rename old instead
+                      try {
+                        const oldDir = finalDir + '-old-' + Date.now();
+                        fs.renameSync(finalDir, oldDir);
+                        console.log(`✓ Renamed old directory to ${path.basename(oldDir)}`);
+                      } catch (renameErr) {
+                        console.warn('⚠ Could not remove or rename old directory, will copy instead');
+                      }
+                    }
+                  }
+                }
+              }
+              
+              // Try to rename (move) first
+              try {
+                fs.renameSync(actualTempDir, finalDir);
+                console.log('✓ Moved build to final location');
+                moved = true;
+              } catch (renameErr) {
+                // If rename fails, copy instead
+                console.log('Rename failed, copying files instead...');
+                if (!fs.existsSync(finalDir)) {
+                  fs.mkdirSync(finalDir, { recursive: true });
+                }
+                
+                // Copy all files recursively
+                const copyRecursive = (src, dest) => {
+                  const entries = fs.readdirSync(src, { withFileTypes: true });
+                  for (const entry of entries) {
+                    const srcPath = path.join(src, entry.name);
+                    const destPath = path.join(dest, entry.name);
+                    if (entry.isDirectory()) {
+                      if (!fs.existsSync(destPath)) {
+                        fs.mkdirSync(destPath, { recursive: true });
+                      }
+                      copyRecursive(srcPath, destPath);
+                    } else {
+                      fs.copyFileSync(srcPath, destPath);
+                    }
+                  }
+                };
+                
+                copyRecursive(actualTempDir, finalDir);
+                console.log('✓ Copied build to final location');
+                moved = true;
+              }
+              
+              if (moved) {
+                // Ensure .next is in unpacked location
+                ensureNextInUnpacked(finalDir);
+                
+                // Cleanup temp build directory
+                const tempBuildParent = path.join(distDir, tempDirs[0]);
+                try {
+                  fs.rmSync(tempBuildParent, { recursive: true, force: true });
+                } catch (cleanupErr) {
+                  console.warn('⚠ Could not cleanup temp directory:', tempDirs[0]);
+                }
+              } else {
+                throw new Error('Failed to move or copy build to final location');
+              }
+            } else {
+              throw new Error('Build completed but executable not found in temp directory');
+            }
+          } else {
+            throw new Error('Build completed but temp directory not found');
           }
-          fs.cpSync(nextSource, nextDest, { recursive: true });
-          console.log('✓ .next directory copied to unpacked location');
-        } else {
-          console.warn('⚠ .next source or unpacked path not found, skipping copy');
+        } finally {
+          // Always restore original package.json
+          if (originalOutput !== undefined) {
+            packageJson.build.directories.output = originalOutput;
+          } else {
+            delete packageJson.build.directories.output;
+          }
+          fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2));
         }
         
         console.log('\n✓ Build complete!');
         console.log('Executable location: dist/win-unpacked/Billing Solutions.exe');
-        console.log('Installer location: dist/Billing Solutions Setup 0.1.0.exe');
       } catch (error) {
         // Check if exe was created despite the error (winCodeSign errors are non-fatal)
         if (fs.existsSync(exePath)) {
@@ -427,12 +496,6 @@ async function build() {
           throw error; // Re-throw if exe wasn't created
         }
       }
-    }
-
-    const archivedFolder = archiveBuildArtifacts(distDir, finalDir);
-    if (archivedFolder) {
-      console.log(`\nNew build snapshot: dist/${archivedFolder}`);
-      console.log('Each build now has an isolated archive for troubleshooting locked executables.');
     }
   } catch (error) {
     console.error('\n✗ Build failed:', error.message);

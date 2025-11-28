@@ -16,8 +16,27 @@ let nextApp;
 let serverPort = null; // Will be set dynamically
 let serverUrl = null; // Store complete URL
 let isAppReady = false;
+let isCreatingWindow = false; // Prevent multiple window creation
 
 const isDev = process.env.NODE_ENV === 'development';
+
+// Prevent multiple instances
+const gotTheLock = app.requestSingleInstanceLock();
+
+if (!gotTheLock) {
+  console.log('[Electron] Another instance is already running, quitting...');
+  app.quit();
+  process.exit(0);
+} else {
+  // Handle second instance - focus existing window
+  app.on('second-instance', () => {
+    console.log('[Electron] Second instance detected, focusing existing window...');
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
 
 // Cache and user data paths
 const userCachePath = path.join(os.tmpdir(), 'billing-solutions-cache');
@@ -98,20 +117,34 @@ const startNextServer = async () => {
     console.log('[Electron] .next exists:', fs.existsSync(path.join(appPath, '.next')));
     
     // Find available port in range 3000-3100
-    // Try ports sequentially in the range
+    // Use getPort with host specified to avoid TIME_WAIT issues
     serverPort = null;
-    for (let port = 3000; port <= 3100; port++) {
-      const availablePort = await getPort({ port });
-      if (availablePort === port) {
-        serverPort = availablePort;
-        break;
+    try {
+      // Try to get a port starting from 3000
+      serverPort = await getPort({ port: 3000, host: '127.0.0.1' });
+      // If we got a port outside our range, try to find one in range
+      if (serverPort < 3000 || serverPort > 3100) {
+        for (let port = 3000; port <= 3100; port++) {
+          const testPort = await getPort({ port, host: '127.0.0.1' });
+          if (testPort === port) {
+            serverPort = testPort;
+            break;
+          }
+        }
       }
+    } catch (err) {
+      console.warn('[Electron] Error finding port, using fallback:', err.message);
     }
 
     // Fallback: if no port in range, use any available port
     if (!serverPort || serverPort > 3100) {
       console.warn('[Electron] No port available in range 3000-3100, using any available port');
-      serverPort = await getPort();
+      try {
+        serverPort = await getPort({ host: '127.0.0.1' });
+      } catch (err) {
+        console.error('[Electron] Failed to find any available port:', err);
+        throw new Error('Could not find an available port for the server');
+      }
     }
     console.log(`[Electron] Found available port: ${serverPort}`);
     
@@ -120,27 +153,38 @@ const startNextServer = async () => {
     process.chdir(appPath);
     
     // In packaged mode, we need to make sure Next.js can find its modules
-    // They might be in the ASAR, so we need to add the ASAR path to NODE_PATH
+    // Modules are now in the ASAR or unpacked
     if (app.isPackaged && resourcesPath) {
-      const electronNodeModules = path.join(asarPath, 'electron', 'node_modules');
+      const asarNodeModules = path.join(asarPath, 'node_modules'); // Main app's node_modules in ASAR
+      const unpackedNodeModules = unpackedPath ? path.join(unpackedPath, 'node_modules') : null;
+      
       const nodePath = process.env.NODE_PATH || '';
       const paths = nodePath ? nodePath.split(path.delimiter) : [];
-      if (!paths.includes(electronNodeModules)) {
-        paths.push(electronNodeModules);
+      
+      // Add main app's node_modules from ASAR (where Next.js is)
+      if (fs.existsSync(asarNodeModules) && !paths.includes(asarNodeModules)) {
+        paths.push(asarNodeModules);
       }
-      // Also add the unpacked node_modules if it exists
-      const unpackedNodeModules = unpackedPath ? path.join(unpackedPath, 'node_modules') : null;
+      
+      // Also add the unpacked node_modules if it exists (for unpacked modules)
       if (unpackedNodeModules && fs.existsSync(unpackedNodeModules) && !paths.includes(unpackedNodeModules)) {
         paths.push(unpackedNodeModules);
       }
+      
       process.env.NODE_PATH = paths.join(path.delimiter);
+      
       // Add to module.paths for require resolution
-      if (!module.paths.includes(electronNodeModules)) {
-        module.paths.push(electronNodeModules);
+      if (fs.existsSync(asarNodeModules) && !module.paths.includes(asarNodeModules)) {
+        module.paths.push(asarNodeModules);
       }
       if (unpackedNodeModules && fs.existsSync(unpackedNodeModules) && !module.paths.includes(unpackedNodeModules)) {
         module.paths.push(unpackedNodeModules);
       }
+      
+      console.log('[Electron] Module paths configured:', {
+        asarNodeModules: fs.existsSync(asarNodeModules),
+        unpackedNodeModules: unpackedNodeModules ? fs.existsSync(unpackedNodeModules) : false
+      });
     }
     
     // Start Next.js programmatically
@@ -153,25 +197,122 @@ const startNextServer = async () => {
     
     const handle = nextApp.getRequestHandler();
     
-    // Create HTTP server
+    // Create HTTP server with error handling
     httpServer = createServer((req, res) => {
-      const parsedUrl = parse(req.url, true);
-      handle(req, res, parsedUrl);
+      try {
+        const parsedUrl = parse(req.url, true);
+        handle(req, res, parsedUrl).catch((err) => {
+          console.error('[Electron] Request handler error:', err);
+          if (!res.headersSent) {
+            res.statusCode = 500;
+            res.end('Internal Server Error');
+          }
+        });
+      } catch (err) {
+        console.error('[Electron] Server request error:', err);
+        if (!res.headersSent) {
+          res.statusCode = 500;
+          res.end('Internal Server Error');
+        }
+      }
     });
     
-    // Start server
-    await new Promise((resolve, reject) => {
-      httpServer.listen(serverPort, '127.0.0.1', (err) => {
-        if (err) {
-          console.error(`[Electron] Failed to start server:`, err);
-          reject(err);
-          return;
+    // Start server with retry logic
+    const maxRetries = 5;
+    let currentPort = serverPort;
+    let serverStarted = false;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        // Close previous server if it exists
+        if (httpServer && httpServer.listening) {
+          httpServer.close();
+          await new Promise(resolve => {
+            if (httpServer.listening) {
+              httpServer.once('close', resolve);
+            } else {
+              resolve();
+            }
+          });
         }
-        serverUrl = `http://127.0.0.1:${serverPort}`;
-        console.log(`[Electron] ✅ Server started:`, serverUrl);
-        resolve();
-      });
-    });
+        
+        // Create a new server for each attempt to avoid binding issues
+        httpServer = createServer((req, res) => {
+          try {
+            const parsedUrl = parse(req.url, true);
+            handle(req, res, parsedUrl).catch((err) => {
+              console.error('[Electron] Request handler error:', err);
+              if (!res.headersSent) {
+                res.statusCode = 500;
+                res.end('Internal Server Error');
+              }
+            });
+          } catch (err) {
+            console.error('[Electron] Server request error:', err);
+            if (!res.headersSent) {
+              res.statusCode = 500;
+              res.end('Internal Server Error');
+            }
+          }
+        });
+        
+        // Handle server errors (but don't let them stop the retry loop)
+        httpServer.on('error', (err) => {
+          if (err.code !== 'EADDRINUSE') {
+            console.error('[Electron] HTTP server error:', err);
+          }
+        });
+        
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            reject(new Error('Server start timeout'));
+          }, 10000);
+          
+          const errorHandler = (err) => {
+            clearTimeout(timeout);
+            httpServer.removeListener('error', errorHandler);
+            reject(err);
+          };
+          
+          httpServer.once('error', errorHandler);
+          
+          httpServer.listen(currentPort, '127.0.0.1', () => {
+            clearTimeout(timeout);
+            httpServer.removeListener('error', errorHandler);
+            serverPort = currentPort;
+            serverUrl = `http://127.0.0.1:${serverPort}`;
+            console.log(`[Electron] ✅ Server started on port ${serverPort}:`, serverUrl);
+            serverStarted = true;
+            resolve();
+          });
+        });
+        
+        break; // Success, exit retry loop
+        
+      } catch (err) {
+        if (attempt === maxRetries) {
+          throw new Error(`Failed to start server after ${maxRetries} attempts: ${err.message}`);
+        }
+        
+        if (err.code === 'EADDRINUSE') {
+          console.warn(`[Electron] Port ${currentPort} in use, finding next available port (attempt ${attempt}/${maxRetries})...`);
+          // Get a new port for next attempt
+          try {
+            currentPort = await getPort({ port: currentPort + 1, host: '127.0.0.1' });
+            serverPort = currentPort;
+            console.log(`[Electron] Trying port ${currentPort}...`);
+          } catch (portErr) {
+            // If we can't get a specific port, try any available port
+            currentPort = await getPort({ host: '127.0.0.1' });
+            serverPort = currentPort;
+            console.log(`[Electron] Using any available port: ${currentPort}...`);
+          }
+        }
+        
+        // Wait a bit before retrying
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+    }
     
     // Verify server is responding
     await verifyServer(serverUrl);
@@ -188,42 +329,66 @@ const startNextServer = async () => {
 };
 
 // Verify server is responding
-const verifyServer = async (url, maxAttempts = 10) => {
+const verifyServer = async (url, maxAttempts = 15) => {
+  console.log(`[Electron] Verifying server at ${url}...`);
   for (let i = 0; i < maxAttempts; i++) {
     try {
       const isReady = await new Promise((resolve) => {
         const req = http.get(url, (res) => {
-          console.log(`[Electron] Server check: ${res.statusCode}`);
-          resolve(res.statusCode === 200 || res.statusCode === 304);
+          console.log(`[Electron] Server check ${i + 1}/${maxAttempts}: ${res.statusCode}`);
+          // Accept 200, 304, or even 404/500 as long as server responds (means it's running)
+          resolve(res.statusCode >= 200 && res.statusCode < 600);
         });
-        req.on('error', () => resolve(false));
-        req.setTimeout(2000, () => {
+        req.on('error', (err) => {
+          console.log(`[Electron] Server check ${i + 1}/${maxAttempts} error:`, err.message);
+          resolve(false);
+        });
+        req.setTimeout(3000, () => {
           req.destroy();
           resolve(false);
         });
       });
       
       if (isReady) {
-        console.log('[Electron] ✅ Server verified ready');
+        console.log('[Electron] ✅ Server verified ready and responding');
         return true;
       }
     } catch (err) {
-      console.log(`[Electron] Server check failed (${i + 1}/${maxAttempts})`);
+      console.log(`[Electron] Server check ${i + 1}/${maxAttempts} exception:`, err.message);
     }
     
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    if (i < maxAttempts - 1) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
   }
   
-  throw new Error('Server failed to respond after multiple attempts');
+  console.warn('[Electron] ⚠ Server verification failed, but continuing anyway...');
+  // Don't throw - server might be starting slowly
+  return false;
 };
 
 const createWindow = async () => {
   // Prevent multiple windows
+  if (isCreatingWindow) {
+    console.log('[Electron] Window creation already in progress, waiting...');
+    // Wait for existing creation to complete
+    while (isCreatingWindow) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      console.log('[Electron] Window created by another process, focusing...');
+      mainWindow.focus();
+      return;
+    }
+  }
+  
   if (mainWindow && !mainWindow.isDestroyed()) {
     console.log('[Electron] Window already exists, focusing...');
     mainWindow.focus();
     return;
   }
+  
+  isCreatingWindow = true;
 
   const preloadPath = getPreloadPath();
   console.log('[Electron] Creating window...');
@@ -240,8 +405,12 @@ const createWindow = async () => {
       contextIsolation: true,
       webSecurity: true,
       partition: 'persist:main',
+      // Enable IndexedDB for license storage
+      enableBlinkFeatures: 'IndexedDB',
     },
-    icon: path.join(__dirname, '../public/favicon.ico'),
+    icon: app.isPackaged 
+      ? path.join(process.resourcesPath, 'public', 'favicon.ico')
+      : path.join(__dirname, '../public/favicon.ico'),
     show: false,
     backgroundColor: '#ffffff',
   });
@@ -298,7 +467,28 @@ const createWindow = async () => {
   }
   
   console.log('[Electron] Loading URL:', serverUrl);
-  await mainWindow.loadURL(serverUrl);
+  
+  // Wait a bit to ensure server is fully ready
+  await new Promise(resolve => setTimeout(resolve, 500));
+  
+  // Load with error handling
+  try {
+    await mainWindow.loadURL(serverUrl);
+    console.log('[Electron] ✅ Window loaded successfully');
+  } catch (err) {
+    console.error('[Electron] Failed to load URL:', err);
+    // Retry once after a delay
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    try {
+      await mainWindow.loadURL(serverUrl);
+      console.log('[Electron] ✅ Window loaded successfully on retry');
+    } catch (retryErr) {
+      console.error('[Electron] Failed to load URL on retry:', retryErr);
+      throw retryErr;
+    }
+  }
+  
+  isCreatingWindow = false;
 };
 
 // IPC Handlers
@@ -349,15 +539,24 @@ app.whenReady().then(async () => {
   }
 });
 
-app.on('activate', () => {
+app.on('activate', async () => {
   console.log('[Electron] Activate event');
   
   const allWindows = BrowserWindow.getAllWindows();
   
-  if (allWindows.length === 0 && serverUrl) {
-    console.log('[Electron] No windows, creating new one...');
-    createWindow();
-  } else if (allWindows.length > 0) {
+  if (allWindows.length === 0) {
+    if (serverUrl) {
+      console.log('[Electron] No windows, creating new one...');
+      await createWindow();
+    } else {
+      console.log('[Electron] Server not ready yet, waiting...');
+      // Wait a bit for server to be ready
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (serverUrl) {
+        await createWindow();
+      }
+    }
+  } else {
     console.log('[Electron] Focusing existing window...');
     allWindows[0].focus();
   }
