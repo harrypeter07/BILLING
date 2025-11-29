@@ -135,9 +135,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     <StoreProvider>
       <div className="flex h-screen overflow-hidden">
         <Sidebar />
-        <div className="flex flex-1 flex-col lg:ml-64">
+        <div className="flex flex-1 flex-col lg:ml-64 min-w-0">
           <Header />
-          <main className="flex-1 overflow-y-auto bg-muted/40 p-4 md:p-6">{children}</main>
+          <main className="flex-1 overflow-y-auto bg-muted/40 p-3 sm:p-4 md:p-6">
+            <div className="max-w-full overflow-x-hidden">{children}</div>
+          </main>
         </div>
       </div>
     </StoreProvider>

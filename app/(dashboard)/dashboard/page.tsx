@@ -87,30 +87,58 @@ export default function DashboardPage() {
   }, [isAdmin]);
 
   const handleClearLicense = async () => {
-    if (!confirm("Are you sure you want to logout/clear the license? This will require you to activate again.")) {
+    if (!confirm("Are you sure you want to reset the license?\n\nThis will:\n- Remove all license data from this computer\n- Reset this PC to a completely new installation state\n- Require you to activate with a license key again\n\nThis action cannot be undone.")) {
       return;
     }
+    
     setClearingLicense(true);
     try {
+      console.log('[Dashboard] Clearing license...');
+      
       const result = await clearLicense();
+      
       if (result.success) {
+        console.log('[Dashboard] License cleared successfully');
+        
+        // Also clear any cached license data in localStorage (if any)
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            const keysToRemove: string[] = [];
+            for (let i = 0; i < window.localStorage.length; i++) {
+              const key = window.localStorage.key(i);
+              if (key && (key.toLowerCase().includes('license') || key.toLowerCase().includes('activation'))) {
+                keysToRemove.push(key);
+              }
+            }
+            keysToRemove.forEach(key => {
+              window.localStorage.removeItem(key);
+              console.log('[Dashboard] Removed localStorage key:', key);
+            });
+          }
+        } catch (localStorageError) {
+          console.warn('[Dashboard] Error clearing localStorage:', localStorageError);
+        }
+        
         toast({
-          title: "License cleared",
-          description: "License has been removed. You will need to activate again.",
+          title: "License Reset",
+          description: "License has been removed. Redirecting to license page...",
         });
         setLicenseInfo(null);
+        
         // Redirect to license page
         setTimeout(() => {
           router.push("/license");
-        }, 1000);
+        }, 1500);
       } else {
+        console.error('[Dashboard] Failed to clear license:', result.error);
         toast({
-          title: "Failed to clear license",
+          title: "Failed to reset license",
           description: result.error || "An error occurred",
           variant: "destructive",
         });
       }
     } catch (error: any) {
+      console.error("[Dashboard] Error clearing license:", error);
       toast({
         title: "Error",
         description: error.message || "An unexpected error occurred",
@@ -137,7 +165,7 @@ export default function DashboardPage() {
   const { totalRevenue = 0, invoicesCount = 0, productsCount = 0, customersCount = 0, recentInvoices = [], lowStockProducts = [] } = stats;
 
   return (
-    <div className="space-y-4 md:space-y-6 px-4 md:px-6 py-4 md:py-6">
+    <div className="space-y-4 md:space-y-6">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold">Dashboard</h1>
         <p className="text-sm md:text-base text-muted-foreground mt-1">Welcome back! Here's an overview of your business.</p>
@@ -344,22 +372,22 @@ export default function DashboardPage() {
                   onClick={handleClearLicense}
                   disabled={clearingLicense}
                   variant="outline"
-                  className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+                  className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/50"
                 >
                   {clearingLicense ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Clearing License...
+                      Resetting License...
                     </>
                   ) : (
                     <>
                       <LogOut className="mr-2 h-4 w-4" />
-                      Logout License (For Testing)
+                      Reset License
                     </>
                   )}
                 </Button>
-                <p className="text-xs text-muted-foreground">
-                  This will completely remove the license from your computer. Use this for testing purposes.
+                <p className="text-xs text-center text-muted-foreground">
+                  This will completely remove the license and reset this PC to a new installation state. You will need to activate again.
                 </p>
               </div>
             ) : (

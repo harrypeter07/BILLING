@@ -12,6 +12,9 @@ import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useUserRole } from "@/lib/hooks/use-user-role"
+import { db } from "@/lib/dexie-client"
+import { getDatabaseType } from "@/lib/utils/db-mode"
+import { storageManager } from "@/lib/storage-manager"
 
 interface Employee {
   id: string
@@ -51,18 +54,77 @@ export default function EmployeesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router, isAdmin, isEmployee, roleLoading])
 
+  // Listen for refresh events
+  useEffect(() => {
+    const handleRefresh = () => {
+      console.log("[Employees] Refresh event received, fetching employees...")
+      fetchEmployees()
+    }
+    
+    window.addEventListener('employees:refresh', handleRefresh)
+    return () => {
+      window.removeEventListener('employees:refresh', handleRefresh)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const fetchEmployees = async () => {
     try {
       setIsLoading(true)
-      {
-        const supabase = createClient()
-        const { data, error } = await supabase
-          .from("employees")
-          .select("*, stores(name, store_code)")
-          .order("created_at", { ascending: false })
+      const dbType = getDatabaseType()
+      console.log("[Employees] Fetching employees, database type:", dbType)
 
-        if (error) throw error
-        setEmployees(data || [])
+      if (dbType === 'supabase') {
+        try {
+          const supabase = createClient()
+          const { data: { user } } = await supabase.auth.getUser()
+          
+          if (!user) {
+            console.warn("[Employees] No user found, using IndexedDB fallback")
+            const allEmployees = await db.employees.toArray()
+            console.log("[Employees] Found", allEmployees.length, "employees in IndexedDB")
+            setEmployees(allEmployees || [])
+            setIsLoading(false)
+            return
+          }
+
+          console.log("[Employees] Fetching from Supabase for user:", user.id)
+          const { data, error } = await supabase
+            .from("employees")
+            .select("*, stores(name, store_code)")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false })
+
+          if (error) {
+            console.error("[Employees] Supabase query error:", error)
+            throw error
+          }
+          
+          console.log("[Employees] Found", data?.length || 0, "employees in Supabase")
+          setEmployees(data || [])
+          
+          // Also sync to IndexedDB for consistency
+          if (data && data.length > 0) {
+            try {
+              for (const emp of data) {
+                await db.employees.put(emp)
+              }
+              console.log("[Employees] Synced employees to IndexedDB")
+            } catch (syncError) {
+              console.warn("[Employees] Failed to sync to IndexedDB:", syncError)
+            }
+          }
+        } catch (error) {
+          console.error("[Employees] Supabase error, falling back to IndexedDB:", error)
+          const allEmployees = await db.employees.toArray()
+          console.log("[Employees] Found", allEmployees.length, "employees in IndexedDB fallback")
+          setEmployees(allEmployees || [])
+        }
+      } else {
+        // IndexedDB mode
+        const allEmployees = await db.employees.toArray()
+        console.log("[Employees] Found", allEmployees.length, "employees in IndexedDB")
+        setEmployees(allEmployees || [])
       }
     } catch (error) {
       console.error("[Employees] Error fetching employees:", error)
@@ -109,8 +171,52 @@ export default function EmployeesPage() {
       
       let employeeId: string
       let employee: any
+      const dbType = getDatabaseType()
 
-      {
+      if (dbType === 'indexeddb') {
+        // IndexedDB mode - save to IndexedDB
+        const { generateEmployeeId } = await import("@/lib/utils/employee-id")
+        employeeId = await generateEmployeeId(currentStoreId, name)
+        
+        const { generateSecurePassword } = await import("@/lib/utils/password-generator")
+        const password = generateSecurePassword(employeeId)
+
+        employee = {
+          id: crypto.randomUUID(),
+          name,
+          email: `emp${rand}@example.com`,
+          phone: '',
+          role: 'employee',
+          salary: 0,
+          joining_date: new Date().toISOString().split('T')[0],
+          is_active: true,
+          employee_id: employeeId,
+          password,
+          store_id: currentStoreId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          user_id: 'local',
+        }
+
+        console.log("[Employees] Adding mock employee to IndexedDB:", employee)
+        await storageManager.addEmployee(employee)
+        
+        // Verify it was saved
+        const saved = await db.employees.get(employee.id)
+        if (saved) {
+          console.log("[Employees] Verified mock employee saved to IndexedDB")
+        } else {
+          console.error("[Employees] Mock employee NOT found after save!")
+        }
+        
+        toast({ 
+          title: "Success", 
+          description: `Mock employee "${name}" (ID: ${employeeId}) added. Password: ${password}` 
+        })
+        
+        // Refresh the list
+        fetchEmployees()
+      } else {
         // Supabase mode - use API route
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
@@ -166,6 +272,19 @@ export default function EmployeesPage() {
 
         const result = await response.json()
         
+        // Also save to IndexedDB for consistency
+        if (result.employee) {
+          try {
+            await storageManager.addEmployee({
+              ...result.employee,
+              user_id: user.id,
+            })
+            console.log("[Employees] Mock employee also saved to IndexedDB")
+          } catch (e) {
+            console.warn("[Employees] Failed to save to IndexedDB:", e)
+          }
+        }
+        
         // Refresh employee list
         await fetchEmployees()
         
@@ -186,7 +305,7 @@ export default function EmployeesPage() {
   )
 
   return (
-    <div className="space-y-4 sm:space-y-6 p-4 md:p-6">
+    <div className="space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-4">
         <div>
           <h1 className="text-2xl md:text-3xl font-bold">Employees</h1>
@@ -228,7 +347,7 @@ export default function EmployeesPage() {
             />
           </div>
         </CardHeader>
-        <CardContent className="p-0 sm:p-6">
+        <CardContent className="p-0 sm:p-4 md:p-6">
           {isLoading ? (
             <div className="text-center py-8">Loading...</div>
           ) : filteredEmployees.length === 0 ? (
@@ -336,23 +455,24 @@ export default function EmployeesPage() {
               </div>
 
               {/* Desktop Table View */}
-              <div className="hidden md:block overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="min-w-[100px]">Employee ID</TableHead>
-                      <TableHead className="min-w-[150px]">Name</TableHead>
-                      <TableHead className="min-w-[180px]">Email</TableHead>
-                      <TableHead className="min-w-[120px]">Phone</TableHead>
-                      <TableHead className="min-w-[100px]">Password</TableHead>
-                      <TableHead className="min-w-[150px]">Store</TableHead>
-                      <TableHead className="min-w-[80px]">Role</TableHead>
-                      <TableHead className="min-w-[100px]">Salary</TableHead>
-                      <TableHead className="min-w-[120px]">Joining Date</TableHead>
-                      <TableHead className="min-w-[80px]">Status</TableHead>
-                      <TableHead className="min-w-[180px]">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
+              <div className="hidden md:block overflow-x-auto -mx-6 px-6">
+                <div className="min-w-[1200px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="min-w-[100px]">Employee ID</TableHead>
+                        <TableHead className="min-w-[150px]">Name</TableHead>
+                        <TableHead className="min-w-[180px]">Email</TableHead>
+                        <TableHead className="min-w-[120px]">Phone</TableHead>
+                        <TableHead className="min-w-[100px]">Password</TableHead>
+                        <TableHead className="min-w-[150px]">Store</TableHead>
+                        <TableHead className="min-w-[80px]">Role</TableHead>
+                        <TableHead className="min-w-[100px]">Salary</TableHead>
+                        <TableHead className="min-w-[120px]">Joining Date</TableHead>
+                        <TableHead className="min-w-[80px]">Status</TableHead>
+                        <TableHead className="min-w-[180px]">Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
                   <TableBody>
                     {filteredEmployees.map((emp: any) => (
                       <TableRow key={emp.id}>
@@ -428,6 +548,7 @@ export default function EmployeesPage() {
                     ))}
                   </TableBody>
                 </Table>
+                </div>
               </div>
             </>
           )}

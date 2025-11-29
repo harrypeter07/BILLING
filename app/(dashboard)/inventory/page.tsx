@@ -263,7 +263,9 @@ export default function InventoryPage() {
                       </p>
                     </div>
                     <Badge variant="secondary" className="border-yellow-200 text-yellow-700">
-                      {Number(product.stock_quantity || 0)} {product.unit || "units"}
+                      {product.unit === 'piece' 
+                        ? `${Math.round(Number(product.stock_quantity || 0))} ${product.unit || "units"}`
+                        : `${Number(product.stock_quantity || 0).toLocaleString("en-IN")} ${product.unit || "units"}`}
                     </Badge>
                   </div>
                 ))}
@@ -410,21 +412,22 @@ export default function InventoryPage() {
           {products.length === 0 ? (
             <p className="text-sm text-muted-foreground">No products available yet.</p>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>SKU</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Stock</TableHead>
-                    <TableHead className="text-right">Unit</TableHead>
-                    <TableHead className="text-right">Price</TableHead>
-                    <TableHead className="text-right">Cost</TableHead>
-                    <TableHead className="text-right">Inventory Value</TableHead>
-                    <TableHead className="text-center">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
+            <div className="overflow-x-auto -mx-6 px-6">
+              <div className="min-w-[1000px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[180px]">Name</TableHead>
+                      <TableHead className="min-w-[100px]">SKU</TableHead>
+                      <TableHead className="min-w-[120px]">Category</TableHead>
+                      <TableHead className="text-right min-w-[100px]">Stock</TableHead>
+                      <TableHead className="text-right min-w-[80px]">Unit</TableHead>
+                      <TableHead className="text-right min-w-[100px]">Price</TableHead>
+                      <TableHead className="text-right min-w-[100px]">Cost</TableHead>
+                      <TableHead className="text-right min-w-[130px]">Inventory Value</TableHead>
+                      <TableHead className="text-center min-w-[120px]">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
                 <TableBody>
                   {products.map((product) => {
                     const qty = Number(product.stock_quantity || 0)
@@ -462,6 +465,7 @@ export default function InventoryPage() {
                   })}
                 </TableBody>
               </Table>
+              </div>
             </div>
           )}
         </CardContent>

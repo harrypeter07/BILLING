@@ -19,6 +19,7 @@ import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { db } from "@/lib/dexie-client"
 import { useUserRole } from "@/lib/hooks/use-user-role"
+import { getDatabaseType } from "@/lib/utils/db-mode"
 
 interface AnalyticsData {
   totalRevenue: number
@@ -54,25 +55,36 @@ export default function AdminAnalyticsPage() {
       setIsLoading(true)
       let invoices: any[] = []
       let customers: any[] = []
+      const dbType = getDatabaseType()
 
-      try {
-        // Supabase mode
-        const supabase = createClient()
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
+      if (dbType === 'supabase') {
+        try {
+          // Supabase mode
+          const supabase = createClient()
+          const {
+            data: { user },
+          } = await supabase.auth.getUser()
 
-        if (!user) throw new Error("No user")
+          if (!user) {
+            console.warn("[AdminAnalytics] No user found, using IndexedDB fallback")
+            invoices = await db.invoices.toArray()
+            customers = await db.customers.toArray()
+          } else {
+            const [{ data: invData }, { data: custData }] = await Promise.all([
+              supabase.from("invoices").select("*").eq("user_id", user.id),
+              supabase.from("customers").select("*").eq("user_id", user.id),
+            ])
 
-        const [{ data: invData }, { data: custData }] = await Promise.all([
-          supabase.from("invoices").select("*").eq("user_id", user.id),
-          supabase.from("customers").select("*").eq("user_id", user.id),
-        ])
-
-        invoices = invData || []
-        customers = custData || []
-      } catch {
-        // Fallback to IndexedDB
+            invoices = invData || []
+            customers = custData || []
+          }
+        } catch (error) {
+          console.error("[AdminAnalytics] Supabase error, falling back to IndexedDB:", error)
+          invoices = await db.invoices.toArray()
+          customers = await db.customers.toArray()
+        }
+      } else {
+        // IndexedDB mode
         invoices = await db.invoices.toArray()
         customers = await db.customers.toArray()
       }
@@ -137,10 +149,10 @@ export default function AdminAnalyticsPage() {
   const COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#ef4444"]
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
-        <p className="text-muted-foreground">Business performance and insights</p>
+        <h1 className="text-2xl sm:text-3xl font-bold">Analytics Dashboard</h1>
+        <p className="text-sm sm:text-base text-muted-foreground">Business performance and insights</p>
       </div>
 
       {/* Key Metrics */}
@@ -187,7 +199,7 @@ export default function AdminAnalyticsPage() {
       </div>
 
       {/* Charts */}
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-4 md:gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Monthly Sales</CardTitle>
@@ -210,14 +222,17 @@ export default function AdminAnalyticsPage() {
             <CardTitle>Invoice Status</CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
+            <div className="overflow-x-auto">
+              <ResponsiveContainer width="100%" height={300} minHeight={250}>
+                <PieChart>
                 <Pie
                   data={analytics.invoiceStatus}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ status, count }) => `${status}: ${count}`}
+                  label={({ status, count, percent }) => 
+                    percent > 0.05 ? `${status}: ${count}` : '' // Only show label if slice is > 5%
+                  }
                   outerRadius={80}
                   fill="#8884d8"
                   dataKey="count"
@@ -226,9 +241,15 @@ export default function AdminAnalyticsPage() {
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip 
+                  formatter={(value: any, name: any, props: any) => [
+                    `${props.payload.status}: ${value}`,
+                    'Count'
+                  ]}
+                />
               </PieChart>
             </ResponsiveContainer>
+            </div>
           </CardContent>
         </Card>
       </div>

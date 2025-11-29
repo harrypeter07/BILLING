@@ -111,26 +111,29 @@ export default function CustomersPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Customers</h1>
-          <p className="text-muted-foreground">Manage your customer database</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">Customers</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Manage your customer database</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button 
             type="button" 
             variant="outline" 
             onClick={handleAddMockCustomer}
             title="Add a mock customer with random data"
+            className="text-xs sm:text-sm"
           >
-            <Sparkles className="mr-2 h-4 w-4" />
-            Add Mock Customer
+            <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">Add Mock Customer</span>
+            <span className="sm:hidden">Mock</span>
           </Button>
-          <Button asChild>
+          <Button asChild className="text-xs sm:text-sm">
             <Link href="/customers/new">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Customer
+              <Plus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Add Customer</span>
+              <span className="sm:hidden">Add</span>
             </Link>
           </Button>
         </div>

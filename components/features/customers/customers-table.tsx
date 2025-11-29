@@ -84,7 +84,7 @@ export function CustomersTable({ customers: initialCustomers }: CustomersTablePr
 
   return (
     <Card>
-      <CardContent className="p-6">
+      <CardContent className="p-4 sm:p-6">
         <div className="mb-4 space-y-4">
           {/* Search and Total Count Row */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
@@ -151,18 +151,19 @@ export function CustomersTable({ customers: initialCustomers }: CustomersTablePr
             </Button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>GSTIN</TableHead>
-                  <TableHead>Address</TableHead>
-                  <TableHead className="w-[70px]"></TableHead>
-                </TableRow>
-              </TableHeader>
+          <div className="overflow-x-auto -mx-6 px-6">
+            <div className="min-w-[800px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[150px]">Name</TableHead>
+                    <TableHead className="min-w-[180px]">Email</TableHead>
+                    <TableHead className="min-w-[120px]">Phone</TableHead>
+                    <TableHead className="min-w-[120px]">GSTIN</TableHead>
+                    <TableHead className="min-w-[200px]">Address</TableHead>
+                    <TableHead className="w-[70px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
               <TableBody>
                 {filteredCustomers.map((customer) => (
                   <TableRow key={customer.id}>
@@ -198,6 +199,7 @@ export function CustomersTable({ customers: initialCustomers }: CustomersTablePr
                 ))}
               </TableBody>
             </Table>
+            </div>
           </div>
         )}
       </CardContent>

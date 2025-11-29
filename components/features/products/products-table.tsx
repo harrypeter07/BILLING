@@ -121,7 +121,7 @@ export function ProductsTable({ products: initialProducts }: ProductsTableProps)
 
   return (
     <Card>
-      <CardContent className="p-6">
+      <CardContent className="p-4 sm:p-6">
         <div className="mb-4 space-y-4">
           {/* Search and Total Count Row */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
@@ -216,20 +216,21 @@ export function ProductsTable({ products: initialProducts }: ProductsTableProps)
             </Button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Category</TableHead>
-                  <TableHead className="text-right">Price</TableHead>
-                  <TableHead className="text-right">Stock</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="text-right">GST Rate</TableHead>
-                  <TableHead className="w-[70px]"></TableHead>
-                </TableRow>
-              </TableHeader>
+          <div className="overflow-x-auto -mx-6 px-6">
+            <div className="min-w-[900px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[180px]">Name</TableHead>
+                    <TableHead className="min-w-[100px]">SKU</TableHead>
+                    <TableHead className="min-w-[120px]">Category</TableHead>
+                    <TableHead className="text-right min-w-[100px]">Price</TableHead>
+                    <TableHead className="text-right min-w-[100px]">Stock</TableHead>
+                    <TableHead className="min-w-[100px]">Status</TableHead>
+                    <TableHead className="text-right min-w-[100px]">GST Rate</TableHead>
+                    <TableHead className="w-[70px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
               <TableBody>
                 {filteredProducts.map((product) => (
                   <TableRow key={product.id}>
@@ -238,7 +239,9 @@ export function ProductsTable({ products: initialProducts }: ProductsTableProps)
                     <TableCell>{product.category || "-"}</TableCell>
                     <TableCell className="text-right">₹{Number(product.price).toLocaleString("en-IN")}</TableCell>
                     <TableCell className="text-right">
-                      {product.stock_quantity} {product.unit}
+                      {product.unit === 'piece' 
+                        ? `${Math.round(product.stock_quantity)} ${product.unit}`
+                        : `${Number(product.stock_quantity).toLocaleString("en-IN")} ${product.unit}`}
                     </TableCell>
                     <TableCell>{getStockBadge(product.stock_quantity)}</TableCell>
                     <TableCell className="text-right">{product.gst_rate}%</TableCell>
@@ -265,6 +268,7 @@ export function ProductsTable({ products: initialProducts }: ProductsTableProps)
                 ))}
               </TableBody>
             </Table>
+            </div>
           </div>
         )}
       </CardContent>

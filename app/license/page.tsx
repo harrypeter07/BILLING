@@ -161,28 +161,60 @@ export default function LicensePage() {
   };
 
   const handleClearLicense = async () => {
-    if (!confirm("Are you sure you want to logout/clear the license? This will require you to activate again.")) {
+    if (!confirm("Are you sure you want to reset the license?\n\nThis will:\n- Remove all license data from this computer\n- Reset this PC to a completely new installation state\n- Require you to activate with a license key again\n\nThis action cannot be undone.")) {
       return;
     }
 
     setClearing(true);
     setError(null);
     setSuccess(false);
+    setLicenseKey("");
+    setEmail("");
 
     try {
+      console.log('[LicensePage] Clearing license...');
+      
+      // Clear license from IndexedDB
       const result = await clearLicense();
+      
       if (result.success) {
+        console.log('[LicensePage] License cleared successfully');
+        
+        // Also clear any cached license data in localStorage (if any)
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            // Clear any license-related localStorage items
+            const keysToRemove: string[] = [];
+            for (let i = 0; i < window.localStorage.length; i++) {
+              const key = window.localStorage.key(i);
+              if (key && (key.toLowerCase().includes('license') || key.toLowerCase().includes('activation'))) {
+                keysToRemove.push(key);
+              }
+            }
+            keysToRemove.forEach(key => {
+              window.localStorage.removeItem(key);
+              console.log('[LicensePage] Removed localStorage key:', key);
+            });
+          }
+        } catch (localStorageError) {
+          console.warn('[LicensePage] Error clearing localStorage:', localStorageError);
+        }
+        
         setSuccess(true);
         setError(null);
-        // Reload the page to show the activation form
+        
+        // Show success message and reload
         setTimeout(() => {
+          console.log('[LicensePage] Reloading page to show activation form...');
           window.location.reload();
-        }, 1000);
+        }, 1500);
       } else {
-        setError(result.error || "Failed to clear license");
+        console.error('[LicensePage] Failed to clear license:', result.error);
+        setError(result.error || "Failed to reset license");
       }
     } catch (err: any) {
-      setError(err.message || "An unexpected error occurred");
+      console.error("[LicensePage] Error clearing license:", err);
+      setError(err.message || "An unexpected error occurred while resetting license");
     } finally {
       setClearing(false);
     }
@@ -295,29 +327,29 @@ export default function LicensePage() {
             </p>
           </div>
 
-          {/* Logout License Button - For Testing */}
-          <div className="mt-4 border-t pt-4">
+          {/* Reset License Button */}
+          <div className="mt-6 border-t pt-4">
             <Button
               type="button"
               variant="outline"
-              className="w-full text-destructive hover:text-destructive hover:bg-destructive/10"
+              className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/50"
               onClick={handleClearLicense}
-              disabled={clearing || loading}
+              disabled={clearing || loading || success}
             >
               {clearing ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Clearing License...
+                  Resetting License...
                 </>
               ) : (
                 <>
                   <LogOut className="mr-2 h-4 w-4" />
-                  Logout License (For Testing)
+                  Reset License
                 </>
               )}
             </Button>
             <p className="mt-2 text-xs text-center text-muted-foreground">
-              This will completely remove the license from your computer
+              This will completely remove the license and reset this PC to a new installation state. You will need to activate again.
             </p>
           </div>
         </CardContent>

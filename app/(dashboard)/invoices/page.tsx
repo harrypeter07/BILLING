@@ -207,22 +207,25 @@ export default function InvoicesPage() {
   // Excel import removed
 
   return (
-    <div className="space-y-4 md:space-y-6 px-4 md:px-6 py-4 md:py-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Invoices</h1>
-          <p className="text-muted-foreground">Create and manage your invoices</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">Invoices</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Create and manage your invoices</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {(isAdmin || isEmployee) && (
             <>
-              <Button type="button" variant="outline" onClick={handleAddMockInvoice} title="Add a mock invoice">
-                <Sparkles className="mr-2 h-4 w-4" /> Add Mock Invoice
+              <Button type="button" variant="outline" onClick={handleAddMockInvoice} title="Add a mock invoice" className="text-xs sm:text-sm">
+                <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Add Mock Invoice</span>
+                <span className="sm:hidden">Mock</span>
               </Button>
-              <Button asChild>
+              <Button asChild className="text-xs sm:text-sm">
                 <Link href="/invoices/new">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Create Invoice
+                  <Plus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline">Create Invoice</span>
+                  <span className="sm:hidden">Create</span>
                 </Link>
               </Button>
             </>

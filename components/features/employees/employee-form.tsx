@@ -11,8 +11,9 @@ import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { storageManager } from "@/lib/storage-manager"
-import { getDatabaseType } from "@/lib/utils/db-mode"
+import { getDatabaseType, isIndexedDbMode } from "@/lib/utils/db-mode"
 import { useStore } from "@/lib/utils/store-context"
+import { db } from "@/lib/dexie-client"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 
@@ -39,7 +40,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
   const { toast } = useToast()
   const { currentStore } = useStore()
   const [isLoading, setIsLoading] = useState(false)
-  const isExcel = getDatabaseType() === 'excel'
+  const isExcel = isIndexedDbMode() // Use isIndexedDbMode() instead of checking for 'excel'
 
   const [formData, setFormData] = useState({
     name: employee?.name || "",
@@ -79,6 +80,27 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
       let employeeId = employee?.employee_id
       let password = formData.password || employee?.password
 
+      // Get user_id for both modes (do this BEFORE creating employeeData)
+      let userId: string | null = null
+      if (!isExcel) {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          userId = user.id
+        }
+      } else {
+        // For IndexedDB mode, try to get user_id from Supabase if available
+        try {
+          const supabase = createClient()
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            userId = user.id
+          }
+        } catch (e) {
+          // No Supabase user in IndexedDB mode is okay
+        }
+      }
+
       // Generate employee ID if creating new employee
       if (!employee?.id) {
         if (isExcel) {
@@ -100,15 +122,18 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
       const employeeData: any = {
         id: employee?.id || (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now())),
         name: formData.name,
-        email: formData.email,
-        phone: formData.phone || null,
-        role: formData.role,
-        salary: formData.salary ? parseFloat(formData.salary) : null,
-        joining_date: formData.joining_date || new Date().toISOString(),
-        is_active: formData.is_active,
-        employee_id: employeeId,
-        password: password || employeeId, // Will be set properly below if not provided
-        store_id: storeId,
+        email: formData.email || '',
+        phone: formData.phone || '',
+        role: formData.role || 'employee',
+        salary: formData.salary ? parseFloat(formData.salary) : 0,
+        joining_date: formData.joining_date || new Date().toISOString().split('T')[0],
+        is_active: formData.is_active !== undefined ? formData.is_active : true,
+        employee_id: employeeId || '',
+        password: password || employeeId || '',
+        store_id: storeId || '',
+        created_at: employee?.created_at || new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        user_id: userId || 'local', // Add user_id for consistency
       }
 
       // Ensure password is different from employee ID
@@ -118,18 +143,32 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
       }
 
       if (isExcel) {
-        // In Excel mode: sync to Supabase first (for remote access)
-        // Then save to Excel for local cache
-        const { syncEmployeeToSupabase } = await import("@/lib/utils/supabase-sync")
-        const syncResult = await syncEmployeeToSupabase(employeeData)
+        // In IndexedDB mode: save ONLY to IndexedDB (no Supabase sync)
+        employeeData.user_id = userId || 'local' // Use 'local' if no user_id
+        employeeData.created_at = employeeData.created_at || new Date().toISOString()
+        employeeData.updated_at = new Date().toISOString()
         
-        if (!syncResult.success) {
-          console.warn("[EmployeeForm] Supabase sync failed:", syncResult.error)
-          // Continue anyway - will be synced later
+        console.log("[EmployeeForm] Saving employee to IndexedDB (IndexedDB mode - no Supabase sync):", employeeData)
+        
+        // Save to IndexedDB only
+        if (employee?.id) {
+          await storageManager.updateEmployee(employeeData)
+          console.log("[EmployeeForm] Employee updated in IndexedDB")
+        } else {
+          await storageManager.addEmployee(employeeData)
+          console.log("[EmployeeForm] Employee added to IndexedDB")
         }
         
-        // Also save to Excel for local cache
-        await storageManager.updateEmployee(employeeData)
+        // Verify it was saved
+        const savedEmployee = await db.employees.get(employeeData.id)
+        if (savedEmployee) {
+          console.log("[EmployeeForm] Verified employee saved to IndexedDB:", savedEmployee.id)
+        } else {
+          console.error("[EmployeeForm] Employee NOT found in IndexedDB after save!")
+        }
+        
+        // NOTE: In IndexedDB mode, we do NOT sync to Supabase
+        // Employees are stored locally only
       } else {
         // In Supabase mode: use API route (handles auth, validation, and RLS)
         const supabase = createClient()
@@ -185,6 +224,20 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
             const error = await response.json()
             throw new Error(error.error || "Failed to create employee")
           }
+          
+          // Also save to IndexedDB for consistency
+          const createdEmployee = await response.json()
+          if (createdEmployee.employee) {
+            try {
+              await storageManager.addEmployee({
+                ...createdEmployee.employee,
+                user_id: user.id,
+              })
+              console.log("[EmployeeForm] Employee saved to IndexedDB for consistency")
+            } catch (e) {
+              console.warn("[EmployeeForm] Failed to save to IndexedDB:", e)
+            }
+          }
         }
       }
 
@@ -194,6 +247,12 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
           ? "Employee updated successfully" 
           : `Employee created with ID: ${employeeId}. Password: ${employeeData.password}` 
       })
+      
+      // Refresh the employees list
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('employees:refresh'))
+      }
+      
       router.push("/employees")
       router.refresh()
     } catch (error) {

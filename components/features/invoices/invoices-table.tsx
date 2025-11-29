@@ -84,7 +84,7 @@ export function InvoicesTable({ invoices: initialInvoices }: InvoicesTableProps)
 
   return (
     <Card>
-      <CardContent className="p-6">
+      <CardContent className="p-4 sm:p-6">
         <div className="mb-4 flex flex-col gap-4 sm:flex-row">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -117,18 +117,19 @@ export function InvoicesTable({ invoices: initialInvoices }: InvoicesTableProps)
             </Button>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Invoice #</TableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Date</TableHead>
-                  <TableHead className="text-right">Amount</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead className="w-[70px]"></TableHead>
-                </TableRow>
-              </TableHeader>
+          <div className="overflow-x-auto -mx-6 px-6">
+            <div className="min-w-[700px]">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="min-w-[120px]">Invoice #</TableHead>
+                    <TableHead className="min-w-[150px]">Customer</TableHead>
+                    <TableHead className="min-w-[100px]">Date</TableHead>
+                    <TableHead className="text-right min-w-[120px]">Amount</TableHead>
+                    <TableHead className="min-w-[100px]">Status</TableHead>
+                    <TableHead className="w-[70px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
               <TableBody>
                 {filteredInvoices.map((invoice) => (
                   <TableRow key={invoice.id}>
@@ -166,6 +167,7 @@ export function InvoicesTable({ invoices: initialInvoices }: InvoicesTableProps)
                 ))}
               </TableBody>
             </Table>
+            </div>
           </div>
         )}
       </CardContent>

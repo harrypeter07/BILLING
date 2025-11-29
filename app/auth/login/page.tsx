@@ -13,7 +13,7 @@ import { useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import { db } from "@/lib/dexie-client"
 import { toast } from "sonner"
-import { CheckCircle2, LogOut, ArrowLeft } from "lucide-react"
+import { CheckCircle2, LogOut, ArrowLeft, Loader2 } from "lucide-react"
 import {
   attemptOfflineLogin,
   clearOfflineSession,
@@ -22,6 +22,7 @@ import {
   persistOfflineCredential,
   saveOfflineSession,
 } from "@/lib/utils/offline-auth"
+import { clearLicense } from "@/lib/utils/license-manager"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
@@ -32,6 +33,7 @@ export default function LoginPage() {
   const [currentRole, setCurrentRole] = useState<string | null>(null)
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [offlineEnabled, setOfflineEnabled] = useState(false)
+  const [clearingLicense, setClearingLicense] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -309,6 +311,62 @@ export default function LoginPage() {
     router.refresh()
   }
 
+  const handleClearLicense = async () => {
+    if (!confirm("Are you sure you want to reset the license?\n\nThis will:\n- Remove all license data from this computer\n- Reset this PC to a completely new installation state\n- Require you to activate with a license key again\n\nThis action cannot be undone.")) {
+      return;
+    }
+
+    setClearingLicense(true);
+    setError(null);
+
+    try {
+      console.log('[LoginPage] Clearing license...');
+      
+      // Clear license from IndexedDB
+      const result = await clearLicense();
+      
+      if (result.success) {
+        console.log('[LoginPage] License cleared successfully');
+        
+        // Also clear any cached license data in localStorage (if any)
+        try {
+          if (typeof window !== 'undefined' && window.localStorage) {
+            // Clear any license-related localStorage items
+            const keysToRemove: string[] = [];
+            for (let i = 0; i < window.localStorage.length; i++) {
+              const key = window.localStorage.key(i);
+              if (key && (key.toLowerCase().includes('license') || key.toLowerCase().includes('activation'))) {
+                keysToRemove.push(key);
+              }
+            }
+            keysToRemove.forEach(key => {
+              window.localStorage.removeItem(key);
+              console.log('[LoginPage] Removed localStorage key:', key);
+            });
+          }
+        } catch (localStorageError) {
+          console.warn('[LoginPage] Error clearing localStorage:', localStorageError);
+        }
+        
+        toast.success("License reset successfully. Redirecting to license page...");
+        
+        // Redirect to license page
+        setTimeout(() => {
+          console.log('[LoginPage] Redirecting to license page...');
+          router.push("/license");
+        }, 1500);
+      } else {
+        console.error('[LoginPage] Failed to clear license:', result.error);
+        toast.error(result.error || "Failed to reset license");
+      }
+    } catch (err: any) {
+      console.error("[LoginPage] Error clearing license:", err);
+      toast.error(err.message || "An unexpected error occurred while resetting license");
+    } finally {
+      setClearingLicense(false);
+    }
+  };
+
   if (checkingAuth) {
     return (
       <div className="flex min-h-screen w-full items-center justify-center bg-muted/40 p-6">
@@ -422,6 +480,32 @@ export default function LoginPage() {
                   Customer Login
                 </Link>
               </div>
+            </div>
+
+            {/* Reset License Button */}
+            <div className="mt-6 border-t pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/50"
+                onClick={handleClearLicense}
+                disabled={clearingLicense || isLoading}
+              >
+                {clearingLicense ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Resetting License...
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Reset License
+                  </>
+                )}
+              </Button>
+              <p className="mt-2 text-xs text-center text-muted-foreground">
+                This will completely remove the license and reset this PC to a new installation state. You will need to activate again.
+              </p>
             </div>
           </CardContent>
         </Card>

@@ -159,21 +159,24 @@ export default function ProductsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 md:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold">Products</h1>
-          <p className="text-muted-foreground">Manage your inventory and product catalog</p>
+          <h1 className="text-2xl sm:text-3xl font-bold">Products</h1>
+          <p className="text-sm sm:text-base text-muted-foreground">Manage your inventory and product catalog</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <ExcelImport />
-          <Button type="button" variant="outline" onClick={handleAddMockProduct} title="Add a mock product">
-            <Sparkles className="mr-2 h-4 w-4" /> Add Mock Product
+          <Button type="button" variant="outline" onClick={handleAddMockProduct} title="Add a mock product" className="text-xs sm:text-sm">
+            <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+            <span className="hidden sm:inline">Add Mock Product</span>
+            <span className="sm:hidden">Mock</span>
           </Button>
-          <Button asChild>
+          <Button asChild className="text-xs sm:text-sm">
             <Link href="/products/new">
-              <Plus className="mr-2 h-4 w-4" />
-              Add Product
+              <Plus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Add Product</span>
+              <span className="sm:hidden">Add</span>
             </Link>
           </Button>
         </div>

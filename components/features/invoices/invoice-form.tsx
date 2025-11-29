@@ -21,6 +21,117 @@ import { useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { createClient } from "@/lib/supabase/client"
+import { db } from "@/lib/dexie-client"
+
+// Helper function to update product stock quantities after invoice creation
+async function updateProductStock(
+  items: Array<{ product_id: string | null; quantity: number }>,
+  isIndexedDb: boolean,
+  supabase?: ReturnType<typeof createClient>,
+  userId?: string,
+  originalProducts?: Product[]
+) {
+  try {
+    // Group items by product_id to sum quantities
+    const productQuantities = new Map<string, number>()
+    
+    for (const item of items) {
+      if (item.product_id) {
+        const currentQty = productQuantities.get(item.product_id) || 0
+        productQuantities.set(item.product_id, currentQty + item.quantity)
+      }
+    }
+
+    if (isIndexedDb) {
+      // Update products in IndexedDB
+      for (const [productId, quantityToDeduct] of productQuantities.entries()) {
+        try {
+          // Use original product stock if provided, otherwise fetch from DB
+          let currentStock: number | undefined
+          if (originalProducts) {
+            const originalProduct = originalProducts.find(p => p.id === productId)
+            if (originalProduct && originalProduct.stock_quantity !== undefined) {
+              currentStock = originalProduct.stock_quantity
+            }
+          }
+          
+          if (currentStock === undefined) {
+            const product = await db.products.get(productId)
+            if (product && product.stock_quantity !== undefined) {
+              currentStock = product.stock_quantity
+            }
+          }
+          
+          if (currentStock !== undefined) {
+            const newStock = Math.max(0, currentStock - quantityToDeduct)
+            await db.products.update(productId, {
+              stock_quantity: newStock,
+              updated_at: new Date().toISOString(),
+            })
+            console.log(`[InvoiceForm] Updated product ${productId} stock: ${currentStock} -> ${newStock}`)
+          }
+        } catch (error) {
+          console.error(`[InvoiceForm] Error updating product ${productId} stock:`, error)
+        }
+      }
+    } else if (supabase && userId) {
+      // Update products in Supabase
+      for (const [productId, quantityToDeduct] of productQuantities.entries()) {
+        try {
+          // Use original product stock if provided, otherwise fetch from DB
+          let currentStock: number | undefined
+          if (originalProducts) {
+            const originalProduct = originalProducts.find(p => p.id === productId)
+            if (originalProduct && originalProduct.stock_quantity !== undefined) {
+              currentStock = originalProduct.stock_quantity
+            }
+          }
+          
+          if (currentStock === undefined) {
+            const { data: product, error: fetchError } = await supabase
+              .from('products')
+              .select('stock_quantity')
+              .eq('id', productId)
+              .eq('user_id', userId)
+              .single()
+
+            if (fetchError) {
+              console.error(`[InvoiceForm] Error fetching product ${productId}:`, fetchError)
+              continue
+            }
+
+            if (product && product.stock_quantity !== undefined) {
+              currentStock = product.stock_quantity
+            }
+          }
+
+          if (currentStock !== undefined) {
+            const newStock = Math.max(0, currentStock - quantityToDeduct)
+            const { error: updateError } = await supabase
+              .from('products')
+              .update({
+                stock_quantity: newStock,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', productId)
+              .eq('user_id', userId)
+
+            if (updateError) {
+              console.error(`[InvoiceForm] Error updating product ${productId} stock:`, updateError)
+            } else {
+              console.log(`[InvoiceForm] Updated product ${productId} stock: ${currentStock} -> ${newStock}`)
+            }
+          }
+        } catch (error) {
+          console.error(`[InvoiceForm] Error updating product ${productId} stock:`, error)
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[InvoiceForm] Error updating product stock:', error)
+    // Don't throw - stock update failure shouldn't prevent invoice creation
+  }
+}
 
 interface Customer {
   id: string
@@ -71,12 +182,13 @@ interface LineItem {
   created_at?: string;
 }
 
-export function InvoiceForm({ customers, products, settings, storeId, employeeId, onCustomersUpdate }: InvoiceFormProps) {
+export function InvoiceForm({ customers, products: initialProducts, settings, storeId, employeeId, onCustomersUpdate }: InvoiceFormProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [invoiceNumber, setInvoiceNumber] = useState("")
   const [localCustomers, setLocalCustomers] = useState<Customer[]>(customers)
+  const [products, setProducts] = useState<Product[]>(initialProducts)
   
   // Merge prop customers with local additions without removing new ones
   useEffect(() => {
@@ -86,6 +198,11 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
       return Array.from(dedup.values())
     })
   }, [customers])
+
+  // Sync products when props change
+  useEffect(() => {
+    setProducts(initialProducts)
+  }, [initialProducts])
   
   useEffect(() => {
     // Generate invoice number on mount if we have store/employee
@@ -145,6 +262,21 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
 
   const removeLineItem = (id: string) => {
     if (lineItems.length > 1) {
+      const itemToRemove = lineItems.find(item => item.id === id)
+      // Restore stock when item is removed
+      if (itemToRemove?.product_id && itemToRemove.quantity) {
+        const product = products.find((p) => p.id === itemToRemove.product_id)
+        if (product && product.stock_quantity !== undefined) {
+          const newStock = (product.stock_quantity || 0) + itemToRemove.quantity
+          setProducts(prevProducts => 
+            prevProducts.map(p => 
+              p.id === itemToRemove.product_id 
+                ? { ...p, stock_quantity: newStock }
+                : p
+            )
+          )
+        }
+      }
       setLineItems(lineItems.filter((item) => item.id !== id))
     }
   }
@@ -157,6 +289,17 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
           if (field === "product_id" && value) {
             const product = products.find((p) => p.id === value)
             if (product) {
+              // Decrease stock in real-time when product is added
+              if (product.stock_quantity !== undefined) {
+                const newStock = Math.max(0, (product.stock_quantity || 0) - (item.quantity || 1))
+                setProducts(prevProducts => 
+                  prevProducts.map(p => 
+                    p.id === value 
+                      ? { ...p, stock_quantity: newStock }
+                      : p
+                  )
+                )
+              }
               return {
                 ...item,
                 product_id: value,
@@ -165,6 +308,24 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
                 gst_rate: product.gst_rate,
                 hsn_code: product.hsn_code || "",
               }
+            }
+          }
+          // If quantity changes and product is selected, update stock
+          if (field === "quantity" && item.product_id) {
+            const product = products.find((p) => p.id === item.product_id)
+            if (product && product.stock_quantity !== undefined) {
+              const oldQty = item.quantity || 0
+              const newQty = value || 0
+              const diff = oldQty - newQty // negative if increasing, positive if decreasing
+              const currentStock = product.stock_quantity
+              const newStock = Math.max(0, currentStock + diff)
+              setProducts(prevProducts => 
+                prevProducts.map(p => 
+                  p.id === item.product_id 
+                    ? { ...p, stock_quantity: newStock }
+                    : p
+                )
+              )
             }
           }
           return { ...item, [field]: value }
@@ -230,6 +391,19 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
       hsn_code: product.hsn_code || "",
     }
     setLineItems([...lineItems, newLineItem])
+    
+    // Decrease stock in real-time when product is added
+    if (product.stock_quantity !== undefined) {
+      const newStock = Math.max(0, (product.stock_quantity || 0) - 1)
+      setProducts(prevProducts => 
+        prevProducts.map(p => 
+          p.id === product.id 
+            ? { ...p, stock_quantity: newStock }
+            : p
+        )
+      )
+    }
+    
     setProductSearchTerm("")
     toast({ title: "Product added", description: `${product.name} added to invoice` })
   }
@@ -334,6 +508,10 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
       if (isIndexedDb) {
         // Save to Dexie
         await storageManager.addInvoice(invoiceData, items);
+        
+        // Decrease product stock quantities (use original products, not modified state)
+        await updateProductStock(items, isIndexedDb, undefined, undefined, initialProducts);
+        
         toast({ title: "Success", description: "Invoice created successfully" });
         router.push("/invoices");
         router.refresh();
@@ -361,6 +539,9 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
         
         const { error: itemsError } = await supabase.from('invoice_items').insert(itemsWithInvoiceId)
         if (itemsError) throw itemsError
+        
+        // Decrease product stock quantities (use original products, not modified state)
+        await updateProductStock(items, isIndexedDb, supabase, user.id, initialProducts);
         
         toast({ title: "Success", description: "Invoice created successfully" });
         router.push("/invoices");
@@ -584,7 +765,9 @@ export function InvoiceForm({ customers, products, settings, storeId, employeeId
                                 }
                                 className="text-[10px] font-normal"
                               >
-                                {product.stock_quantity} {product.unit}
+                                {product.unit === 'piece' 
+                                  ? `${Math.round(product.stock_quantity)} ${product.unit}`
+                                  : `${Number(product.stock_quantity).toLocaleString("en-IN")} ${product.unit}`}
                               </Badge>
                             )}
                           </div>

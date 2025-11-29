@@ -381,20 +381,41 @@ export async function checkLicenseOnLaunch(): Promise<{
 }
 
 /**
- * Clear/Logout license from IndexedDB
- * This completely removes the license from local storage for testing purposes
+ * Clear/Reset license from IndexedDB
+ * This completely removes the license from local storage and resets the PC to a new installation state
  */
 export async function clearLicense(): Promise<{ success: boolean; error?: string }> {
   try {
+    // Verify database is ready
+    if (!db || !db.license) {
+      throw new Error("Database not initialized");
+    }
+    
+    // Wait for database to be ready
+    try {
+      await db.open();
+    } catch (openError: any) {
+      if (!openError.message?.includes("already open")) {
+        console.warn("[LicenseManager] Database open warning:", openError.message);
+      }
+    }
+    
     // Delete all license records from IndexedDB
+    console.log("[LicenseManager] Clearing all license records from IndexedDB...");
     await db.license.clear();
-    console.log("[LicenseManager] License cleared from IndexedDB");
+    console.log("[LicenseManager] ✅ License cleared from IndexedDB - PC reset to new installation state");
+    
     return { success: true };
   } catch (error: any) {
-    console.error("Error clearing license:", error);
+    console.error("[LicenseManager] Error clearing license:", error);
+    console.error("[LicenseManager] Error details:", {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+    });
     return {
       success: false,
-      error: error.message || "Failed to clear license",
+      error: error.message || "Failed to reset license",
     };
   }
 }

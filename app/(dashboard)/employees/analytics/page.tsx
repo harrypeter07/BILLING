@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { useToast } from "@/hooks/use-toast"
 import { useUserRole } from "@/lib/hooks/use-user-role"
+import { getDatabaseType } from "@/lib/utils/db-mode"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { BarChart3, TrendingUp, DollarSign, FileText, Users } from "lucide-react"
@@ -48,59 +49,127 @@ export default function EmployeeAnalyticsPage() {
     try {
       setIsLoading(true)
       let employeeStats: EmployeeStats[] = []
+      const dbType = getDatabaseType()
 
-      try {
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) throw new Error("No user")
+      if (dbType === 'supabase') {
+        try {
+          const supabase = createClient()
+          const { data: { user } } = await supabase.auth.getUser()
+          
+          if (!user) {
+            console.warn("[EmployeeAnalytics] No user found, using IndexedDB fallback")
+            const allEmployees = await db.employees.toArray()
+            const allInvoices = await db.invoices.toArray()
+            employeeStats = allEmployees.map((emp: any) => {
+              const empInvoices = allInvoices.filter(
+                (inv: any) => inv.created_by_employee_id === emp.employee_id || inv.employee_id === emp.employee_id
+              )
+              const revenue = empInvoices.reduce((sum: number, inv: any) => sum + (inv.total_amount || 0), 0)
+              const latestInvoice = empInvoices.sort(
+                (a: any, b: any) => new Date(b.invoice_date || b.created_at).getTime() - new Date(a.invoice_date || a.created_at).getTime()
+              )[0]
+              return {
+                id: emp.id,
+                name: emp.name,
+                employee_id: emp.employee_id || "N/A",
+                invoiceCount: empInvoices.length,
+                totalRevenue: revenue,
+                avgInvoiceValue: empInvoices.length > 0 ? revenue / empInvoices.length : 0,
+                lastInvoiceDate: latestInvoice ? (latestInvoice.invoice_date || latestInvoice.created_at) : null,
+                is_active: emp.is_active,
+              }
+            })
+            setOverallStats({
+              totalEmployees: allEmployees.length,
+              activeEmployees: allEmployees.filter((e: any) => e.is_active).length,
+              totalInvoices: allInvoices.length,
+              totalRevenue: allInvoices.reduce((sum: number, inv: any) => sum + (inv.total_amount || 0), 0),
+            })
+          } else {
+            // Fetch employees
+            const { data: employeesData } = await supabase
+              .from("employees")
+              .select("*")
+              .eq("user_id", user.id)
 
-        // Fetch employees
-        const { data: employeesData } = await supabase
-          .from("employees")
-          .select("*")
-          .eq("user_id", user.id)
+            if (!employeesData || employeesData.length === 0) {
+              setEmployees([])
+              setOverallStats({
+                totalEmployees: 0,
+                activeEmployees: 0,
+                totalInvoices: 0,
+                totalRevenue: 0,
+              })
+              setIsLoading(false)
+              return
+            }
 
-        if (!employeesData) {
-          setEmployees([])
-          setIsLoading(false)
-          return
-        }
+            // Fetch all invoices
+            const { data: invoicesData } = await supabase
+              .from("invoices")
+              .select("*")
+              .eq("user_id", user.id)
 
-        // Fetch all invoices
-        const { data: invoicesData } = await supabase
-          .from("invoices")
-          .select("*")
-          .eq("user_id", user.id)
+            employeeStats = (employeesData || []).map((emp) => {
+              const empInvoices = (invoicesData || []).filter(
+                (inv) => inv.created_by_employee_id === emp.employee_id || inv.employee_id === emp.employee_id
+              )
+              const revenue = empInvoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
+              const latestInvoice = empInvoices.sort(
+                (a, b) => new Date(b.invoice_date || b.created_at).getTime() - new Date(a.invoice_date || a.created_at).getTime()
+              )[0]
 
-        employeeStats = (employeesData || []).map((emp) => {
-          const empInvoices = (invoicesData || []).filter(
-            (inv) => inv.created_by_employee_id === emp.employee_id || inv.employee_id === emp.employee_id
-          )
-          const revenue = empInvoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
-          const latestInvoice = empInvoices.sort(
-            (a, b) => new Date(b.invoice_date || b.created_at).getTime() - new Date(a.invoice_date || a.created_at).getTime()
-          )[0]
+              return {
+                id: emp.id,
+                name: emp.name,
+                employee_id: emp.employee_id || "N/A",
+                invoiceCount: empInvoices.length,
+                totalRevenue: revenue,
+                avgInvoiceValue: empInvoices.length > 0 ? revenue / empInvoices.length : 0,
+                lastInvoiceDate: latestInvoice ? (latestInvoice.invoice_date || latestInvoice.created_at) : null,
+                is_active: emp.is_active,
+              }
+            })
 
-          return {
-            id: emp.id,
-            name: emp.name,
-            employee_id: emp.employee_id || "N/A",
-            invoiceCount: empInvoices.length,
-            totalRevenue: revenue,
-            avgInvoiceValue: empInvoices.length > 0 ? revenue / empInvoices.length : 0,
-            lastInvoiceDate: latestInvoice ? (latestInvoice.invoice_date || latestInvoice.created_at) : null,
-            is_active: emp.is_active,
+            setOverallStats({
+              totalEmployees: employeesData.length,
+              activeEmployees: employeesData.filter((e) => e.is_active).length,
+              totalInvoices: invoicesData?.length || 0,
+              totalRevenue: (invoicesData || []).reduce((sum, inv) => sum + (inv.total_amount || 0), 0),
+            })
           }
-        })
-
-        setOverallStats({
-          totalEmployees: employeesData.length,
-          activeEmployees: employeesData.filter((e) => e.is_active).length,
-          totalInvoices: invoicesData?.length || 0,
-          totalRevenue: (invoicesData || []).reduce((sum, inv) => sum + (inv.total_amount || 0), 0),
-        })
-      } catch {
-        // Fallback to local IndexedDB
+        } catch (error) {
+          console.error("[EmployeeAnalytics] Supabase error, falling back to IndexedDB:", error)
+          const allEmployees = await db.employees.toArray()
+          const allInvoices = await db.invoices.toArray()
+          employeeStats = allEmployees.map((emp: any) => {
+            const empInvoices = allInvoices.filter(
+              (inv: any) => inv.created_by_employee_id === emp.employee_id || inv.employee_id === emp.employee_id
+            )
+            const revenue = empInvoices.reduce((sum: number, inv: any) => sum + (inv.total_amount || 0), 0)
+            const latestInvoice = empInvoices.sort(
+              (a: any, b: any) => new Date(b.invoice_date || b.created_at).getTime() - new Date(a.invoice_date || a.created_at).getTime()
+            )[0]
+            return {
+              id: emp.id,
+              name: emp.name,
+              employee_id: emp.employee_id || "N/A",
+              invoiceCount: empInvoices.length,
+              totalRevenue: revenue,
+              avgInvoiceValue: empInvoices.length > 0 ? revenue / empInvoices.length : 0,
+              lastInvoiceDate: latestInvoice ? (latestInvoice.invoice_date || latestInvoice.created_at) : null,
+              is_active: emp.is_active,
+            }
+          })
+          setOverallStats({
+            totalEmployees: allEmployees.length,
+            activeEmployees: allEmployees.filter((e: any) => e.is_active).length,
+            totalInvoices: allInvoices.length,
+            totalRevenue: allInvoices.reduce((sum: number, inv: any) => sum + (inv.total_amount || 0), 0),
+          })
+        }
+      } else {
+        // IndexedDB mode
         const allEmployees = await db.employees.toArray()
         const allInvoices = await db.invoices.toArray()
         employeeStats = allEmployees.map((emp: any) => {
@@ -145,10 +214,10 @@ export default function EmployeeAnalyticsPage() {
   }
 
   return (
-    <div className="space-y-6 p-4 md:p-6">
+    <div className="space-y-4 md:space-y-6">
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold">Employee Performance Analytics</h1>
-        <p className="text-muted-foreground">Track employee productivity and performance metrics</p>
+        <h1 className="text-2xl sm:text-3xl font-bold">Employee Performance Analytics</h1>
+        <p className="text-sm sm:text-base text-muted-foreground">Track employee productivity and performance metrics</p>
       </div>
 
       {/* Overall Stats */}
@@ -212,20 +281,21 @@ export default function EmployeeAnalyticsPage() {
           {employees.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">No employees found</div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead>ID</TableHead>
-                    <TableHead className="text-right">Invoices</TableHead>
-                    <TableHead className="text-right">Total Revenue</TableHead>
-                    <TableHead className="text-right">Avg/Invoice</TableHead>
-                    <TableHead>Last Invoice</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
+            <div className="overflow-x-auto -mx-6 px-6">
+              <div className="min-w-[900px]">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="min-w-[150px]">Employee</TableHead>
+                      <TableHead className="min-w-[100px]">ID</TableHead>
+                      <TableHead className="text-right min-w-[100px]">Invoices</TableHead>
+                      <TableHead className="text-right min-w-[130px]">Total Revenue</TableHead>
+                      <TableHead className="text-right min-w-[110px]">Avg/Invoice</TableHead>
+                      <TableHead className="min-w-[120px]">Last Invoice</TableHead>
+                      <TableHead className="min-w-[100px]">Status</TableHead>
+                      <TableHead className="min-w-[120px]">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
                 <TableBody>
                   {employees.map((emp) => (
                     <TableRow key={emp.id}>
@@ -253,6 +323,7 @@ export default function EmployeeAnalyticsPage() {
                   ))}
                 </TableBody>
               </Table>
+              </div>
             </div>
           )}
         </CardContent>

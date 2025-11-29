@@ -67,12 +67,35 @@ class StorageManager {
   }
 
   async addEmployee(employee: any) {
-    await db.employees?.put?.(employee)
-    await this.notifySavedWithCounts(true)
+    try {
+      console.log("[StorageManager] Adding employee to IndexedDB:", employee.id)
+      await db.employees.put(employee)
+      console.log("[StorageManager] Employee added successfully")
+      
+      // Verify it was saved
+      const saved = await db.employees.get(employee.id)
+      if (saved) {
+        console.log("[StorageManager] Verified employee saved:", saved.id, saved.name)
+      } else {
+        console.error("[StorageManager] Employee NOT found after save!")
+      }
+      
+      await this.notifySavedWithCounts(true)
+    } catch (error) {
+      console.error("[StorageManager] Error adding employee:", error)
+      throw error
+    }
   }
   async updateEmployee(employee: any) {
-    await db.employees?.put?.(employee)
-    await this.notifySavedWithCounts(true)
+    try {
+      console.log("[StorageManager] Updating employee in IndexedDB:", employee.id)
+      await db.employees.put(employee)
+      console.log("[StorageManager] Employee updated successfully")
+      await this.notifySavedWithCounts(true)
+    } catch (error) {
+      console.error("[StorageManager] Error updating employee:", error)
+      throw error
+    }
   }
   async deleteEmployee(id: string) {
     await db.employees?.delete?.(id)
