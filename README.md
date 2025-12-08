@@ -217,6 +217,12 @@ billing-solutions/
 9. **Reporting & Export** → `/reports/*` aggregates data from the active datasource; PDF/Excel exports are accessible per module.
 10. **Distribution** → Deploy web build (`npm run build && npm start`) or ship Electron binaries via `npm run dist:win|mac|linux`.
 
+#### Vercel (web)
+- Set env vars: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` in the Vercel project.
+- Build command: `npm run vercel-build` (defaults to `next build`); output uses Next.js standalone server.
+- Local preview: `npm run web:start` (uses `PORT` or 3000).
+- Ensure Firestore rules allow your Vercel domain; keep service-account JSON out of runtime (client config stays public by design).
+
 ### Operational Tips
 - **Mode Awareness**: Header badge + settings card show “Local/IndexedDB” vs “Supabase”.
 - **Logs**: DevTools prints rich context (e.g., `[ProductsPage][Dexie] fetched 33 products`, `[LicenseManager] Online validation successful`).

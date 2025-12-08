@@ -10,6 +10,8 @@
     "dev:next": "next dev",
     "dev:electron": "wait-on http://localhost:3000 ; cross-env NODE_ENV=development electron .",
     "build": "next build",
+    "web:start": "next start -p ${PORT:-3000}",
+    "vercel-build": "next build",
     "build:export": "node scripts/prepare-electron-build.js ; cross-env ELECTRON_BUILD=true next build ; node scripts/restore-api-routes.js",
     "start": "next start",
     "lint": "eslint .",
