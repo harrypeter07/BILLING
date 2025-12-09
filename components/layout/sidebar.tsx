@@ -17,6 +17,7 @@ import {
   WifiOff,
   UserCog,
   Boxes,
+  Key,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/client"
@@ -39,6 +40,7 @@ const adminNavigation = [
   { name: "Analytics", href: "/admin/analytics", icon: BarChart3 },
   { name: "Employees", href: "/employees", icon: UserCog },
   { name: "Employee Analytics", href: "/employees/analytics", icon: BarChart3 },
+  { name: "License Seed", href: "/admin/license-seed", icon: Key },
   { name: "Settings", href: "/settings", icon: Settings },
 ]
 

@@ -67,6 +67,14 @@
 ### License Guard (Device Binding)
 - Licensing is enforced via Firestore (`components/license-guard.tsx` + `lib/utils/license-manager.ts`).
 - Each machine must have a valid license key + MAC address pair before the first admin signs in.
+
+#### Web-Based License Seeding (Recommended)
+- **Admin Dashboard**: Navigate to `/admin/license-seed` (admin access required)
+- Enter MAC address, optional client name, and expiration days
+- License key is automatically generated and seeded to Firestore
+- Copy the generated license key for distribution
+
+#### Command-Line License Seeding
 - Use the provisioning script:
   ```bash
   npm run seed:license -- <LICENSE_KEY> <MAC_ADDRESS> "<CLIENT_NAME>" [expiresInDays]
@@ -75,6 +83,13 @@
   - Provide Firebase Admin credentials with `GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json` or place the JSON under `app/firebase/`.
   - Optional `expiresInDays` defaults to 365.
 - Script creates/updates `licenses` documents (status, activation, expiry). Console logs show `[License Seed] ...`.
+
+#### Firebase Admin Setup
+- For local development: Place service account JSON at `app/firebase/*.json` (gitignored)
+- For production: Set `FIREBASE_ADMIN_CREDENTIALS` environment variable (see `.env.example`)
+- Helper script: `node scripts/prepare-firebase-env.js` to convert JSON to env var format
+
+#### Runtime Behavior
 - At runtime, `LicenseGuard` validates remotely, caches locally, and logs messages such as `[LicenseManager] Stored license is valid locally`.
 
 ### Admin Onboarding Flow

@@ -1,0 +1,201 @@
+import { NextResponse } from "next/server";
+import { getAdminFirestore, Timestamp } from "@/lib/utils/firebase-admin";
+import { createClient } from "@/lib/supabase/server";
+import { v4 as uuidv4 } from "uuid";
+
+// Force Node.js runtime - Edge runtime doesn't support Firebase Admin SDK
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+/**
+ * POST /api/license/seed
+ * Seeds a license for a given MAC address
+ * 
+ * Body: {
+ *   macAddress: string (required)
+ *   clientName?: string (optional, defaults to "Default Client")
+ *   expiresInDays?: number (optional, defaults to 365)
+ * }
+ */
+export async function POST(request: Request) {
+  try {
+    // Check authentication (admin only) using server utility
+    let user;
+    let authError;
+    
+    try {
+      const supabase = await createClient();
+      const authResult = await supabase.auth.getUser();
+      user = authResult.data.user;
+      authError = authResult.error;
+    } catch (fetchError: any) {
+      // Handle network/fetch errors
+      console.error("[API /license/seed] Auth error:", fetchError);
+      return NextResponse.json(
+        { 
+          error: "Authentication service unavailable. Please check your internet connection and try again.",
+        },
+        { status: 503 }
+      );
+    }
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Unauthorized. Please log in as admin." },
+        { status: 401 }
+      );
+    }
+
+    // Parse request body
+    let body;
+    try {
+      body = await request.json();
+    } catch (parseError: any) {
+      console.error("[API /license/seed] JSON parse error:", parseError);
+      return NextResponse.json(
+        { error: "Invalid request body. Expected JSON format." },
+        { status: 400 }
+      );
+    }
+
+    const { macAddress, clientName, expiresInDays } = body;
+
+    // Validate MAC address
+    if (!macAddress || !macAddress.trim()) {
+      return NextResponse.json(
+        { error: "MAC address is required" },
+        { status: 400 }
+      );
+    }
+
+    // Normalize MAC address (uppercase, remove separators if any)
+    const normalizedMac = macAddress.trim().toUpperCase().replace(/[:-]/g, "");
+    
+    // Validate MAC address format (should be 12 hex characters)
+    if (!/^[0-9A-F]{12}$/.test(normalizedMac)) {
+      return NextResponse.json(
+        { error: "Invalid MAC address format. Expected format: XX:XX:XX:XX:XX:XX or XXXXXXXXXXXX" },
+        { status: 400 }
+      );
+    }
+
+    // Format MAC address with colons for storage
+    const formattedMac = normalizedMac.match(/.{2}/g)?.join(":") || normalizedMac;
+
+    // Set defaults
+    const finalClientName = clientName?.trim() || "Default Client";
+    const finalExpiresInDays = expiresInDays ? Number(expiresInDays) : 365;
+
+    if (Number.isNaN(finalExpiresInDays) || finalExpiresInDays <= 0) {
+      return NextResponse.json(
+        { error: "expiresInDays must be a positive number" },
+        { status: 400 }
+      );
+    }
+
+    // Generate license key (UUID-based)
+    const licenseKey = `LICENSE-${normalizedMac.substring(0, 12)}-${uuidv4().substring(0, 8).toUpperCase()}`;
+
+    // Initialize Firebase Admin
+    let firestore;
+    try {
+      firestore = getAdminFirestore();
+    } catch (firebaseError: any) {
+      console.error("[API /license/seed] Firebase Admin initialization error:", firebaseError);
+      return NextResponse.json(
+        {
+          error: "Failed to initialize Firebase Admin. Please check your Firebase credentials configuration.",
+          details: process.env.NODE_ENV === "development" ? firebaseError.message : undefined,
+        },
+        { status: 500 }
+      );
+    }
+
+    const licensesRef = firestore.collection("licenses");
+
+    // Check if license already exists for this MAC address
+    let existingSnapshot;
+    try {
+      existingSnapshot = await licensesRef
+        .where("macAddress", "==", formattedMac)
+        .limit(1)
+        .get();
+    } catch (firestoreError: any) {
+      console.error("[API /license/seed] Firestore query error:", firestoreError);
+      return NextResponse.json(
+        {
+          error: "Failed to query Firestore. Please check your Firebase configuration.",
+          details: process.env.NODE_ENV === "development" ? firestoreError.message : undefined,
+        },
+        { status: 500 }
+      );
+    }
+
+    const licenseData = {
+      licenseKey,
+      macAddress: formattedMac,
+      clientName: finalClientName,
+      activatedOn: Timestamp.now(),
+      expiresOn: Timestamp.fromDate(
+        new Date(Date.now() + finalExpiresInDays * 24 * 60 * 60 * 1000)
+      ),
+      status: "active",
+      createdBy: user.id,
+      createdAt: Timestamp.now(),
+    };
+
+    let docId: string;
+    let isUpdate = false;
+
+    try {
+      if (!existingSnapshot.empty) {
+        // Update existing license
+        const docRef = existingSnapshot.docs[0].ref;
+        await docRef.update(licenseData);
+        docId = docRef.id;
+        isUpdate = true;
+      } else {
+        // Create new license
+        const docRef = await licensesRef.add(licenseData);
+        docId = docRef.id;
+      }
+    } catch (firestoreError: any) {
+      console.error("[API /license/seed] Firestore write error:", firestoreError);
+      return NextResponse.json(
+        {
+          error: "Failed to save license to Firestore. Please check your Firebase configuration.",
+          details: process.env.NODE_ENV === "development" ? firestoreError.message : undefined,
+        },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(
+      {
+        success: true,
+        message: isUpdate
+          ? "License updated successfully"
+          : "License created successfully",
+        license: {
+          licenseKey,
+          macAddress: formattedMac,
+          clientName: finalClientName,
+          expiresInDays: finalExpiresInDays,
+          status: "active",
+          documentId: docId,
+        },
+      },
+      { status: isUpdate ? 200 : 201 }
+    );
+  } catch (error: any) {
+    console.error("[API /license/seed] Error:", error);
+    return NextResponse.json(
+      {
+        error: error.message || "Failed to seed license",
+        details: process.env.NODE_ENV === "development" ? error.stack : undefined,
+      },
+      { status: 500 }
+    );
+  }
+}
+
