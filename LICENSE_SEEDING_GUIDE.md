@@ -49,30 +49,41 @@ GOOGLE_APPLICATION_CREDENTIALS=./app/firebase/your-service-account.json
 
 ### For Production (Vercel, etc.)
 
-**Option 1: JSON String** (recommended)
-1. Get your service account JSON from Firebase Console
-2. Convert to single-line JSON string:
-   ```bash
-   node scripts/prepare-firebase-env.js
-   ```
-3. Set environment variable in your deployment platform:
-   ```
-   FIREBASE_ADMIN_CREDENTIALS='{"type":"service_account",...}'
-   ```
+**Step-by-Step: Adding Firebase Credentials to Vercel**
 
-**Option 2: Base64 Encoded**
-1. Run the helper script:
+1. **Run the helper script** to convert your JSON file:
    ```bash
-   node scripts/prepare-firebase-env.js
+   node scripts/prepare-firebase-env.js app/firebase/billingsolution-firebase-adminsdk-*.json
    ```
-2. Copy the base64 output
-3. Set environment variable:
-   ```
-   FIREBASE_ADMIN_CREDENTIALS=<base64_string>
-   ```
+   (Or if your JSON is already at `app/firebase/*.json`, just run: `node scripts/prepare-firebase-env.js`)
 
-**Option 3: Google Cloud Application Default Credentials**
-- If deploying to Google Cloud Run or similar, credentials are automatically detected
+2. **Copy the base64 string** from "OPTION 2: Base64 Encoded" output
+   - It will look like: `eyJ0eXBlIjoic2VydmljZV9hY2NvdW50IiwicHJvamVjdF9pZCI6...`
+
+3. **Go to Vercel Dashboard**:
+   - Navigate to your project → **Settings** → **Environment Variables**
+
+4. **Add the environment variable**:
+   - Click **Add New**
+   - **Key**: `FIREBASE_ADMIN_CREDENTIALS`
+   - **Value**: Paste the base64 string (the entire long string from Option 2)
+   - **Environment**: Select all three ✅ Production ✅ Preview ✅ Development
+   - Click **Save**
+
+5. **Redeploy your app**:
+   - Go to **Deployments** tab
+   - Click **Redeploy** on the latest deployment
+   - Or push a new commit to trigger deployment
+
+**Important Notes:**
+- ✅ Use **Option 2 (Base64 Encoded)** for Vercel - it's the most reliable format
+- ✅ Don't add quotes around the base64 string in Vercel
+- ✅ Make sure to select all environments (Production, Preview, Development)
+- ✅ The API route will automatically detect and decode the base64 credentials
+
+**Alternative Options:**
+- **Option 1 (JSON String)**: Can work but may have issues with special characters
+- **Option 3**: Only works for Google Cloud Run deployments
 
 ## API Endpoint
 
