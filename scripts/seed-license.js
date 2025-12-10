@@ -8,8 +8,7 @@
  *
  * Requirements:
  *   - Install dependencies: npm install --legacy-peer-deps firebase-admin
- *   - Provide Firebase Admin credentials via:
- *       * GOOGLE_APPLICATION_CREDENTIALS env var pointing to service account JSON, or
+ *   - Provide Firebase  env var pointing to service account JSON, or
  *       * Place service-account.json at project root (scripts will attempt to load it)
  */
 
