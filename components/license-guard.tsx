@@ -23,15 +23,21 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
   console.log('[LicenseGuard] Rendered - pathname:', pathname);
 
   useEffect(() => {
-    // Skip check on license page and admin license-seed page
+    // Skip check on license page, admin license-seed page, and auth pages
     // These pages should be accessible without license validation
-    if (pathname === "/license" || 
-        pathname?.includes("/license") || 
-        pathname === "/admin/license-seed" ||
-        pathname?.startsWith("/admin/license-seed")) {
-      console.log('[LicenseGuard] On license page or admin license-seed page, skipping check');
+    const skipLicenseCheck = 
+      pathname === "/license" || 
+      pathname?.includes("/license") || 
+      pathname === "/admin/license-seed" ||
+      pathname?.startsWith("/admin/license-seed") ||
+      pathname?.startsWith("/auth/");
+    
+    if (skipLicenseCheck) {
+      console.log('[LicenseGuard] On exempt page, skipping license check:', pathname);
       setChecking(false);
-      setIsValid(true); // Allow license page to render
+      setIsValid(true); // Allow page to render
+      // Reset check ref when on exempt pages to avoid stale state
+      hasCheckedRef.current = false;
       return;
     }
 
