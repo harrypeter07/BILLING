@@ -68,8 +68,10 @@ export async function updateSession(request: NextRequest) {
     }
 
     // Admin-only routes - require Supabase auth with admin role
+    // EXCEPT: /admin/license-seed should be accessible without auth
+    const isLicenseSeedRoute = request.nextUrl.pathname.startsWith("/admin/license-seed")
     const adminOnlyPaths = ["/admin", "/employees"]
-    const isAdminOnlyRoute = adminOnlyPaths.some((path) => request.nextUrl.pathname.startsWith(path))
+    const isAdminOnlyRoute = adminOnlyPaths.some((path) => request.nextUrl.pathname.startsWith(path)) && !isLicenseSeedRoute
     
     // Customer routes
     const isCustomerRoute = request.nextUrl.pathname.startsWith("/customer/")
@@ -80,6 +82,11 @@ export async function updateSession(request: NextRequest) {
     
     // Settings routes - require authentication but can be accessed by both admin and employees
     const isSettingsRoute = request.nextUrl.pathname.startsWith("/settings")
+
+    // License seed route - allow without authentication (separate from app environment)
+    if (isLicenseSeedRoute) {
+      return supabaseResponse
+    }
 
     // Check customer session for customer routes
     if (isCustomerRoute) {

@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { MoreHorizontal, Pencil, Trash2, Search, Filter, X } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
+import { isIndexedDbMode } from "@/lib/utils/db-mode"
 
 interface Product {
   id: string
@@ -91,20 +92,35 @@ export function ProductsTable({ products: initialProducts }: ProductsTableProps)
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this product?")) return
 
-    const supabase = createClient()
-    const { error } = await supabase.from("products").delete().eq("id", id)
-
-    if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete product",
-        variant: "destructive",
-      })
-    } else {
+    try {
+      const isIndexedDb = typeof window !== 'undefined' && localStorage.getItem('databaseType') !== 'supabase'
+      
+      if (isIndexedDb) {
+        // Delete from IndexedDB
+        const { storageManager } = await import("@/lib/storage-manager")
+        await storageManager.deleteProduct(id)
+      } else {
+        // Delete from Supabase
+        const supabase = createClient()
+        const { error } = await supabase.from("products").delete().eq("id", id)
+        if (error) throw error
+      }
+      
+      // Update local state
       setProducts(products.filter((p) => p.id !== id))
       toast({
         title: "Success",
         description: "Product deleted successfully",
+      })
+      // Trigger a refresh to sync with database
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('products:deleted'))
+      }
+    } catch (error) {
+      toast({
+        title: "Error",
+        description: "Failed to delete product",
+        variant: "destructive",
       })
     }
   }

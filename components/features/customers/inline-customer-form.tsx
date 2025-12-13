@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -8,11 +8,18 @@ import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { storageManager } from "@/lib/storage-manager"
-import { getDatabaseType } from "@/lib/utils/db-mode"
+import { getDatabaseType, isIndexedDbMode } from "@/lib/utils/db-mode"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface InlineCustomerFormProps {
   onCustomerCreated: (customer: { id: string; name: string }) => void
+}
+
+interface CustomerMatch {
+  id: string
+  name: string
+  phone: string | null
+  email: string | null
 }
 
 export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProps) {
@@ -21,8 +28,113 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
   const [phone, setPhone] = useState("")
   const [gstin, setGstin] = useState("")
   const [isLoading, setIsLoading] = useState(false)
+  const [phoneMatches, setPhoneMatches] = useState<CustomerMatch[]>([])
+  const [showPhoneDropdown, setShowPhoneDropdown] = useState(false)
+  const phoneInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
   const isExcel = getDatabaseType() === 'excel'
+
+  // Search customers by phone number
+  const searchCustomersByPhone = async (phoneNumber: string) => {
+    if (!phoneNumber.trim() || phoneNumber.length < 3) {
+      setPhoneMatches([])
+      setShowPhoneDropdown(false)
+      return
+    }
+
+    try {
+      const isIndexedDb = isIndexedDbMode()
+      let matches: CustomerMatch[] = []
+
+      if (isIndexedDb) {
+        // Search in IndexedDB
+        const allCustomers = await db.customers.toArray()
+        matches = allCustomers
+          .filter(c => c.phone && c.phone.includes(phoneNumber))
+          .map(c => ({
+            id: c.id,
+            name: c.name,
+            phone: c.phone || null,
+            email: c.email || null,
+          }))
+          .slice(0, 5) // Limit to 5 results
+      } else {
+        // Search in Supabase
+        const supabase = createClient()
+        const authType = localStorage.getItem("authType")
+        let userId: string | null = null
+
+        if (authType === "employee") {
+          const empSession = localStorage.getItem("employeeSession")
+          if (empSession) {
+            const session = JSON.parse(empSession)
+            const storeId = session.storeId
+            if (storeId) {
+              const { data: store } = await supabase
+                .from('stores')
+                .select('admin_user_id')
+                .eq('id', storeId)
+                .single()
+              if (store?.admin_user_id) {
+                userId = store.admin_user_id
+              }
+            }
+          }
+        } else {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) userId = user.id
+        }
+
+        if (userId) {
+          const { data } = await supabase
+            .from('customers')
+            .select('id, name, phone, email')
+            .eq('user_id', userId)
+            .ilike('phone', `%${phoneNumber}%`)
+            .limit(5)
+          
+          if (data) {
+            matches = data.map(c => ({
+              id: c.id,
+              name: c.name,
+              phone: c.phone || null,
+              email: c.email || null,
+            }))
+          }
+        }
+      }
+
+      setPhoneMatches(matches)
+      setShowPhoneDropdown(matches.length > 0)
+    } catch (error) {
+      console.error('Error searching customers:', error)
+      setPhoneMatches([])
+      setShowPhoneDropdown(false)
+    }
+  }
+
+  // Handle phone number change
+  const handlePhoneChange = (value: string) => {
+    setPhone(value)
+    searchCustomersByPhone(value)
+  }
+
+  // Handle customer selection from dropdown
+  const handleSelectCustomer = (customer: CustomerMatch) => {
+    // Auto-select this customer in the invoice form
+    onCustomerCreated({ id: customer.id, name: customer.name })
+    // Clear the form since we're using an existing customer
+    setName("")
+    setPhone("")
+    setEmail("")
+    setGstin("")
+    setPhoneMatches([])
+    setShowPhoneDropdown(false)
+    toast({
+      title: "Customer selected",
+      description: `Using existing customer: ${customer.name}`,
+    })
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -36,7 +148,17 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
       return
     }
 
+    if (!phone.trim()) {
+      toast({
+        title: "Error",
+        description: "Phone number is required",
+        variant: "destructive",
+      })
+      return
+    }
+
     setIsLoading(true)
+    setShowPhoneDropdown(false)
     
     try {
       const customerData = {
@@ -183,16 +305,49 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
                 className="h-9 text-sm"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="quick-phone" className="text-xs">Phone</Label>
-              <Input
-                id="quick-phone"
-                type="tel"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                placeholder="+91 9876543210"
-                className="h-9 text-sm"
-              />
+            <div className="space-y-1.5 relative">
+              <Label htmlFor="quick-phone" className="text-xs">
+                Phone Number <span className="text-destructive">*</span>
+              </Label>
+              <div className="relative">
+                <Input
+                  ref={phoneInputRef}
+                  id="quick-phone"
+                  type="tel"
+                  required
+                  value={phone}
+                  onChange={(e) => handlePhoneChange(e.target.value)}
+                  onFocus={() => {
+                    if (phoneMatches.length > 0) {
+                      setShowPhoneDropdown(true)
+                    }
+                  }}
+                  onBlur={() => {
+                    // Delay to allow click on dropdown item
+                    setTimeout(() => setShowPhoneDropdown(false), 200)
+                  }}
+                  placeholder="+91 9876543210"
+                  className="h-9 text-sm"
+                />
+                {showPhoneDropdown && phoneMatches.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-60 overflow-auto">
+                    {phoneMatches.map((customer) => (
+                      <div
+                        key={customer.id}
+                        onClick={() => handleSelectCustomer(customer)}
+                        className="px-3 py-2 cursor-pointer hover:bg-accent border-b last:border-b-0"
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-medium text-sm">{customer.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {customer.phone} {customer.email && `• ${customer.email}`}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="quick-gstin" className="text-xs">GSTIN</Label>
@@ -209,7 +364,7 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
             <Button 
               type="button" 
               size="sm" 
-              disabled={isLoading || !name.trim()}
+              disabled={isLoading || !name.trim() || !phone.trim()}
               onClick={handleSubmit}
             >
               {isLoading ? "Adding..." : "Add Customer"}

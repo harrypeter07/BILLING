@@ -8,7 +8,6 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
-import { useUserRole } from "@/lib/hooks/use-user-role"
 import { CheckCircle2, AlertCircle, Copy, Loader2 } from "lucide-react"
 
 interface LicenseResponse {
@@ -26,7 +25,6 @@ interface LicenseResponse {
 
 export default function LicenseSeedPage() {
   const router = useRouter()
-  const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole()
   const { toast } = useToast()
 
   const [macAddress, setMacAddress] = useState("")
@@ -36,18 +34,8 @@ export default function LicenseSeedPage() {
   const [result, setResult] = useState<LicenseResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    // Wait for role to be determined
-    if (roleLoading) {
-      return
-    }
-
-    // Only admin can access this page
-    if (isEmployee || !isAdmin) {
-      router.push("/dashboard")
-      return
-    }
-  }, [isAdmin, isEmployee, roleLoading, router])
+  // License seed page is accessible without authentication
+  // This is a separate environment from the main app
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -143,36 +131,19 @@ export default function LicenseSeedPage() {
     setMacAddress(formatted)
   }
 
-  if (roleLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
-
-  if (!isAdmin) {
-    return (
-      <div className="text-center py-8">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Access Denied</AlertTitle>
-          <AlertDescription>Admin access required to seed licenses.</AlertDescription>
-        </Alert>
-      </div>
-    )
-  }
+  // No loading or access check needed - page is accessible without auth
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold">Seed License</h1>
-        <p className="text-muted-foreground">
-          Generate and seed a license for a device by entering its MAC address
-        </p>
-      </div>
+    <div className="min-h-screen bg-background p-6">
+      <div className="mx-auto max-w-2xl space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold">License Seed Admin</h1>
+          <p className="text-muted-foreground">
+            Generate and seed a license for a device by entering its MAC address
+          </p>
+        </div>
 
-      <Card>
+        <Card>
         <CardHeader>
           <CardTitle>License Information</CardTitle>
           <CardDescription>
@@ -300,6 +271,7 @@ export default function LicenseSeedPage() {
           </CardContent>
         </Card>
       )}
+      </div>
     </div>
   )
 }

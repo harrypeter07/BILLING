@@ -15,43 +15,50 @@ export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
+  const fetchProducts = async () => {
+    const isIndexedDb = isIndexedDbMode()
+    if (isIndexedDb) {
+      try {
+        setIsLoading(true)
+        const list = await db.products.toArray()
+        console.log('[ProductsPage][Dexie] fetched', list?.length || 0, 'products')
+        if (!list || list.length === 0) { toast.warning('No products found') }
+        setProducts(list)
+      } catch (e) {
+        console.error('[ProductsPage][Dexie] load failed:', e)
+      } finally {
+        setIsLoading(false)
+      }
+    } else {
+      setIsLoading(true)
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setProducts([]); setIsLoading(false); return }
+      const { data: dbProducts } = await supabase
+        .from("products")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+      setProducts(dbProducts || [])
+      setIsLoading(false)
+    }
+  }
+
   const initializedRef = useRef(false)
   useEffect(() => {
     if (initializedRef.current) return
     initializedRef.current = true
-    const isIndexedDb = isIndexedDbMode()
-    if (isIndexedDb) {
-      // Prefer the Excel API so we read from the data folder
-      (async () => {
-        try {
-          setIsLoading(true)
-          const list = await db.products.toArray()
-          console.log('[ProductsPage][Dexie] fetched', list?.length || 0, 'products')
-          if (!list || list.length === 0) { toast.warning('No products found') }
-          setProducts(list)
-        } catch (e) {
-          console.error('[ProductsPage][Dexie] load failed:', e)
-          
-        } finally {
-          setIsLoading(false)
-        }
-      })()
-      
-    } else {
-      const fetchData = async () => {
-        setIsLoading(true)
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { setProducts([]); setIsLoading(false); return }
-        const { data: dbProducts } = await supabase
-          .from("products")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-        setProducts(dbProducts || [])
-        setIsLoading(false)
-      }
-      fetchData()
+    fetchProducts()
+  }, [])
+
+  // Listen for product deletion events
+  useEffect(() => {
+    const handleProductDeleted = () => {
+      fetchProducts()
+    }
+    window.addEventListener('products:deleted', handleProductDeleted)
+    return () => {
+      window.removeEventListener('products:deleted', handleProductDeleted)
     }
   }, [])
 

@@ -19,31 +19,18 @@ export const dynamic = "force-dynamic";
  */
 export async function POST(request: Request) {
   try {
-    // Check authentication (admin only) using server utility
-    let user;
-    let authError;
+    // License seed API is accessible without authentication
+    // This allows seeding licenses in a separate environment from the main app
+    // Authentication is optional - if user is authenticated, we'll record who created it
+    let user = null;
     
     try {
       const supabase = await createClient();
       const authResult = await supabase.auth.getUser();
-      user = authResult.data.user;
-      authError = authResult.error;
+      user = authResult.data.user; // Will be null if not authenticated, which is fine
     } catch (fetchError: any) {
-      // Handle network/fetch errors
-      console.error("[API /license/seed] Auth error:", fetchError);
-      return NextResponse.json(
-        { 
-          error: "Authentication service unavailable. Please check your internet connection and try again.",
-        },
-        { status: 503 }
-      );
-    }
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized. Please log in as admin." },
-        { status: 401 }
-      );
+      // Silently handle auth errors - license seed doesn't require auth
+      console.log("[API /license/seed] No authentication (this is allowed for license seeding)");
     }
 
     // Parse request body
@@ -140,7 +127,7 @@ export async function POST(request: Request) {
         new Date(Date.now() + finalExpiresInDays * 24 * 60 * 60 * 1000)
       ),
       status: "active",
-      createdBy: user.id,
+      createdBy: user?.id || "system", // Use "system" if no user is authenticated
       createdAt: Timestamp.now(),
     };
 

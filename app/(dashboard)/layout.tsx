@@ -13,6 +13,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   const pathname = usePathname()
   
+  // License seed page should not use the dashboard layout (no sidebar/header)
+  if (pathname?.startsWith("/admin/license-seed")) {
+    return <>{children}</>
+  }
+  
   useEffect(() => {
     const checkAuthAndStore = async () => {
       // Check auth on client side
