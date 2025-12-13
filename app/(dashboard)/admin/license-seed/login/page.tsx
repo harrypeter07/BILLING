@@ -70,9 +70,8 @@ export default function LicenseSeedLoginPage() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="key">Access Key</Label>
-              <Input
+              <PasswordInput
                 id="key"
-                type="password"
                 value={key}
                 onChange={(e) => setKey(e.target.value)}
                 placeholder="Enter 3-4 digit key"
