@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { storageManager } from "@/lib/storage-manager"
-import { getDatabaseType, isIndexedDbMode } from "@/lib/utils/db-mode"
+import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface InlineCustomerFormProps {
