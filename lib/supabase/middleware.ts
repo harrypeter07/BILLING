@@ -68,7 +68,7 @@ export async function updateSession(request: NextRequest) {
     }
 
     // Admin-only routes - require Supabase auth with admin role
-    // EXCEPT: /admin/license-seed should be accessible without auth
+    // EXCEPT: /admin/license-seed routes use simple key-based auth
     const isLicenseSeedRoute = request.nextUrl.pathname.startsWith("/admin/license-seed")
     const adminOnlyPaths = ["/admin", "/employees"]
     const isAdminOnlyRoute = adminOnlyPaths.some((path) => request.nextUrl.pathname.startsWith(path)) && !isLicenseSeedRoute

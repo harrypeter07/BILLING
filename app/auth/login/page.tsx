@@ -123,8 +123,8 @@ export default function LoginPage() {
               // Store exists
               const store = stores[0]
               localStorage.setItem("currentStoreId", store.id)
-              console.log("[Login] Redirecting admin to /admin/license-seed")
-              router.push("/admin/license-seed")
+              console.log("[Login] Redirecting admin to /admin/analytics")
+              router.push("/admin/analytics")
             } else {
               // Supabase mode
               const { data: stores } = await supabase
@@ -146,8 +146,8 @@ export default function LoginPage() {
               // Store exists
               const store = stores[0]
               localStorage.setItem("currentStoreId", store.id)
-              console.log("[Login] Redirecting admin to /admin/license-seed")
-              router.push("/admin/license-seed")
+              console.log("[Login] Redirecting admin to /admin/analytics")
+              router.push("/admin/analytics")
             }
             router.refresh()
           } else {

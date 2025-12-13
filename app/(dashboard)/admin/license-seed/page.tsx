@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
-import { CheckCircle2, AlertCircle, Copy, Loader2 } from "lucide-react"
+import { CheckCircle2, AlertCircle, Copy, Loader2, LogOut } from "lucide-react"
 
 interface LicenseResponse {
   success: boolean
@@ -33,9 +33,23 @@ export default function LicenseSeedPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [result, setResult] = useState<LicenseResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true)
 
-  // License seed page is accessible without authentication
-  // This is a separate environment from the main app
+  // Check for license seed admin authentication
+  useEffect(() => {
+    const isAuthenticated = localStorage.getItem("licenseSeedAdminAuth") === "true"
+    if (!isAuthenticated) {
+      router.push("/admin/license-seed/login")
+      return
+    }
+    setIsCheckingAuth(false)
+  }, [router])
+
+  // Handle logout
+  const handleLogout = () => {
+    localStorage.removeItem("licenseSeedAdminAuth")
+    router.push("/admin/license-seed/login")
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -131,16 +145,33 @@ export default function LicenseSeedPage() {
     setMacAddress(formatted)
   }
 
-  // No loading or access check needed - page is accessible without auth
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background p-6">
       <div className="mx-auto max-w-2xl space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold">License Seed Admin</h1>
-          <p className="text-muted-foreground">
-            Generate and seed a license for a device by entering its MAC address
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold">License Seed Admin</h1>
+            <p className="text-muted-foreground">
+              Generate and seed a license for a device by entering its MAC address
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleLogout}
+            className="gap-2"
+          >
+            <LogOut className="h-4 w-4" />
+            Logout
+          </Button>
         </div>
 
         <Card>

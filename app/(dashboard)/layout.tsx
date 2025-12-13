@@ -13,7 +13,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   const pathname = usePathname()
   
-  // License seed page should not use the dashboard layout (no sidebar/header)
+  // License seed pages should not use the dashboard layout (no sidebar/header)
+  // This includes both the login and the main license seed page
   if (pathname?.startsWith("/admin/license-seed")) {
     return <>{children}</>
   }
