@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client"
 import { InvoiceForm } from "@/components/features/invoices/invoice-form"
 import { db } from "@/lib/dexie-client"
 import { useStore } from "@/lib/utils/store-context"
+import { isIndexedDbMode } from "@/lib/utils/db-mode"
 
 export default function NewInvoicePage() {
   const [customers, setCustomers] = useState<any[]>([])
@@ -53,7 +54,10 @@ export default function NewInvoicePage() {
 
   useEffect(() => {
     (async () => {
-      {
+      const isIndexedDb = isIndexedDbMode()
+      
+      if (isIndexedDb) {
+        // IndexedDB mode - load from Dexie
         try {
           const [cust, prod, inv] = await Promise.all([
             db.customers.toArray(),
@@ -74,63 +78,75 @@ export default function NewInvoicePage() {
           setProducts([])
           setSettings({ invoice_prefix: 'INV', next_invoice_number: 1, default_gst_rate: 18, place_of_supply: null })
         }
-      }
-      // Additionally, try to pull remote datasets when authenticated (optional)
-      try {
-        const supabase = createClient()
-        const authType = localStorage.getItem("authType")
-        
-        // For employees, get admin_user_id from store
-        if (authType === "employee") {
-          const empSession = localStorage.getItem("employeeSession")
-          if (empSession) {
-            try {
-              const session = JSON.parse(empSession)
-              const storeId = session.storeId
-              
-              if (storeId) {
-                // Get store to find admin_user_id
-                const { data: store } = await supabase
-                  .from('stores')
-                  .select('admin_user_id')
-                  .eq('id', storeId)
-                  .single()
+      } else {
+        // Supabase mode - load from Supabase
+        try {
+          const supabase = createClient()
+          const authType = localStorage.getItem("authType")
+          
+          // For employees, get admin_user_id from store
+          if (authType === "employee") {
+            const empSession = localStorage.getItem("employeeSession")
+            if (empSession) {
+              try {
+                const session = JSON.parse(empSession)
+                const storeId = session.storeId
                 
-                if (store?.admin_user_id) {
-                  const [{ data: dbCustomers }, { data: dbProducts }, { data: dbSettings }] = await Promise.all([
-                    supabase.from('customers').select('id, name').eq('user_id', store.admin_user_id),
-                    supabase.from('products').select('id, name, price, gst_rate, hsn_code, unit').eq('user_id', store.admin_user_id).eq('is_active', true),
-                    supabase.from('business_settings').select('*').eq('user_id', store.admin_user_id).single(),
-                  ])
-                  setCustomers(dbCustomers || [])
-                  setProducts(dbProducts || [])
-                  setSettings(dbSettings || null)
-                  return
+                if (storeId) {
+                  // Get store to find admin_user_id
+                  const { data: store } = await supabase
+                    .from('stores')
+                    .select('admin_user_id')
+                    .eq('id', storeId)
+                    .single()
+                  
+                  if (store?.admin_user_id) {
+                    const [{ data: dbCustomers }, { data: dbProducts }, { data: dbSettings }] = await Promise.all([
+                      supabase.from('customers').select('id, name').eq('user_id', store.admin_user_id),
+                      supabase.from('products').select('id, name, price, gst_rate, hsn_code, unit').eq('user_id', store.admin_user_id).eq('is_active', true),
+                      supabase.from('business_settings').select('*').eq('user_id', store.admin_user_id).single(),
+                    ])
+                    setCustomers(dbCustomers || [])
+                    setProducts(dbProducts || [])
+                    setSettings(dbSettings || null)
+                    return
+                  }
                 }
+              } catch (e) {
+                console.error('[NewInvoice] Employee session error:', e)
               }
-            } catch (e) {
-              console.error('[NewInvoice] Employee session error:', e)
             }
+            // If employee but no valid session, set empty
+            setCustomers([])
+            setProducts([])
+            setSettings(null)
+            return
           }
-          // If employee but no valid session, set empty
+          
+          // For admin users (Supabase auth)
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) {
+            setCustomers([])
+            setProducts([])
+            setSettings(null)
+            return
+          }
+          
+          const [{ data: dbCustomers }, { data: dbProducts }, { data: dbSettings }] = await Promise.all([
+            supabase.from('customers').select('id, name').eq('user_id', user.id),
+            supabase.from('products').select('id, name, price, gst_rate, hsn_code, unit').eq('user_id', user.id).eq('is_active', true),
+            supabase.from('business_settings').select('*').eq('user_id', user.id).single(),
+          ])
+          setCustomers(dbCustomers || [])
+          setProducts(dbProducts || [])
+          setSettings(dbSettings || null)
+        } catch (error) {
+          console.error('[NewInvoice][Supabase] load failed:', error)
           setCustomers([])
           setProducts([])
           setSettings(null)
-          // return (employee flow handled above)
         }
-        
-        // For admin users (Supabase auth)
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) { return }
-        const [{ data: dbCustomers }, { data: dbProducts }, { data: dbSettings }] = await Promise.all([
-          supabase.from('customers').select('id, name').eq('user_id', user.id),
-          supabase.from('products').select('id, name, price, gst_rate, hsn_code, unit').eq('user_id', user.id).eq('is_active', true),
-          supabase.from('business_settings').select('*').eq('user_id', user.id).single(),
-        ])
-        if (dbCustomers?.length) setCustomers(dbCustomers)
-        if (dbProducts?.length) setProducts(dbProducts)
-        if (dbSettings) setSettings(dbSettings)
-      } catch {}
+      }
     })()
   }, [])
 

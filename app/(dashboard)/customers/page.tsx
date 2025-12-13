@@ -16,14 +16,14 @@ export default function CustomersPage() {
 
   const fetchCustomers = useCallback(async () => {
     const isIndexedDb = isIndexedDbMode()
+    setIsLoading(true)
     
     if (isIndexedDb) {
-      // Load from Dexie (IndexedDB)
+      // IndexedDB mode - load from Dexie
       try {
-        setIsLoading(true)
         const list = await db.customers.toArray()
         console.log('[CustomersPage][Dexie] fetched', list?.length || 0, 'customers')
-        setCustomers(list)
+        setCustomers(list || [])
       } catch (error) {
         console.error('[CustomersPage][Dexie] load failed:', error)
         toast.error('Failed to load customers')
@@ -32,23 +32,86 @@ export default function CustomersPage() {
         setIsLoading(false)
       }
     } else {
-      // Load from Supabase
+      // Supabase mode - load from Supabase
       try {
-        setIsLoading(true)
         const supabase = createClient()
-        const {
-          data: { user },
-        } = await supabase.auth.getUser()
-        if (!user) {
+        const authType = localStorage.getItem("authType")
+        let userId: string | null = null
+        
+        // For employees, get admin_user_id from store
+        if (authType === "employee") {
+          const empSession = localStorage.getItem("employeeSession")
+          if (empSession) {
+            try {
+              const session = JSON.parse(empSession)
+              const storeId = session.storeId
+              
+              if (storeId) {
+                // Get store to find admin_user_id
+                const { data: store } = await supabase
+                  .from('stores')
+                  .select('admin_user_id')
+                  .eq('id', storeId)
+                  .single()
+                
+                if (store?.admin_user_id) {
+                  userId = store.admin_user_id
+                } else {
+                  console.warn('[CustomersPage] Store not found or invalid for employee')
+                  setCustomers([])
+                  setIsLoading(false)
+                  return
+                }
+              } else {
+                console.warn('[CustomersPage] No storeId in employee session')
+                setCustomers([])
+                setIsLoading(false)
+                return
+              }
+            } catch (e: any) {
+              console.error('[CustomersPage] Employee session error:', e)
+              setCustomers([])
+              setIsLoading(false)
+              return
+            }
+          } else {
+            console.warn('[CustomersPage] Employee session not found')
+            setCustomers([])
+            setIsLoading(false)
+            return
+          }
+        } else {
+          // For admin users
+          const {
+            data: { user },
+          } = await supabase.auth.getUser()
+          if (!user) {
+            setCustomers([])
+            setIsLoading(false)
+            return
+          }
+          userId = user.id
+        }
+
+        if (!userId) {
           setCustomers([])
           setIsLoading(false)
           return
         }
-        const { data: dbCustomers } = await supabase
+
+        // Fetch customers for the determined user_id
+        const { data: dbCustomers, error } = await supabase
           .from("customers")
           .select("*")
-          .eq("user_id", user.id)
+          .eq("user_id", userId)
           .order("created_at", { ascending: false })
+
+        if (error) {
+          console.error('[CustomersPage][Supabase] Query error:', error)
+          throw error
+        }
+
+        console.log('[CustomersPage][Supabase] fetched', dbCustomers?.length || 0, 'customers')
         setCustomers(dbCustomers || [])
       } catch (error) {
         console.error('[CustomersPage][Supabase] load failed:', error)
@@ -65,7 +128,7 @@ export default function CustomersPage() {
     if (initializedRef.current) return
     initializedRef.current = true
     fetchCustomers()
-  }, [])
+  }, [fetchCustomers])
 
   // Listen for customer creation events
   useEffect(() => {
@@ -106,24 +169,65 @@ export default function CustomersPage() {
       } else {
         // Save to Supabase
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          toast.error("Not authenticated")
+        const authType = localStorage.getItem("authType")
+        let userId: string | null = null
+
+        // For employees, get admin_user_id from store
+        if (authType === "employee") {
+          const empSession = localStorage.getItem("employeeSession")
+          if (empSession) {
+            try {
+              const session = JSON.parse(empSession)
+              const storeId = session.storeId
+              
+              if (storeId) {
+                const { data: store } = await supabase
+                  .from('stores')
+                  .select('admin_user_id')
+                  .eq('id', storeId)
+                  .single()
+                
+                if (store?.admin_user_id) {
+                  userId = store.admin_user_id
+                } else {
+                  toast.error("Store not found")
+                  return
+                }
+              } else {
+                toast.error("No store assigned")
+                return
+              }
+            } catch (e: any) {
+              toast.error("Failed to get employee store: " + (e.message || "Unknown error"))
+              return
+            }
+          } else {
+            toast.error("Employee session not found")
+            return
+          }
+        } else {
+          // For admin users
+          const { data: { user } } = await supabase.auth.getUser()
+          if (!user) {
+            toast.error("Not authenticated")
+            return
+          }
+          userId = user.id
+        }
+
+        if (!userId) {
+          toast.error("Unable to determine user ID")
           return
         }
+
         const { error } = await supabase.from("customers").insert({
           ...mockCustomer,
-          user_id: user.id,
+          user_id: userId,
         })
         if (error) throw error
         toast.success(`Mock customer "${mockCustomer.name}" added!`)
-        // Refresh data
-        const { data: dbCustomers } = await supabase
-          .from("customers")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-        setCustomers(dbCustomers || [])
+        // Refresh data using fetchCustomers
+        await fetchCustomers()
       }
     } catch (error: any) {
       toast.error("Failed to add mock customer: " + (error.message || error.toString()))
