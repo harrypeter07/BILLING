@@ -188,6 +188,8 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
           description: `Customer "${customerData.name}" added successfully`,
         })
         onCustomerCreated({ id: customerData.id, name: customerData.name })
+        // Dispatch event to notify customer list to refresh
+        window.dispatchEvent(new CustomEvent('customer:created'))
       } else {
         // Supabase mode - use API
         const supabase = createClient()
@@ -255,6 +257,8 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
           description: `Customer "${customer.name}" added successfully`,
         })
         onCustomerCreated({ id: customer.id, name: customer.name })
+        // Dispatch event to notify customer list to refresh
+        window.dispatchEvent(new CustomEvent('customer:created'))
       }
 
       // Reset form

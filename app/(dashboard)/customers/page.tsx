@@ -1,5 +1,5 @@
 "use client"
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Plus, Sparkles } from "lucide-react"
 import Link from "next/link"
@@ -14,31 +14,26 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  const initializedRef = useRef(false)
-  useEffect(() => {
-    if (initializedRef.current) return
-    initializedRef.current = true
+  const fetchCustomers = async () => {
     const isIndexedDb = isIndexedDbMode()
     
     if (isIndexedDb) {
       // Load from Dexie (IndexedDB)
-      (async () => {
-        try {
-          setIsLoading(true)
-          const list = await db.customers.toArray()
-          console.log('[CustomersPage][Dexie] fetched', list?.length || 0, 'customers')
-          setCustomers(list)
-        } catch (error) {
-          console.error('[CustomersPage][Dexie] load failed:', error)
-          toast.error('Failed to load customers')
-          setCustomers([])
-        } finally {
-          setIsLoading(false)
-        }
-      })()
+      try {
+        setIsLoading(true)
+        const list = await db.customers.toArray()
+        console.log('[CustomersPage][Dexie] fetched', list?.length || 0, 'customers')
+        setCustomers(list)
+      } catch (error) {
+        console.error('[CustomersPage][Dexie] load failed:', error)
+        toast.error('Failed to load customers')
+        setCustomers([])
+      } finally {
+        setIsLoading(false)
+      }
     } else {
       // Load from Supabase
-      const fetchData = async () => {
+      try {
         setIsLoading(true)
         const supabase = createClient()
         const {
@@ -55,9 +50,34 @@ export default function CustomersPage() {
           .eq("user_id", user.id)
           .order("created_at", { ascending: false })
         setCustomers(dbCustomers || [])
+      } catch (error) {
+        console.error('[CustomersPage][Supabase] load failed:', error)
+        toast.error('Failed to load customers')
+        setCustomers([])
+      } finally {
         setIsLoading(false)
       }
-      fetchData()
+    }
+  }
+
+  const initializedRef = useRef(false)
+  useEffect(() => {
+    if (initializedRef.current) return
+    initializedRef.current = true
+    fetchCustomers()
+  }, [])
+
+  // Listen for customer creation events
+  useEffect(() => {
+    const handleCustomerCreated = () => {
+      console.log('[CustomersPage] Customer created event received, refetching customers.')
+      fetchCustomers()
+    }
+
+    window.addEventListener('customer:created', handleCustomerCreated)
+
+    return () => {
+      window.removeEventListener('customer:created', handleCustomerCreated)
     }
   }, [])
 
