@@ -14,7 +14,7 @@ export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
-  const fetchCustomers = async () => {
+  const fetchCustomers = useCallback(async () => {
     const isIndexedDb = isIndexedDbMode()
     
     if (isIndexedDb) {
@@ -58,7 +58,7 @@ export default function CustomersPage() {
         setIsLoading(false)
       }
     }
-  }
+  }, [])
 
   const initializedRef = useRef(false)
   useEffect(() => {
@@ -79,7 +79,7 @@ export default function CustomersPage() {
     return () => {
       window.removeEventListener('customer:created', handleCustomerCreated)
     }
-  }, [])
+  }, [fetchCustomers])
 
   const handleAddMockCustomer = async () => {
     try {
