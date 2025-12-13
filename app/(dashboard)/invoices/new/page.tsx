@@ -135,7 +135,7 @@ export default function NewInvoicePage() {
   }, [])
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 md:space-y-6 px-4 md:px-6 py-4 md:py-6">
+    <div className="w-full space-y-2 px-2 py-2">
       <div>
         <h1 className="text-2xl md:text-3xl font-bold">Create New Invoice</h1>
         <p className="text-sm md:text-base text-muted-foreground mt-1">Generate a new invoice for your customer</p>

@@ -560,10 +560,10 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[280px_minmax(420px,1fr)_320px]">
+    <form onSubmit={handleSubmit} className="space-y-2">
+      <div className="grid gap-2 xl:grid-cols-[280px_minmax(420px,1fr)_400px]">
         {/* Left column: customer + invoice meta */}
-        <div className="space-y-3">
+        <div className="space-y-2">
           <InlineCustomerForm
             onCustomerCreated={(newCustomer) => {
               setLocalCustomers((prev) => [newCustomer, ...prev.filter((c) => c.id !== newCustomer.id)])
@@ -574,10 +574,10 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
           />
 
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <CardTitle className="text-base">Invoice Details</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-2 p-4">
               <div className="grid gap-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="invoice_number" className="text-xs">
@@ -693,7 +693,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
               <CardTitle className="text-base">Select Products</CardTitle>
               <p className="text-xs text-muted-foreground">Search or tap to add items instantly</p>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-2 p-4">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -782,26 +782,24 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
         </div>
 
         {/* Right column: line items + totals */}
-        <div className="space-y-3">
+        <div className="space-y-2">
           <Card className="h-full">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Invoice Items</CardTitle>
-              <p className="text-xs text-muted-foreground">Tap products or edit manually</p>
+            <CardHeader className="pb-1 pt-2 px-3">
+              <CardTitle className="text-sm">Invoice Items</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
+            <CardContent className="space-y-1 p-2">
               <div className="rounded-md border">
                 <div className="max-h-[380px] overflow-y-auto">
-                  <Table className="text-xs">
+                  <Table className="text-[11px]">
                     <TableHeader className="bg-muted/30 sticky top-0 z-10">
-                      <TableRow>
-                        <TableHead className="w-[160px]">Product</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead className="w-[70px] text-center">Qty</TableHead>
-                        <TableHead className="w-[80px] text-center">Rate</TableHead>
-                        <TableHead className="w-[70px] text-center">Disc%</TableHead>
-                        {isGstInvoice && <TableHead className="w-[60px] text-center">GST</TableHead>}
-                        <TableHead className="w-[90px] text-right">Amount</TableHead>
-                        <TableHead className="w-[40px]"></TableHead>
+                      <TableRow className="h-7">
+                        <TableHead className="w-[140px] px-1 py-1">Product</TableHead>
+                        <TableHead className="w-[60px] text-center px-1 py-1">Qty</TableHead>
+                        <TableHead className="w-[70px] text-center px-1 py-1">Rate</TableHead>
+                        <TableHead className="w-[55px] text-center px-1 py-1">Disc%</TableHead>
+                        {isGstInvoice && <TableHead className="w-[50px] text-center px-1 py-1">GST</TableHead>}
+                        <TableHead className="w-[75px] text-right px-1 py-1">Amount</TableHead>
+                        <TableHead className="w-[30px] px-1 py-1"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -813,13 +811,13 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                           quantity: item.quantity,
                         })
                         return (
-                          <TableRow key={item.id}>
-                            <TableCell>
+                          <TableRow key={item.id} className="h-8">
+                            <TableCell className="px-1 py-1">
                               <Select
                                 value={item.product_id || ""}
                                 onValueChange={(value) => updateLineItem(item.id, "product_id", value)}
                               >
-                                <SelectTrigger className="h-8 text-xs">
+                                <SelectTrigger className="h-7 text-[11px] px-2">
                                   <SelectValue placeholder="Pick" />
                                 </SelectTrigger>
                                 <SelectContent className="max-h-60">
@@ -830,15 +828,6 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                                   ))}
                                 </SelectContent>
                               </Select>
-                            </TableCell>
-                            <TableCell>
-                              <Input
-                                value={item.description}
-                                onChange={(e) => updateLineItem(item.id, "description", e.target.value)}
-                                placeholder="Description"
-                                required
-                                className="h-8 text-xs"
-                              />
                             </TableCell>
                             <TableCell>
                               <Input
@@ -927,7 +916,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
           </Card>
 
           <Card>
-            <CardContent className="space-y-2 p-4 text-sm">
+            <CardContent className="space-y-1.5 p-3 text-sm">
               <div className="flex justify-between">
                 <span>Subtotal</span>
                 <span className="font-medium">₹{totals.subtotal.toFixed(2)}</span>

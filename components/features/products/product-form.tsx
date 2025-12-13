@@ -18,7 +18,6 @@ import { v4 as uuidv4 } from "uuid"
 interface Product {
   id?: string
   name: string
-  description?: string | null
   sku?: string | null
   category?: string | null
   price: number
@@ -41,7 +40,6 @@ export function ProductForm({ product }: ProductFormProps) {
 
   const [formData, setFormData] = useState({
     name: product?.name || "",
-    description: product?.description || "",
     sku: product?.sku || "",
     category: product?.category || "",
     price: product?.price || 0,
@@ -114,7 +112,6 @@ export function ProductForm({ product }: ProductFormProps) {
             <Button type="button" variant="outline" className="bg-transparent" onClick={() => {
               setFormData({
                 name: `Mock Product ${Math.floor(Math.random()*10000)}`,
-                description: "",
                 sku: `SKU-${Math.floor(Math.random()*100000)}`,
                 category: "Demo",
                 price: Number((Math.random()*500+10).toFixed(2)),
@@ -233,17 +230,6 @@ export function ProductForm({ product }: ProductFormProps) {
                 placeholder="e.g., 8517"
               />
             </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Product description..."
-              rows={4}
-            />
           </div>
 
           <div className="flex gap-4">

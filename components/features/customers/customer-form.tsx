@@ -18,7 +18,6 @@ interface Customer {
   name: string
   email?: string | null
   phone?: string | null
-  gstin?: string | null
   billing_address?: string | null
   shipping_address?: string | null
   notes?: string | null
@@ -37,7 +36,6 @@ export function CustomerForm({ customer }: CustomerFormProps) {
     name: customer?.name || "",
     email: customer?.email || "",
     phone: customer?.phone || "",
-    gstin: customer?.gstin || "",
     billing_address: customer?.billing_address || "",
     shipping_address: customer?.shipping_address || "",
     notes: customer?.notes || "",
@@ -94,7 +92,6 @@ export function CustomerForm({ customer }: CustomerFormProps) {
                 name: `Mock Customer ${rand}`,
                 email: `user${rand}@example.com`,
                 phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
-                gstin: "",
                 billing_address: `Street ${rand}, City`,
                 shipping_address: `Street ${rand+1}, City`,
                 notes: "",
@@ -137,16 +134,6 @@ export function CustomerForm({ customer }: CustomerFormProps) {
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                 placeholder="customer@example.com"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="gstin">GSTIN</Label>
-              <Input
-                id="gstin"
-                value={formData.gstin}
-                onChange={(e) => setFormData({ ...formData, gstin: e.target.value })}
-                placeholder="22AAAAA0000A1Z5"
               />
             </div>
           </div>

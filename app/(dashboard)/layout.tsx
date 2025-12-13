@@ -143,8 +143,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <Sidebar />
         <div className="flex flex-1 flex-col lg:ml-64 min-w-0">
           <Header />
-          <main className="flex-1 overflow-y-auto bg-muted/40 p-3 sm:p-4 md:p-6">
-            <div className="max-w-full overflow-x-hidden">{children}</div>
+          <main className="flex-1 overflow-y-auto bg-muted/40 p-1 sm:p-2">
+            <div className="max-w-full overflow-x-hidden h-full">{children}</div>
           </main>
         </div>
       </div>

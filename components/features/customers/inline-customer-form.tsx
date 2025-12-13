@@ -26,7 +26,6 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
-  const [gstin, setGstin] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [phoneMatches, setPhoneMatches] = useState<CustomerMatch[]>([])
   const [showPhoneDropdown, setShowPhoneDropdown] = useState(false)
@@ -34,9 +33,12 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
   const { toast } = useToast()
   const isExcel = getDatabaseType() === 'excel'
 
-  // Search customers by phone number
+  // Search customers by phone number - search from first digit
   const searchCustomersByPhone = async (phoneNumber: string) => {
-    if (!phoneNumber.trim() || phoneNumber.length < 3) {
+    // Remove any non-digit characters for searching
+    const cleanPhone = phoneNumber.replace(/\D/g, '')
+    
+    if (!cleanPhone || cleanPhone.length === 0) {
       setPhoneMatches([])
       setShowPhoneDropdown(false)
       return
@@ -50,7 +52,12 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
         // Search in IndexedDB
         const allCustomers = await db.customers.toArray()
         matches = allCustomers
-          .filter(c => c.phone && c.phone.includes(phoneNumber))
+          .filter(c => {
+            if (!c.phone) return false
+            // Remove non-digits from stored phone for comparison
+            const storedPhone = c.phone.replace(/\D/g, '')
+            return storedPhone.includes(cleanPhone)
+          })
           .map(c => ({
             id: c.id,
             name: c.name,
@@ -90,7 +97,7 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
             .from('customers')
             .select('id, name, phone, email')
             .eq('user_id', userId)
-            .ilike('phone', `%${phoneNumber}%`)
+            .ilike('phone', `%${cleanPhone}%`)
             .limit(5)
           
           if (data) {
@@ -105,7 +112,7 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
       }
 
       setPhoneMatches(matches)
-      setShowPhoneDropdown(matches.length > 0)
+      setShowPhoneDropdown(matches.length > 0 && cleanPhone.length > 0)
     } catch (error) {
       console.error('Error searching customers:', error)
       setPhoneMatches([])
@@ -113,26 +120,26 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
     }
   }
 
-  // Handle phone number change
+  // Handle phone number change - search on every keystroke
   const handlePhoneChange = (value: string) => {
     setPhone(value)
+    // Search immediately as user types
     searchCustomersByPhone(value)
   }
 
   // Handle customer selection from dropdown
   const handleSelectCustomer = (customer: CustomerMatch) => {
-    // Auto-select this customer in the invoice form
-    onCustomerCreated({ id: customer.id, name: customer.name })
-    // Clear the form since we're using an existing customer
-    setName("")
-    setPhone("")
-    setEmail("")
-    setGstin("")
+    // Auto-fill all form fields with customer data
+    setName(customer.name)
+    setPhone(customer.phone || "")
+    setEmail(customer.email || "")
     setPhoneMatches([])
     setShowPhoneDropdown(false)
+    // Auto-select this customer in the invoice form
+    onCustomerCreated({ id: customer.id, name: customer.name })
     toast({
       title: "Customer selected",
-      description: `Using existing customer: ${customer.name}`,
+      description: `Customer details filled: ${customer.name}`,
     })
   }
 
@@ -166,7 +173,6 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
         name: name.trim(),
         email: email.trim() || null,
         phone: phone.trim() || null,
-        gstin: gstin.trim() || null,
         billing_address: null,
         shipping_address: null,
         notes: null,
@@ -233,7 +239,6 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
             name: customerData.name,
             email: customerData.email,
             phone: customerData.phone,
-            gstin: customerData.gstin,
             user_id: userId,
           }),
         })
@@ -256,7 +261,6 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
       setName("")
       setEmail("")
       setPhone("")
-      setGstin("")
     } catch (error: any) {
       toast({
         title: "Error",
@@ -270,12 +274,12 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
 
   return (
     <Card className="border-dashed">
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-2">
         <CardTitle className="text-base">Add New Customer</CardTitle>
       </CardHeader>
-      <CardContent>
+      <CardContent className="p-4">
         <div className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="space-y-2">
             <div className="space-y-1.5">
               <Label htmlFor="quick-name" className="text-xs">
                 Name <span className="text-destructive">*</span>
@@ -285,24 +289,13 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Customer name"
-                className="h-9 text-sm"
+                className="h-9 text-sm w-full"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && name.trim()) {
                     e.preventDefault()
                     handleSubmit(e as any)
                   }
                 }}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="quick-email" className="text-xs">Email</Label>
-              <Input
-                id="quick-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="customer@example.com"
-                className="h-9 text-sm"
               />
             </div>
             <div className="space-y-1.5 relative">
@@ -318,7 +311,8 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
                   value={phone}
                   onChange={(e) => handlePhoneChange(e.target.value)}
                   onFocus={() => {
-                    if (phoneMatches.length > 0) {
+                    // Show dropdown if there are matches when focusing
+                    if (phoneMatches.length > 0 && phone.trim().length > 0) {
                       setShowPhoneDropdown(true)
                     }
                   }}
@@ -327,15 +321,19 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
                     setTimeout(() => setShowPhoneDropdown(false), 200)
                   }}
                   placeholder="+91 9876543210"
-                  className="h-9 text-sm"
+                  className="h-9 text-sm w-full"
                 />
                 {showPhoneDropdown && phoneMatches.length > 0 && (
                   <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-60 overflow-auto">
                     {phoneMatches.map((customer) => (
                       <div
                         key={customer.id}
-                        onClick={() => handleSelectCustomer(customer)}
-                        className="px-3 py-2 cursor-pointer hover:bg-accent border-b last:border-b-0"
+                        onMouseDown={(e) => {
+                          // Use onMouseDown to prevent blur from firing first
+                          e.preventDefault()
+                          handleSelectCustomer(customer)
+                        }}
+                        className="px-3 py-2 cursor-pointer hover:bg-accent border-b last:border-b-0 transition-colors"
                       >
                         <div className="flex flex-col">
                           <span className="font-medium text-sm">{customer.name}</span>
@@ -349,18 +347,19 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
                 )}
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="quick-gstin" className="text-xs">GSTIN</Label>
+            <div className="space-y-1">
+              <Label htmlFor="quick-email" className="text-xs">Email</Label>
               <Input
-                id="quick-gstin"
-                value={gstin}
-                onChange={(e) => setGstin(e.target.value)}
-                placeholder="29XXXXXXXXXX"
-                className="h-9 text-sm"
+                id="quick-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="customer@example.com"
+                className="h-8 text-sm w-full"
               />
             </div>
           </div>
-          <div className="flex justify-end">
+          <div className="flex justify-end pt-1">
             <Button 
               type="button" 
               size="sm" 
