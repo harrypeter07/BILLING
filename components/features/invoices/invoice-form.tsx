@@ -233,18 +233,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
   const [productSearchTerm, setProductSearchTerm] = useState("")
   const [focusedField, setFocusedField] = useState<string | null>(null)
 
-  const [lineItems, setLineItems] = useState<LineItem[]>([
-    {
-      id: crypto.randomUUID(),
-      product_id: null,
-      description: "",
-      quantity: 1,
-      unit_price: 0,
-      discount_percent: 0,
-      gst_rate: settings?.default_gst_rate || 18,
-      hsn_code: "",
-    },
-  ])
+  const [lineItems, setLineItems] = useState<LineItem[]>([])
 
   const addLineItem = () => {
     setLineItems([
@@ -281,24 +270,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
     
     // Remove the item
     const newLineItems = lineItems.filter((item) => item.id !== id)
-    
-    // If no items remain, add one empty line item
-    if (newLineItems.length === 0) {
-      setLineItems([
-        {
-          id: crypto.randomUUID(),
-          product_id: null,
-          description: "",
-          quantity: 1,
-          unit_price: 0,
-          discount_percent: 0,
-          gst_rate: settings?.default_gst_rate || 18,
-          hsn_code: "",
-        },
-      ])
-    } else {
-      setLineItems(newLineItems)
-    }
+    setLineItems(newLineItems)
   }
 
   const updateLineItem = (id: string, field: keyof LineItem, value: any) => {
@@ -893,7 +865,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                                 onValueChange={(value) => {
                                   updateLineItem(item.id, "product_id", value)
                                   // Auto-add new line item if this is the last row and a product is selected
-                                  if (lineItems[lineItems.length - 1].id === item.id && value) {
+                                  if (lineItems.length > 0 && lineItems[lineItems.length - 1].id === item.id && value) {
                                     setTimeout(() => {
                                       addLineItem()
                                     }, 100)
