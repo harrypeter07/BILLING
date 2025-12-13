@@ -72,8 +72,13 @@ export default function CustomerLoginPage() {
         })
       }
 
-      // Generate magic link
-      const magicLink = `${window.location.origin}/auth/customer-verify/${token}`
+      // Generate magic link - use production URL if set, otherwise use current origin
+      const baseUrl = typeof window !== 'undefined' 
+        ? (process.env.NEXT_PUBLIC_APP_URL || window.location.origin)
+        : (process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL 
+          ? `https://${process.env.VERCEL_URL}` 
+          : 'https://billing-tawny.vercel.app')
+      const magicLink = `${baseUrl}/auth/customer-verify/${token}`
       
       // Try to send email via API route (optional - won't fail if email service unavailable)
       try {

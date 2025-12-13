@@ -47,7 +47,12 @@ export default function SignupPage() {
         email,
         password,
         options: {
-          emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || `${window.location.origin}/dashboard`,
+          emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || 
+            (typeof window !== 'undefined' 
+              ? (process.env.NEXT_PUBLIC_APP_URL || window.location.origin)
+              : (process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL 
+                ? `https://${process.env.VERCEL_URL}` 
+                : 'https://billing-tawny.vercel.app')) + '/dashboard',
           data: {
             full_name: fullName,
             business_name: businessName,

@@ -4,7 +4,7 @@
 
 Go to: **Vercel Dashboard** → **Your Project** → **Settings** → **Environment Variables**
 
-Add these **2 variables**:
+Add these **3 variables**:
 
 ---
 
@@ -41,7 +41,7 @@ Add these **2 variables**:
 
 ## ✅ Verification
 
-After setting both variables:
+After setting all three variables:
 
 1. **Check they're saved:**
    - Go back to Environment Variables page
@@ -116,6 +116,7 @@ These are examples - use YOUR actual values from Supabase:
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://abcdefghijklmnop.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFiY2RlZmdoaWprbG1ub3AiLCJyb2xlIjoiYW5vbiIsImlhdCI6MTYzODk2NzI5MCwiZXhwIjoxOTU0NTQzMjkwfQ.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+NEXT_PUBLIC_APP_URL=https://billing-tawny.vercel.app
 ```
 
 ---

@@ -38,6 +38,7 @@ You need to set these in **Vercel Dashboard** → **Project Settings** → **Env
 |--------------|-------------|-----------------|----------|
 | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | Supabase Dashboard → Settings → API | ✅ Yes |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous/public key | Supabase Dashboard → Settings → API | ✅ Yes |
+| `NEXT_PUBLIC_APP_URL` | Your Vercel app URL (for email links) | Your Vercel domain (e.g., `https://billing-tawny.vercel.app`) | ✅ **Yes** (for email verification) |
 | `NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL` | Redirect URL after signup (optional) | Your Vercel domain (auto-set) | ⚠️ Optional |
 
 ### How to Set Environment Variables in Vercel

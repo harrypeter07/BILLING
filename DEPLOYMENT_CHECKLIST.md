@@ -13,7 +13,8 @@ Use this checklist when deploying to Vercel.
 
 - [ ] `NEXT_PUBLIC_SUPABASE_URL` = `https://xxxxx.supabase.co`
 - [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` = `eyJhbGci...`
-- [ ] Both set for: Production ✅ Preview ✅ Development ✅
+- [ ] `NEXT_PUBLIC_APP_URL` = `https://billing-tawny.vercel.app` (or your Vercel domain)
+- [ ] All set for: Production ✅ Preview ✅ Development ✅
 
 ## 🚀 Deploy Steps
 
