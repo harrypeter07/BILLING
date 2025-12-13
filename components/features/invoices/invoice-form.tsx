@@ -594,7 +594,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
             </Button>
           </div>
         )}
-        <div className="grid gap-2 xl:grid-cols-[280px_minmax(350px,1fr)_480px]">
+        <div className="grid gap-2 xl:grid-cols-[280px_minmax(320px,1fr)_520px]">
         {/* Left column: customer + invoice meta */}
         <div className="space-y-2">
           <InlineCustomerForm
@@ -825,13 +825,13 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                 <div className="max-h-[380px] overflow-y-auto">
                   <Table className="text-xs">
                     <TableHeader className="bg-muted/30 sticky top-0 z-10">
-                      <TableRow className="h-8">
-                        <TableHead className="w-[130px] px-2 py-2 text-xs font-semibold">Product</TableHead>
-                        <TableHead className="w-[70px] text-center px-2 py-2 text-xs font-semibold">Qty</TableHead>
-                        <TableHead className="w-[85px] text-center px-2 py-2 text-xs font-semibold">Rate</TableHead>
-                        <TableHead className="w-[70px] text-center px-2 py-2 text-xs font-semibold">Disc%</TableHead>
-                        {isGstInvoice && <TableHead className="w-[65px] text-center px-2 py-2 text-xs font-semibold">GST</TableHead>}
-                        <TableHead className="w-[95px] text-right px-2 py-2 text-xs font-semibold">Amount</TableHead>
+                      <TableRow className="h-9">
+                        <TableHead className="w-[120px] px-2 py-2 text-xs font-semibold">Product</TableHead>
+                        <TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">Qty</TableHead>
+                        <TableHead className="w-[90px] text-center px-1.5 py-2 text-xs font-semibold">Rate</TableHead>
+                        <TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">Disc%</TableHead>
+                        {isGstInvoice && <TableHead className="w-[70px] text-center px-1.5 py-2 text-xs font-semibold">GST</TableHead>}
+                        <TableHead className="w-[100px] text-right px-2 py-2 text-xs font-semibold">Amount</TableHead>
                         <TableHead className="w-[40px] px-1 py-2"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -844,7 +844,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                           quantity: item.quantity,
                         })
                         return (
-                          <TableRow key={item.id} className="h-9">
+                          <TableRow key={item.id} className="h-10">
                             <TableCell className="px-2 py-1.5">
                               <Select
                                 value={item.product_id || ""}
@@ -862,7 +862,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                                 </SelectContent>
                               </Select>
                             </TableCell>
-                            <TableCell className="px-2 py-1.5">
+                            <TableCell className="px-1.5 py-1.5">
                               <Input
                                 type="number"
                                 min="0"
@@ -872,10 +872,10 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                                   updateLineItem(item.id, "quantity", Number.parseFloat(e.target.value) || 0)
                                 }
                                 required
-                                className="h-8 text-xs text-center px-2 font-medium"
+                                className="h-9 text-sm text-center px-1.5 font-semibold"
                               />
                             </TableCell>
-                            <TableCell className="px-2 py-1.5">
+                            <TableCell className="px-1.5 py-1.5">
                               <Input
                                 type="number"
                                 min="0"
@@ -885,10 +885,10 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                                   updateLineItem(item.id, "unit_price", Number.parseFloat(e.target.value) || 0)
                                 }
                                 required
-                                className="h-8 text-xs text-center px-2 font-medium"
+                                className="h-9 text-sm text-center px-1.5 font-semibold"
                               />
                             </TableCell>
-                            <TableCell className="px-2 py-1.5">
+                            <TableCell className="px-1.5 py-1.5">
                               <Input
                                 type="number"
                                 min="0"
@@ -902,11 +902,11 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                                     Number.parseFloat(e.target.value) || 0,
                                   )
                                 }
-                                className="h-8 text-xs text-center px-2 font-medium"
+                                className="h-9 text-sm text-center px-1.5 font-semibold"
                               />
                             </TableCell>
                             {isGstInvoice && (
-                              <TableCell className="px-2 py-1.5">
+                              <TableCell className="px-1.5 py-1.5">
                                 <Input
                                   type="number"
                                   min="0"
@@ -915,11 +915,11 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                                   onChange={(e) =>
                                     updateLineItem(item.id, "gst_rate", Number.parseFloat(e.target.value) || 0)
                                   }
-                                  className="h-8 text-xs text-center px-2 font-medium"
+                                  className="h-9 text-sm text-center px-1.5 font-semibold"
                                 />
                               </TableCell>
                             )}
-                            <TableCell className="text-right font-semibold text-xs px-2 py-1.5">
+                            <TableCell className="text-right font-bold text-sm px-2 py-1.5">
                               ₹{calc.lineTotal.toFixed(2)}
                             </TableCell>
                             <TableCell className="px-1 py-1.5">
