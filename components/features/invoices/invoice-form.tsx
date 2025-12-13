@@ -11,7 +11,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Plus, Trash2, Search } from "lucide-react"
+import { Plus, Trash2, Search, Maximize2, X } from "lucide-react"
+import { useFullscreen } from "@/lib/utils/fullscreen-context"
 import { useToast } from "@/hooks/use-toast"
 import { calculateLineItem, roundToTwo } from "@/lib/utils/gst-calculator"
 import { Switch } from "@/components/ui/switch"
@@ -185,6 +186,7 @@ interface LineItem {
 export function InvoiceForm({ customers, products: initialProducts, settings, storeId, employeeId, onCustomersUpdate }: InvoiceFormProps) {
   const router = useRouter()
   const { toast } = useToast()
+  const { isFullscreen, setIsFullscreen } = useFullscreen()
   const [isLoading, setIsLoading] = useState(false)
   const [invoiceNumber, setInvoiceNumber] = useState("")
   const [localCustomers, setLocalCustomers] = useState<Customer[]>(customers)
@@ -560,8 +562,39 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2">
-      <div className="grid gap-2 xl:grid-cols-[280px_minmax(420px,1fr)_400px]">
+    <div className={isFullscreen ? 'fixed inset-0 z-[100] bg-background overflow-auto' : ''}>
+      {isFullscreen && (
+        <div className="sticky top-0 z-10 bg-background border-b flex items-center justify-between px-4 py-2">
+          <h2 className="text-lg font-semibold">Create New Invoice</h2>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsFullscreen(false)}
+            className="h-8 w-8"
+            title="Exit fullscreen (ESC)"
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+      <form onSubmit={handleSubmit} className={`space-y-2 ${isFullscreen ? 'p-4' : ''}`}>
+        {!isFullscreen && (
+          <div className="flex justify-end mb-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsFullscreen(true)}
+              className="gap-2"
+              title="Maximize invoice form (Fullscreen)"
+            >
+              <Maximize2 className="h-4 w-4" />
+              Maximize
+            </Button>
+          </div>
+        )}
+        <div className="grid gap-2 xl:grid-cols-[280px_minmax(350px,1fr)_480px]">
         {/* Left column: customer + invoice meta */}
         <div className="space-y-2">
           <InlineCustomerForm
@@ -790,16 +823,16 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
             <CardContent className="space-y-1 p-2">
               <div className="rounded-md border">
                 <div className="max-h-[380px] overflow-y-auto">
-                  <Table className="text-[11px]">
+                  <Table className="text-xs">
                     <TableHeader className="bg-muted/30 sticky top-0 z-10">
-                      <TableRow className="h-7">
-                        <TableHead className="w-[140px] px-1 py-1">Product</TableHead>
-                        <TableHead className="w-[60px] text-center px-1 py-1">Qty</TableHead>
-                        <TableHead className="w-[70px] text-center px-1 py-1">Rate</TableHead>
-                        <TableHead className="w-[55px] text-center px-1 py-1">Disc%</TableHead>
-                        {isGstInvoice && <TableHead className="w-[50px] text-center px-1 py-1">GST</TableHead>}
-                        <TableHead className="w-[75px] text-right px-1 py-1">Amount</TableHead>
-                        <TableHead className="w-[30px] px-1 py-1"></TableHead>
+                      <TableRow className="h-8">
+                        <TableHead className="w-[130px] px-2 py-2 text-xs font-semibold">Product</TableHead>
+                        <TableHead className="w-[70px] text-center px-2 py-2 text-xs font-semibold">Qty</TableHead>
+                        <TableHead className="w-[85px] text-center px-2 py-2 text-xs font-semibold">Rate</TableHead>
+                        <TableHead className="w-[70px] text-center px-2 py-2 text-xs font-semibold">Disc%</TableHead>
+                        {isGstInvoice && <TableHead className="w-[65px] text-center px-2 py-2 text-xs font-semibold">GST</TableHead>}
+                        <TableHead className="w-[95px] text-right px-2 py-2 text-xs font-semibold">Amount</TableHead>
+                        <TableHead className="w-[40px] px-1 py-2"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -811,13 +844,13 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                           quantity: item.quantity,
                         })
                         return (
-                          <TableRow key={item.id} className="h-8">
-                            <TableCell className="px-1 py-1">
+                          <TableRow key={item.id} className="h-9">
+                            <TableCell className="px-2 py-1.5">
                               <Select
                                 value={item.product_id || ""}
                                 onValueChange={(value) => updateLineItem(item.id, "product_id", value)}
                               >
-                                <SelectTrigger className="h-7 text-[11px] px-2">
+                                <SelectTrigger className="h-8 text-xs px-2">
                                   <SelectValue placeholder="Pick" />
                                 </SelectTrigger>
                                 <SelectContent className="max-h-60">
@@ -829,39 +862,39 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                                 </SelectContent>
                               </Select>
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="px-2 py-1.5">
                               <Input
                                 type="number"
                                 min="0"
                                 step="0.01"
-                                value={item.quantity}
+                                value={item.quantity || ""}
                                 onChange={(e) =>
                                   updateLineItem(item.id, "quantity", Number.parseFloat(e.target.value) || 0)
                                 }
                                 required
-                                className="h-8 text-xs text-center"
+                                className="h-8 text-xs text-center px-2 font-medium"
                               />
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="px-2 py-1.5">
                               <Input
                                 type="number"
                                 min="0"
                                 step="0.01"
-                                value={item.unit_price}
+                                value={item.unit_price || ""}
                                 onChange={(e) =>
                                   updateLineItem(item.id, "unit_price", Number.parseFloat(e.target.value) || 0)
                                 }
                                 required
-                                className="h-8 text-xs text-center"
+                                className="h-8 text-xs text-center px-2 font-medium"
                               />
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="px-2 py-1.5">
                               <Input
                                 type="number"
                                 min="0"
                                 max="100"
                                 step="0.01"
-                                value={item.discount_percent}
+                                value={item.discount_percent || ""}
                                 onChange={(e) =>
                                   updateLineItem(
                                     item.id,
@@ -869,33 +902,34 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                                     Number.parseFloat(e.target.value) || 0,
                                   )
                                 }
-                                className="h-8 text-xs text-center"
+                                className="h-8 text-xs text-center px-2 font-medium"
                               />
                             </TableCell>
                             {isGstInvoice && (
-                              <TableCell>
+                              <TableCell className="px-2 py-1.5">
                                 <Input
                                   type="number"
                                   min="0"
                                   step="0.01"
-                                  value={item.gst_rate}
+                                  value={item.gst_rate || ""}
                                   onChange={(e) =>
                                     updateLineItem(item.id, "gst_rate", Number.parseFloat(e.target.value) || 0)
                                   }
-                                  className="h-8 text-xs text-center"
+                                  className="h-8 text-xs text-center px-2 font-medium"
                                 />
                               </TableCell>
                             )}
-                            <TableCell className="text-right font-medium">
+                            <TableCell className="text-right font-semibold text-xs px-2 py-1.5">
                               ₹{calc.lineTotal.toFixed(2)}
                             </TableCell>
-                            <TableCell>
+                            <TableCell className="px-1 py-1.5">
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => removeLineItem(item.id)}
                                 disabled={lineItems.length === 1}
+                                className="h-7 w-7"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
                               </Button>
@@ -960,5 +994,6 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
         </div>
       </div>
     </form>
+    </div>
   )
 }

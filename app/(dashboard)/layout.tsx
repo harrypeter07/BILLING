@@ -4,14 +4,16 @@ import type React from "react"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { StoreProvider } from "@/lib/utils/store-context"
+import { FullscreenProvider, useFullscreen } from "@/lib/utils/fullscreen-context"
 import { useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { getOfflineSession, isOfflineLoginEnabled, saveOfflineSession } from "@/lib/utils/offline-auth"
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
+  const { isFullscreen } = useFullscreen()
   
   // License seed pages should not use the dashboard layout (no sidebar/header)
   // This includes both the login and the main license seed page
@@ -139,15 +141,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <StoreProvider>
-      <div className="flex h-screen overflow-hidden">
-        <Sidebar />
-        <div className="flex flex-1 flex-col lg:ml-64 min-w-0">
-          <Header />
-          <main className="flex-1 overflow-y-auto bg-muted/40 p-1 sm:p-2">
-            <div className="max-w-full overflow-x-hidden h-full">{children}</div>
+      <div className={`flex h-screen overflow-hidden ${isFullscreen ? 'fixed inset-0 z-[9999] bg-background' : ''}`}>
+        {!isFullscreen && <Sidebar />}
+        <div className={`flex flex-1 flex-col ${isFullscreen ? '' : 'lg:ml-64'} min-w-0`}>
+          {!isFullscreen && <Header />}
+          <main className={`flex-1 overflow-y-auto bg-muted/40 ${isFullscreen ? 'p-0' : 'p-1 sm:p-2'}`}>
+            <div className={`max-w-full overflow-x-hidden ${isFullscreen ? 'h-screen' : 'h-full'}`}>{children}</div>
           </main>
         </div>
       </div>
     </StoreProvider>
+  )
+}
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <FullscreenProvider>
+      <DashboardLayoutContent>{children}</DashboardLayoutContent>
+    </FullscreenProvider>
   )
 }
