@@ -434,7 +434,14 @@ export default function InventoryPage() {
                     </TableRow>
                   </TableHeader>
                 <TableBody>
-                  {products.map((product) => {
+                  {filteredProducts.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                        No products found matching your filters.
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    filteredProducts.map((product) => {
                     const qty = Number(product.stock_quantity || 0)
                     const status =
                       qty === 0 ? "out" : qty <= 10 ? "low" : "healthy"
@@ -467,7 +474,8 @@ export default function InventoryPage() {
                         </TableCell>
                       </TableRow>
                     )
-                  })}
+                  })
+                  )}
                 </TableBody>
               </Table>
               </div>
