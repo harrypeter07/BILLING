@@ -132,7 +132,17 @@ export function InvoicesTable({ invoices: initialInvoices }: InvoicesTableProps)
                 </TableHeader>
               <TableBody>
                 {filteredInvoices.map((invoice) => (
-                  <TableRow key={invoice.id}>
+                  <TableRow 
+                    key={invoice.id}
+                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={(e) => {
+                      // Don't navigate if clicking on the dropdown menu
+                      if ((e.target as HTMLElement).closest('[role="menuitem"], button')) {
+                        return
+                      }
+                      router.push(`/invoices/${invoice.id}`)
+                    }}
+                  >
                     <TableCell className="font-medium">{invoice.invoice_number}</TableCell>
                     <TableCell>{invoice.customers?.name || "No customer"}</TableCell>
                     <TableCell>{new Date(invoice.invoice_date).toLocaleDateString()}</TableCell>
@@ -140,7 +150,7 @@ export function InvoicesTable({ invoices: initialInvoices }: InvoicesTableProps)
                       ₹{Number(invoice.total_amount).toLocaleString("en-IN")}
                     </TableCell>
                     <TableCell>{getStatusBadge(invoice.status)}</TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon">

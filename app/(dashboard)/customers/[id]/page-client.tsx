@@ -5,11 +5,13 @@ import { useParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Pencil, Mail, Phone, MapPin, FileText, Receipt } from "lucide-react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { useToast } from "@/hooks/use-toast"
+import { isIndexedDbMode } from "@/lib/utils/db-mode"
 
 export default function CustomerDetailPageClient() {
   const params = useParams()
@@ -27,26 +29,10 @@ export default function CustomerDetailPageClient() {
   const fetchCustomer = async () => {
     try {
       setIsLoading(true)
-      const supabase = createClient()
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (!user) {
-        toast({ title: "Error", description: "Please log in to continue", variant: "destructive" })
-        router.push("/login")
-        return
-      }
-
-      const { data: cust, error } = await supabase
-        .from("customers")
-        .select("*")
-        .eq("id", params.id)
-        .eq("user_id", user.id)
-        .single()
-
-      if (error || !cust) {
-        // Try to load from local IndexedDB
+      const isIndexedDb = isIndexedDbMode()
+      
+      if (isIndexedDb) {
+        // Load from IndexedDB
         const localCust = await db.customers?.get?.(params.id as string)
         if (!localCust) {
           toast({ title: "Error", description: "Customer not found", variant: "destructive" })
@@ -55,6 +41,50 @@ export default function CustomerDetailPageClient() {
         }
         setCustomer(localCust)
       } else {
+        // Load from Supabase
+        const supabase = createClient()
+        const authType = localStorage.getItem("authType")
+        let userId: string | null = null
+
+        if (authType === "employee") {
+          const empSession = localStorage.getItem("employeeSession")
+          if (empSession) {
+            const session = JSON.parse(empSession)
+            const storeId = session.storeId
+            if (storeId) {
+              const { data: store } = await supabase
+                .from('stores')
+                .select('admin_user_id')
+                .eq('id', storeId)
+                .single()
+              if (store?.admin_user_id) {
+                userId = store.admin_user_id
+              }
+            }
+          }
+        } else {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) userId = user.id
+        }
+
+        if (!userId) {
+          toast({ title: "Error", description: "Please log in to continue", variant: "destructive" })
+          router.push("/login")
+          return
+        }
+
+        const { data: cust, error } = await supabase
+          .from("customers")
+          .select("*")
+          .eq("id", params.id)
+          .eq("user_id", userId)
+          .single()
+
+        if (error || !cust) {
+          toast({ title: "Error", description: "Customer not found", variant: "destructive" })
+          router.push("/customers")
+          return
+        }
         setCustomer(cust)
       }
     } catch (error) {
@@ -66,20 +96,56 @@ export default function CustomerDetailPageClient() {
 
   const fetchInvoices = async () => {
     try {
-      const supabase = createClient()
-      const { data: invs, error } = await supabase
-        .from("invoices")
-        .select("*")
-        .eq("customer_id", params.id)
-        .order("created_at", { ascending: false })
-
-      if (!error && invs) {
-        setInvoices(invs)
-      } else {
-        // Try Dexie
+      const isIndexedDb = isIndexedDbMode()
+      
+      if (isIndexedDb) {
+        // Load from IndexedDB
         const localInvs = await db.invoices?.where("customer_id").equals(params.id as string).toArray()
         if (localInvs) {
-          setInvoices(localInvs)
+          setInvoices(localInvs.sort((a, b) => {
+            const dateA = new Date(a.created_at || a.invoice_date || 0).getTime()
+            const dateB = new Date(b.created_at || b.invoice_date || 0).getTime()
+            return dateB - dateA
+          }))
+        }
+      } else {
+        // Load from Supabase
+        const supabase = createClient()
+        const authType = localStorage.getItem("authType")
+        let userId: string | null = null
+
+        if (authType === "employee") {
+          const empSession = localStorage.getItem("employeeSession")
+          if (empSession) {
+            const session = JSON.parse(empSession)
+            const storeId = session.storeId
+            if (storeId) {
+              const { data: store } = await supabase
+                .from('stores')
+                .select('admin_user_id')
+                .eq('id', storeId)
+                .single()
+              if (store?.admin_user_id) {
+                userId = store.admin_user_id
+              }
+            }
+          }
+        } else {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) userId = user.id
+        }
+
+        if (userId) {
+          const { data: invs, error } = await supabase
+            .from("invoices")
+            .select("*")
+            .eq("customer_id", params.id)
+            .eq("user_id", userId)
+            .order("created_at", { ascending: false })
+
+          if (!error && invs) {
+            setInvoices(invs)
+          }
         }
       }
     } catch (error) {
@@ -143,7 +209,7 @@ export default function CustomerDetailPageClient() {
         </Card>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6">
         <Card>
           <CardHeader>
             <CardTitle>Contact Information</CardTitle>
@@ -211,46 +277,63 @@ export default function CustomerDetailPageClient() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5" />
-              Recent Invoices
+              Invoice History ({invoices.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
             {invoices && invoices.length > 0 ? (
-              <div className="space-y-4">
-                {invoices.slice(0, 5).map((invoice) => (
-                  <div key={invoice.id} className="flex items-center justify-between">
-                    <div>
-                      <p className="font-medium">{invoice.invoice_number}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {invoice.invoice_date
-                          ? new Date(invoice.invoice_date).toLocaleDateString()
-                          : invoice.created_at
-                            ? new Date(invoice.created_at).toLocaleDateString()
-                            : "N/A"}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium">₹{Number(invoice.total_amount || 0).toLocaleString("en-IN")}</p>
-                      <Badge
-                        variant={
-                          invoice.status === "paid" ? "default" : invoice.status === "sent" ? "secondary" : "outline"
-                        }
-                        className="capitalize"
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Invoice #</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {invoices.map((invoice) => (
+                      <TableRow 
+                        key={invoice.id}
+                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                        onClick={() => router.push(`/invoices/${invoice.id}`)}
                       >
-                        {invoice.status}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-                {invoices.length > 5 && (
-                  <Button asChild variant="outline" className="w-full bg-transparent">
-                    <Link href={`/invoices?customer=${params.id}`}>View All Invoices</Link>
-                  </Button>
-                )}
+                        <TableCell className="font-medium">{invoice.invoice_number || "N/A"}</TableCell>
+                        <TableCell>
+                          {invoice.invoice_date
+                            ? new Date(invoice.invoice_date).toLocaleDateString()
+                            : invoice.created_at
+                              ? new Date(invoice.created_at).toLocaleDateString()
+                              : "N/A"}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          ₹{Number(invoice.total_amount || 0).toLocaleString("en-IN")}
+                        </TableCell>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              invoice.status === "paid" 
+                                ? "default" 
+                                : invoice.status === "sent" 
+                                  ? "secondary" 
+                                  : invoice.status === "cancelled"
+                                    ? "destructive"
+                                    : "outline"
+                            }
+                            className="capitalize"
+                          >
+                            {invoice.status || "draft"}
+                          </Badge>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             ) : (
               <div className="py-8 text-center text-muted-foreground">

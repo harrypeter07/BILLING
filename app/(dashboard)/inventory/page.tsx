@@ -157,6 +157,49 @@ export default function InventoryPage() {
   const formatCurrency = (value: number) =>
     `₹${value.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`
 
+  // Filter products based on search term, category, and stock status
+  const filteredProducts = useMemo(() => {
+    let filtered = products
+
+    // Apply search term filter
+    if (searchTerm) {
+      const lowerCaseSearchTerm = searchTerm.toLowerCase()
+      filtered = filtered.filter(
+        (product) =>
+          product.name.toLowerCase().includes(lowerCaseSearchTerm) ||
+          product.sku?.toLowerCase().includes(lowerCaseSearchTerm) ||
+          product.category?.toLowerCase().includes(lowerCaseSearchTerm)
+      )
+    }
+
+    // Apply category filter
+    if (categoryFilter !== "all") {
+      filtered = filtered.filter((product) => product.category === categoryFilter)
+    }
+
+    // Apply stock status filter
+    if (stockFilter !== "all") {
+      filtered = filtered.filter((product) => {
+        const qty = Number(product.stock_quantity || 0)
+        if (stockFilter === "in_stock") return qty > 0
+        if (stockFilter === "low_stock") return qty > 0 && qty <= 10
+        if (stockFilter === "out_of_stock") return qty === 0
+        return true
+      })
+    }
+
+    return filtered
+  }, [products, searchTerm, categoryFilter, stockFilter])
+
+  // Get available categories for filter dropdown
+  const availableCategories = useMemo(() => {
+    const categories = new Set<string>()
+    products.forEach((p) => {
+      if (p.category) categories.add(p.category)
+    })
+    return Array.from(categories).sort()
+  }, [products])
+
   if (loading) {
     return (
       <div className="flex min-h-[400px] items-center justify-center">
@@ -411,7 +454,50 @@ export default function InventoryPage() {
       {/* Tabular view */}
       <Card>
         <CardHeader>
-          <CardTitle>Complete Inventory Listing</CardTitle>
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <CardTitle>Complete Inventory Listing</CardTitle>
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="relative flex-1 sm:max-w-xs">
+                <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Search products..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-8"
+                />
+              </div>
+              <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <Filter className="mr-2 h-4 w-4" />
+                  <SelectValue placeholder="All Categories" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {availableCategories.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={stockFilter} onValueChange={setStockFilter}>
+                <SelectTrigger className="w-full sm:w-[180px]">
+                  <SelectValue placeholder="All Stock" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Stock</SelectItem>
+                  <SelectItem value="in_stock">In Stock</SelectItem>
+                  <SelectItem value="low_stock">Low Stock</SelectItem>
+                  <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          {products.length > 0 && (
+            <p className="text-sm text-muted-foreground mt-2">
+              Showing {filteredProducts.length} of {products.length} products
+            </p>
+          )}
         </CardHeader>
         <CardContent>
           {products.length === 0 ? (

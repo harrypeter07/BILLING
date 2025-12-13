@@ -166,13 +166,23 @@ export function CustomersTable({ customers: initialCustomers }: CustomersTablePr
                 </TableHeader>
               <TableBody>
                 {filteredCustomers.map((customer) => (
-                  <TableRow key={customer.id}>
+                  <TableRow 
+                    key={customer.id}
+                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    onClick={(e) => {
+                      // Don't navigate if clicking on the dropdown menu
+                      if ((e.target as HTMLElement).closest('[role="menuitem"], button')) {
+                        return
+                      }
+                      router.push(`/customers/${customer.id}`)
+                    }}
+                  >
                     <TableCell className="font-medium">{customer.name}</TableCell>
                     <TableCell>{customer.email || "-"}</TableCell>
                     <TableCell>{customer.phone || "-"}</TableCell>
                     <TableCell>{customer.gstin || "-"}</TableCell>
                     <TableCell className="max-w-xs truncate">{customer.billing_address || "-"}</TableCell>
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon">
