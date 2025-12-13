@@ -25,7 +25,14 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
   useEffect(() => {
     // Skip check on license page, admin license-seed page, and auth pages
     // These pages should be accessible without license validation
+    // Also skip in development/localhost
+    const isLocalhost = typeof window !== 'undefined' && 
+      (window.location.hostname === 'localhost' || 
+       window.location.hostname === '127.0.0.1' ||
+       window.location.hostname.includes('localhost'));
+    
     const skipLicenseCheck = 
+      isLocalhost ||
       pathname === "/license" || 
       pathname?.includes("/license") || 
       pathname === "/admin/license-seed" ||
@@ -33,7 +40,7 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
       pathname?.startsWith("/auth/");
     
     if (skipLicenseCheck) {
-      console.log('[LicenseGuard] On exempt page, skipping license check:', pathname);
+      console.log('[LicenseGuard] On exempt page or localhost, skipping license check:', pathname);
       setChecking(false);
       setIsValid(true); // Allow page to render
       // Reset check ref when on exempt pages to avoid stale state
@@ -61,7 +68,10 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
         try {
           const storedLicense = await Promise.race([
             getStoredLicense(),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000)),
+            new Promise<null>((resolve) => setTimeout(() => {
+              console.warn('[LicenseGuard] getStoredLicense timeout after 1 second');
+              resolve(null);
+            }, 1000)),
           ]);
 
           if (storedLicense && isLicenseValid(storedLicense)) {
@@ -92,23 +102,44 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
         } catch (err) {
           console.warn('[LicenseGuard] Quick check failed, doing full check:', err);
         }
+        
+        // If no stored license found, allow access in development (fallback)
+        if (typeof window !== 'undefined' && 
+            (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+          console.log('[LicenseGuard] No stored license but on localhost, allowing access');
+          if (isMounted) {
+            setChecking(false);
+            setIsValid(true);
+            hasCheckedRef.current = true;
+            licenseCache = { valid: true, timestamp: Date.now() };
+          }
+          return;
+        }
 
         // Full license check with timeout
         const timeoutPromise = new Promise<{ valid: boolean; requiresActivation: boolean }>((resolve) => {
           setTimeout(() => {
-            console.warn("[LicenseGuard] License check timed out");
-            // On timeout, check if we have a stored license
-            getStoredLicense().then((stored) => {
+            console.warn("[LicenseGuard] License check timed out after 3 seconds");
+            // On timeout, check if we have a stored license (with its own timeout)
+            Promise.race([
+              getStoredLicense(),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 500)),
+            ]).then((stored) => {
               if (stored && isLicenseValid(stored)) {
                 // Allow access with stored license (offline mode)
                 resolve({ valid: true, requiresActivation: false });
               } else {
-                resolve({ valid: false, requiresActivation: true });
+                // No stored license - allow access in development, require activation in production
+                const isLocalhost = typeof window !== 'undefined' && 
+                  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+                resolve({ valid: isLocalhost, requiresActivation: !isLocalhost });
               }
             }).catch(() => {
-              resolve({ valid: false, requiresActivation: true });
+              const isLocalhost = typeof window !== 'undefined' && 
+                (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+              resolve({ valid: isLocalhost, requiresActivation: !isLocalhost });
             });
-          }, 5000); // Increased timeout to 5 seconds
+          }, 3000); // Reduced timeout to 3 seconds
         });
 
         const result = await Promise.race([

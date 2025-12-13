@@ -31,7 +31,6 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
   const [showPhoneDropdown, setShowPhoneDropdown] = useState(false)
   const phoneInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
-  const isExcel = getDatabaseType() === 'excel'
 
   // Search customers by phone number - search from first digit
   const searchCustomersByPhone = async (phoneNumber: string) => {
@@ -180,8 +179,9 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
         updated_at: new Date().toISOString(),
       }
 
-      if (isExcel) {
-        // Excel mode - add to Dexie
+      const isIndexedDb = isIndexedDbMode()
+      if (isIndexedDb) {
+        // IndexedDB mode - add to Dexie
         await storageManager.addCustomer(customerData as any)
         toast({
           title: "Success",
