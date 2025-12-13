@@ -232,6 +232,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
   const [notes, setNotes] = useState("")
   const [terms, setTerms] = useState("")
   const [productSearchTerm, setProductSearchTerm] = useState("")
+  const [focusedField, setFocusedField] = useState<string | null>(null)
 
   const [lineItems, setLineItems] = useState<LineItem[]>([
     {
@@ -862,63 +863,134 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                                 </SelectContent>
                               </Select>
                             </TableCell>
-                            <TableCell className="px-1.5 py-1.5">
-                              <Input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={item.quantity || ""}
-                                onChange={(e) =>
-                                  updateLineItem(item.id, "quantity", Number.parseFloat(e.target.value) || 0)
-                                }
-                                required
-                                className="h-9 text-sm text-center px-1.5 font-semibold"
-                              />
-                            </TableCell>
-                            <TableCell className="px-1.5 py-1.5">
-                              <Input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={item.unit_price || ""}
-                                onChange={(e) =>
-                                  updateLineItem(item.id, "unit_price", Number.parseFloat(e.target.value) || 0)
-                                }
-                                required
-                                className="h-9 text-sm text-center px-1.5 font-semibold"
-                              />
-                            </TableCell>
-                            <TableCell className="px-1.5 py-1.5">
-                              <Input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.01"
-                                value={item.discount_percent || ""}
-                                onChange={(e) =>
-                                  updateLineItem(
-                                    item.id,
-                                    "discount_percent",
-                                    Number.parseFloat(e.target.value) || 0,
-                                  )
-                                }
-                                className="h-9 text-sm text-center px-1.5 font-semibold"
-                              />
-                            </TableCell>
-                            {isGstInvoice && (
-                              <TableCell className="px-1.5 py-1.5">
-                                <Input
-                                  type="number"
-                                  min="0"
-                                  step="0.01"
-                                  value={item.gst_rate || ""}
-                                  onChange={(e) =>
-                                    updateLineItem(item.id, "gst_rate", Number.parseFloat(e.target.value) || 0)
-                                  }
-                                  className="h-9 text-sm text-center px-1.5 font-semibold"
-                                />
-                              </TableCell>
-                            )}
+                            {(() => {
+                              const fieldId = `${item.id}-qty`
+                              const qtyFocused = focusedField === fieldId
+                              const rateFieldId = `${item.id}-rate`
+                              const rateFocused = focusedField === rateFieldId
+                              const discFieldId = `${item.id}-disc`
+                              const discFocused = focusedField === discFieldId
+                              const gstFieldId = `${item.id}-gst`
+                              const gstFocused = focusedField === gstFieldId
+                              
+                              return (
+                                <>
+                                  <TableCell 
+                                    className={`px-1.5 py-1.5 transition-all duration-300 ${qtyFocused ? 'w-[110px]' : 'w-[75px]'}`}
+                                  >
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={item.quantity || ""}
+                                      onChange={(e) =>
+                                        updateLineItem(item.id, "quantity", Number.parseFloat(e.target.value) || 0)
+                                      }
+                                      onFocus={() => setFocusedField(fieldId)}
+                                      onBlur={() => setFocusedField(null)}
+                                      onMouseEnter={() => setFocusedField(fieldId)}
+                                      onMouseLeave={() => {
+                                        const activeEl = document.activeElement as HTMLElement
+                                        if (activeEl?.dataset?.fieldId !== fieldId) {
+                                          setFocusedField(null)
+                                        }
+                                      }}
+                                      data-field-id={fieldId}
+                                      required
+                                      className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
+                                        qtyFocused ? 'px-3 bg-primary/5 border-primary/50 shadow-sm' : 'px-1.5'
+                                      }`}
+                                    />
+                                  </TableCell>
+                                  <TableCell 
+                                    className={`px-1.5 py-1.5 transition-all duration-300 ${rateFocused ? 'w-[120px]' : 'w-[90px]'}`}
+                                  >
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      step="0.01"
+                                      value={item.unit_price || ""}
+                                      onChange={(e) =>
+                                        updateLineItem(item.id, "unit_price", Number.parseFloat(e.target.value) || 0)
+                                      }
+                                      onFocus={() => setFocusedField(rateFieldId)}
+                                      onBlur={() => setFocusedField(null)}
+                                      onMouseEnter={() => setFocusedField(rateFieldId)}
+                                      onMouseLeave={() => {
+                                        const activeEl = document.activeElement as HTMLElement
+                                        if (activeEl?.dataset?.fieldId !== rateFieldId) {
+                                          setFocusedField(null)
+                                        }
+                                      }}
+                                      data-field-id={rateFieldId}
+                                      required
+                                      className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
+                                        rateFocused ? 'px-3 bg-primary/5 border-primary/50 shadow-sm' : 'px-1.5'
+                                      }`}
+                                    />
+                                  </TableCell>
+                                  <TableCell 
+                                    className={`px-1.5 py-1.5 transition-all duration-300 ${discFocused ? 'w-[110px]' : 'w-[75px]'}`}
+                                  >
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      max="100"
+                                      step="0.01"
+                                      value={item.discount_percent || ""}
+                                      onChange={(e) =>
+                                        updateLineItem(
+                                          item.id,
+                                          "discount_percent",
+                                          Number.parseFloat(e.target.value) || 0,
+                                        )
+                                      }
+                                      onFocus={() => setFocusedField(discFieldId)}
+                                      onBlur={() => setFocusedField(null)}
+                                      onMouseEnter={() => setFocusedField(discFieldId)}
+                                      onMouseLeave={() => {
+                                        const activeEl = document.activeElement as HTMLElement
+                                        if (activeEl?.dataset?.fieldId !== discFieldId) {
+                                          setFocusedField(null)
+                                        }
+                                      }}
+                                      data-field-id={discFieldId}
+                                      className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
+                                        discFocused ? 'px-3 bg-primary/5 border-primary/50 shadow-sm' : 'px-1.5'
+                                      }`}
+                                    />
+                                  </TableCell>
+                                  {isGstInvoice && (
+                                    <TableCell 
+                                      className={`px-1.5 py-1.5 transition-all duration-300 ${gstFocused ? 'w-[100px]' : 'w-[70px]'}`}
+                                    >
+                                      <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={item.gst_rate || ""}
+                                        onChange={(e) =>
+                                          updateLineItem(item.id, "gst_rate", Number.parseFloat(e.target.value) || 0)
+                                        }
+                                        onFocus={() => setFocusedField(gstFieldId)}
+                                        onBlur={() => setFocusedField(null)}
+                                        onMouseEnter={() => setFocusedField(gstFieldId)}
+                                        onMouseLeave={() => {
+                                          const activeEl = document.activeElement as HTMLElement
+                                          if (activeEl?.dataset?.fieldId !== gstFieldId) {
+                                            setFocusedField(null)
+                                          }
+                                        }}
+                                        data-field-id={gstFieldId}
+                                        className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
+                                          gstFocused ? 'px-3 bg-primary/5 border-primary/50 shadow-sm' : 'px-1.5'
+                                        }`}
+                                      />
+                                    </TableCell>
+                                  )}
+                                </>
+                              )
+                            })()}
                             <TableCell className="text-right font-bold text-sm px-2 py-1.5">
                               ₹{calc.lineTotal.toFixed(2)}
                             </TableCell>
