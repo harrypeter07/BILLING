@@ -32,6 +32,25 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
   const phoneInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
+  // Listen for customer selection from main dropdown
+  useEffect(() => {
+    const handleCustomerSelected = (event: CustomEvent) => {
+      const customer = event.detail
+      if (customer) {
+        setName(customer.name || "")
+        setEmail(customer.email || "")
+        setPhone(customer.phone || "")
+        // Also call onCustomerCreated to ensure customer is selected
+        onCustomerCreated({ id: customer.id, name: customer.name })
+      }
+    }
+
+    window.addEventListener('customer:selected', handleCustomerSelected as EventListener)
+    return () => {
+      window.removeEventListener('customer:selected', handleCustomerSelected as EventListener)
+    }
+  }, [onCustomerCreated])
+
   // Search customers by phone number - search from first digit
   const searchCustomersByPhone = async (phoneNumber: string) => {
     // Remove any non-digit characters for searching

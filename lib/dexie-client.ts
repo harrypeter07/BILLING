@@ -72,6 +72,18 @@ export class AppDB extends Dexie {
       invoice_sequences: "id, store_id",
       fsHandles: "key",
     })
+    this.version(6).stores({
+      products: "id",
+      customers: "id, email, phone",
+      invoices: "id, created_at, store_id, customer_id", // Added "customer_id" index
+      invoice_items: "id, invoice_id",
+      employees: "id, created_at, employee_id, store_id",
+      stores: "id, store_code, name",
+      settings: "id",
+      customer_auth: "customer_id, email",
+      invoice_sequences: "id, store_id",
+      fsHandles: "key",
+    })
   }
 }
 

@@ -469,10 +469,22 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate customer is selected
+    if (!customerId || customerId.trim() === "") {
+      toast({
+        title: "Error",
+        description: "Please select a customer before creating the invoice",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setIsLoading(true);
     try {
       const t = calculateTotals();
       const invoiceId = crypto.randomUUID();
+      console.log('[InvoiceForm] Creating invoice with customer_id:', customerId);
       const invoiceData = {
         id: invoiceId,
         customer_id: customerId,
@@ -528,6 +540,9 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
         // Decrease product stock quantities (use original products, not modified state)
         await updateProductStock(items, isIndexedDb, undefined, undefined, initialProducts);
         
+        // Dispatch event to notify customer detail page to refresh
+        window.dispatchEvent(new CustomEvent('invoice:created', { detail: { customer_id: customerId } }));
+        
         toast({ title: "Success", description: "Invoice created successfully" });
         router.push("/invoices");
         router.refresh();
@@ -558,6 +573,9 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
         
         // Decrease product stock quantities (use original products, not modified state)
         await updateProductStock(items, isIndexedDb, supabase, user.id, initialProducts);
+        
+        // Dispatch event to notify customer detail page to refresh
+        window.dispatchEvent(new CustomEvent('invoice:created', { detail: { customer_id: customerId } }));
         
         toast({ title: "Success", description: "Invoice created successfully" });
         router.push("/invoices");
@@ -669,7 +687,20 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                   <Label htmlFor="customer" className="text-xs">
                     Customer
                   </Label>
-                  <Select value={customerId} onValueChange={setCustomerId}>
+                  <Select 
+                    value={customerId} 
+                    onValueChange={(value) => {
+                      setCustomerId(value)
+                      // Find the selected customer and populate inline form if needed
+                      const selectedCustomer = localCustomers.find(c => c.id === value)
+                      if (selectedCustomer) {
+                        // Dispatch event to populate inline form
+                        window.dispatchEvent(new CustomEvent('customer:selected', { 
+                          detail: selectedCustomer 
+                        }))
+                      }
+                    }}
+                  >
                     <SelectTrigger className="h-9 text-sm">
                       <SelectValue placeholder="Select customer" />
                     </SelectTrigger>

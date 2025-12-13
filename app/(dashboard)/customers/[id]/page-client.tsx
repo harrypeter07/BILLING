@@ -26,6 +26,18 @@ export default function CustomerDetailPageClient() {
     fetchInvoices()
   }, [params.id])
 
+  // Refetch invoices when invoice is created
+  useEffect(() => {
+    const handleInvoiceCreated = () => {
+      console.log('[CustomerDetail] Invoice created event received, refetching invoices')
+      fetchInvoices()
+    }
+    window.addEventListener('invoice:created', handleInvoiceCreated)
+    return () => {
+      window.removeEventListener('invoice:created', handleInvoiceCreated)
+    }
+  }, [params.id])
+
   const fetchCustomer = async () => {
     try {
       setIsLoading(true)
@@ -96,20 +108,43 @@ export default function CustomerDetailPageClient() {
 
   const fetchInvoices = async () => {
     try {
+      const customerId = params.id as string
+      console.log('[CustomerDetail] Fetching invoices for customer:', customerId)
+      
       const isIndexedDb = isIndexedDbMode()
       
       if (isIndexedDb) {
-        // Load from IndexedDB
-        const localInvs = await db.invoices?.where("customer_id").equals(params.id as string).toArray()
-        if (localInvs) {
-          setInvoices(localInvs.sort((a, b) => {
+        // Load from IndexedDB - fetch invoices and their items
+        // First, get all invoices to debug
+        const allInvoices = await db.invoices?.toArray()
+        console.log('[CustomerDetail][IndexedDB] All invoices:', allInvoices?.length || 0)
+        console.log('[CustomerDetail][IndexedDB] Sample invoice customer_id:', allInvoices?.[0]?.customer_id)
+        console.log('[CustomerDetail][IndexedDB] Looking for customer_id:', customerId)
+        
+        const localInvs = await db.invoices?.where("customer_id").equals(customerId).toArray()
+        console.log('[CustomerDetail][IndexedDB] Found invoices:', localInvs?.length || 0)
+        
+        if (localInvs && localInvs.length > 0) {
+          // Fetch invoice items for each invoice
+          const invoicesWithItems = await Promise.all(
+            localInvs.map(async (inv) => {
+              const items = await db.invoice_items?.where("invoice_id").equals(inv.id).toArray()
+              return {
+                ...inv,
+                invoice_items: items || []
+              }
+            })
+          )
+          setInvoices(invoicesWithItems.sort((a, b) => {
             const dateA = new Date(a.created_at || a.invoice_date || 0).getTime()
             const dateB = new Date(b.created_at || b.invoice_date || 0).getTime()
             return dateB - dateA
           }))
+        } else {
+          setInvoices([])
         }
       } else {
-        // Load from Supabase
+        // Load from Supabase - fetch invoices with items
         const supabase = createClient()
         const authType = localStorage.getItem("authType")
         let userId: string | null = null
@@ -136,20 +171,37 @@ export default function CustomerDetailPageClient() {
         }
 
         if (userId) {
+          console.log('[CustomerDetail][Supabase] Fetching invoices for customer:', customerId, 'user:', userId)
+          // Fetch invoices with invoice_items
           const { data: invs, error } = await supabase
             .from("invoices")
-            .select("*")
-            .eq("customer_id", params.id)
+            .select(`
+              *,
+              invoice_items (*)
+            `)
+            .eq("customer_id", customerId)
             .eq("user_id", userId)
             .order("created_at", { ascending: false })
 
+          console.log('[CustomerDetail][Supabase] Query result:', { invs: invs?.length || 0, error })
+
+          if (error) {
+            console.error('[CustomerDetail][Supabase] Error fetching invoices:', error)
+          }
+
           if (!error && invs) {
             setInvoices(invs)
+          } else {
+            setInvoices([])
           }
+        } else {
+          console.warn('[CustomerDetail][Supabase] No userId found')
+          setInvoices([])
         }
       }
     } catch (error) {
-      console.error("Failed to fetch invoices:", error)
+      console.error("[CustomerDetail] Failed to fetch invoices:", error)
+      setInvoices([])
     }
   }
 
@@ -292,46 +344,61 @@ export default function CustomerDetailPageClient() {
                     <TableRow>
                       <TableHead>Invoice #</TableHead>
                       <TableHead>Date</TableHead>
-                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead className="text-right">Items</TableHead>
+                      <TableHead className="text-right">Subtotal</TableHead>
+                      <TableHead className="text-right">GST</TableHead>
+                      <TableHead className="text-right">Total Amount</TableHead>
                       <TableHead>Status</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {invoices.map((invoice) => (
-                      <TableRow 
-                        key={invoice.id}
-                        className="cursor-pointer hover:bg-muted/50 transition-colors"
-                        onClick={() => router.push(`/invoices/${invoice.id}`)}
-                      >
-                        <TableCell className="font-medium">{invoice.invoice_number || "N/A"}</TableCell>
-                        <TableCell>
-                          {invoice.invoice_date
-                            ? new Date(invoice.invoice_date).toLocaleDateString()
-                            : invoice.created_at
-                              ? new Date(invoice.created_at).toLocaleDateString()
-                              : "N/A"}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          ₹{Number(invoice.total_amount || 0).toLocaleString("en-IN")}
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={
-                              invoice.status === "paid" 
-                                ? "default" 
-                                : invoice.status === "sent" 
-                                  ? "secondary" 
-                                  : invoice.status === "cancelled"
-                                    ? "destructive"
-                                    : "outline"
-                            }
-                            className="capitalize"
-                          >
-                            {invoice.status || "draft"}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {invoices.map((invoice) => {
+                      const items = invoice.invoice_items || []
+                      const itemsCount = items.length
+                      const gstAmount = Number(invoice.cgst_amount || 0) + Number(invoice.sgst_amount || 0) + Number(invoice.igst_amount || 0)
+                      return (
+                        <TableRow 
+                          key={invoice.id}
+                          className="cursor-pointer hover:bg-muted/50 transition-colors"
+                          onClick={() => router.push(`/invoices/${invoice.id}`)}
+                        >
+                          <TableCell className="font-medium">{invoice.invoice_number || "N/A"}</TableCell>
+                          <TableCell>
+                            {invoice.invoice_date
+                              ? new Date(invoice.invoice_date).toLocaleDateString()
+                              : invoice.created_at
+                                ? new Date(invoice.created_at).toLocaleDateString()
+                                : "N/A"}
+                          </TableCell>
+                          <TableCell className="text-right">{itemsCount}</TableCell>
+                          <TableCell className="text-right">
+                            ₹{Number(invoice.subtotal || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell className="text-right">
+                            ₹{gstAmount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell className="text-right font-semibold">
+                            ₹{Number(invoice.total_amount || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell>
+                            <Badge
+                              variant={
+                                invoice.status === "paid" 
+                                  ? "default" 
+                                  : invoice.status === "sent" 
+                                    ? "secondary" 
+                                    : invoice.status === "cancelled"
+                                      ? "destructive"
+                                      : "outline"
+                              }
+                              className="capitalize"
+                            >
+                              {invoice.status || "draft"}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      )
+                    })}
                   </TableBody>
                 </Table>
               </div>
