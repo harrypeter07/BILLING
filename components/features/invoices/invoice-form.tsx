@@ -263,23 +263,41 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
   }
 
   const removeLineItem = (id: string) => {
-    if (lineItems.length > 1) {
-      const itemToRemove = lineItems.find(item => item.id === id)
-      // Restore stock when item is removed
-      if (itemToRemove?.product_id && itemToRemove.quantity) {
-        const product = products.find((p) => p.id === itemToRemove.product_id)
-        if (product && product.stock_quantity !== undefined) {
-          const newStock = (product.stock_quantity || 0) + itemToRemove.quantity
-          setProducts(prevProducts => 
-            prevProducts.map(p => 
-              p.id === itemToRemove.product_id 
-                ? { ...p, stock_quantity: newStock }
-                : p
-            )
+    const itemToRemove = lineItems.find(item => item.id === id)
+    // Restore stock when item is removed
+    if (itemToRemove?.product_id && itemToRemove.quantity) {
+      const product = products.find((p) => p.id === itemToRemove.product_id)
+      if (product && product.stock_quantity !== undefined) {
+        const newStock = (product.stock_quantity || 0) + itemToRemove.quantity
+        setProducts(prevProducts => 
+          prevProducts.map(p => 
+            p.id === itemToRemove.product_id 
+              ? { ...p, stock_quantity: newStock }
+              : p
           )
-        }
+        )
       }
-      setLineItems(lineItems.filter((item) => item.id !== id))
+    }
+    
+    // Remove the item
+    const newLineItems = lineItems.filter((item) => item.id !== id)
+    
+    // If no items remain, add one empty line item
+    if (newLineItems.length === 0) {
+      setLineItems([
+        {
+          id: crypto.randomUUID(),
+          product_id: null,
+          description: "",
+          quantity: 1,
+          unit_price: 0,
+          discount_percent: 0,
+          gst_rate: settings?.default_gst_rate || 18,
+          hsn_code: "",
+        },
+      ])
+    } else {
+      setLineItems(newLineItems)
     }
   }
 
@@ -382,32 +400,56 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
 
   // Add product to invoice
   const addProductToInvoice = (product: Product) => {
-    const newLineItem: LineItem = {
-      id: crypto.randomUUID(),
-      product_id: product.id,
-      description: product.name,
-      quantity: 1,
-      unit_price: product.price,
-      discount_percent: 0,
-      gst_rate: product.gst_rate,
-      hsn_code: product.hsn_code || "",
-    }
-    setLineItems([...lineItems, newLineItem])
+    // Check if product already exists in line items
+    const existingItem = lineItems.find(item => item.product_id === product.id)
     
-    // Decrease stock in real-time when product is added
-    if (product.stock_quantity !== undefined) {
-      const newStock = Math.max(0, (product.stock_quantity || 0) - 1)
-      setProducts(prevProducts => 
-        prevProducts.map(p => 
-          p.id === product.id 
-            ? { ...p, stock_quantity: newStock }
-            : p
+    if (existingItem) {
+      // If product exists, increase quantity by 1
+      updateLineItem(existingItem.id, "quantity", existingItem.quantity + 1)
+      
+      // Decrease stock in real-time
+      if (product.stock_quantity !== undefined) {
+        const newStock = Math.max(0, (product.stock_quantity || 0) - 1)
+        setProducts(prevProducts => 
+          prevProducts.map(p => 
+            p.id === product.id 
+              ? { ...p, stock_quantity: newStock }
+              : p
+          )
         )
-      )
+      }
+      
+      toast({ title: "Quantity increased", description: `${product.name} quantity increased to ${existingItem.quantity + 1}` })
+    } else {
+      // If product doesn't exist, add new line item
+      const newLineItem: LineItem = {
+        id: crypto.randomUUID(),
+        product_id: product.id,
+        description: product.name,
+        quantity: 1,
+        unit_price: product.price,
+        discount_percent: 0,
+        gst_rate: product.gst_rate,
+        hsn_code: product.hsn_code || "",
+      }
+      setLineItems([...lineItems, newLineItem])
+      
+      // Decrease stock in real-time when product is added
+      if (product.stock_quantity !== undefined) {
+        const newStock = Math.max(0, (product.stock_quantity || 0) - 1)
+        setProducts(prevProducts => 
+          prevProducts.map(p => 
+            p.id === product.id 
+              ? { ...p, stock_quantity: newStock }
+              : p
+          )
+        )
+      }
+      
+      toast({ title: "Product added", description: `${product.name} added to invoice` })
     }
     
     setProductSearchTerm("")
-    toast({ title: "Product added", description: `${product.name} added to invoice` })
   }
 
   // Calculate totals
@@ -1027,7 +1069,6 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => removeLineItem(item.id)}
-                                disabled={lineItems.length === 1}
                                 className="h-7 w-7"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />

@@ -4,10 +4,12 @@ import { useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
-import { AlertCircle, Boxes, Layers, PiggyBank, TrendingUp } from "lucide-react"
+import { AlertCircle, Boxes, Layers, PiggyBank, TrendingUp, Search, Filter } from "lucide-react"
 
 interface InventoryProduct {
   id: string
@@ -27,6 +29,9 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [databaseType, setDatabaseType] = useState(getDatabaseType())
+  const [searchTerm, setSearchTerm] = useState("")
+  const [categoryFilter, setCategoryFilter] = useState<string>("all")
+  const [stockFilter, setStockFilter] = useState<string>("all")
 
   useEffect(() => {
     const updateDbType = () => setDatabaseType(getDatabaseType())
