@@ -1,17 +1,28 @@
 /**
  * Get the base URL for the application
- * Uses NEXT_PUBLIC_APP_URL if set (for production/Vercel)
- * Falls back to window.location.origin for local development
+ * Automatically detects production URL on Vercel
  */
 export function getAppBaseUrl(): string {
-  // In server-side rendering, use environment variable
+  // Server-side: Use environment variable or Vercel's automatic URL
   if (typeof window === 'undefined') {
-    return process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}` 
-      : 'http://localhost:3000'
+    return process.env.NEXT_PUBLIC_APP_URL || 
+           (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+           'https://billing-tawny.vercel.app'
   }
   
-  // In client-side, prefer environment variable, fallback to current origin
-  return process.env.NEXT_PUBLIC_APP_URL || window.location.origin
+  // Client-side: Check if we're on Vercel by hostname
+  const hostname = window.location.hostname
+  
+  // If on Vercel domain, use production URL
+  if (hostname.includes('vercel.app') || hostname.includes('vercel.com')) {
+    return `https://${hostname}`
+  }
+  
+  // If environment variable is set, use it
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL
+  }
+  
+  // Fallback to current origin (localhost in dev)
+  return window.location.origin
 }
-

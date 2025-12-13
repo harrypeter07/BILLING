@@ -72,12 +72,26 @@ export default function CustomerLoginPage() {
         })
       }
 
-      // Generate magic link - use production URL if set, otherwise use current origin
-      const baseUrl = typeof window !== 'undefined' 
-        ? (process.env.NEXT_PUBLIC_APP_URL || window.location.origin)
-        : (process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL 
-          ? `https://${process.env.VERCEL_URL}` 
-          : 'https://billing-tawny.vercel.app')
+      // Generate magic link - automatically detect production URL
+      const getBaseUrl = () => {
+        if (typeof window === 'undefined') {
+          return process.env.NEXT_PUBLIC_APP_URL || 
+                 (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+                 'https://billing-tawny.vercel.app'
+        }
+        const hostname = window.location.hostname
+        // If on Vercel domain, use production URL
+        if (hostname.includes('vercel.app') || hostname.includes('vercel.com')) {
+          return `https://${hostname}`
+        }
+        // If environment variable is set, use it
+        if (process.env.NEXT_PUBLIC_APP_URL) {
+          return process.env.NEXT_PUBLIC_APP_URL
+        }
+        // Fallback to current origin (localhost in dev)
+        return window.location.origin
+      }
+      const baseUrl = getBaseUrl()
       const magicLink = `${baseUrl}/auth/customer-verify/${token}`
       
       // Try to send email via API route (optional - won't fail if email service unavailable)

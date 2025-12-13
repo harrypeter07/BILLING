@@ -47,12 +47,30 @@ export default function SignupPage() {
         email,
         password,
         options: {
-          emailRedirectTo: process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL || 
-            (typeof window !== 'undefined' 
-              ? (process.env.NEXT_PUBLIC_APP_URL || window.location.origin)
-              : (process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL 
-                ? `https://${process.env.VERCEL_URL}` 
-                : 'https://billing-tawny.vercel.app')) + '/dashboard',
+          emailRedirectTo: (() => {
+            // Use explicit redirect URL if set
+            if (process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL) {
+              return process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL
+            }
+            // Auto-detect production URL
+            if (typeof window !== 'undefined') {
+              const hostname = window.location.hostname
+              // If on Vercel domain, use production URL
+              if (hostname.includes('vercel.app') || hostname.includes('vercel.com')) {
+                return `https://${hostname}/dashboard`
+              }
+              // If environment variable is set, use it
+              if (process.env.NEXT_PUBLIC_APP_URL) {
+                return `${process.env.NEXT_PUBLIC_APP_URL}/dashboard`
+              }
+              // Fallback to current origin (localhost in dev)
+              return `${window.location.origin}/dashboard`
+            }
+            // Server-side fallback
+            return (process.env.NEXT_PUBLIC_APP_URL || 
+                   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : null) ||
+                   'https://billing-tawny.vercel.app') + '/dashboard'
+          })(),
           data: {
             full_name: fullName,
             business_name: businessName,
