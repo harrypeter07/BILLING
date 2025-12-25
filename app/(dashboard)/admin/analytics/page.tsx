@@ -230,7 +230,7 @@ export default function AdminAnalyticsPage() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ status, count, percent }) =>
+                    label={({ status, count, percent }: any) =>
                       percent > 0.05 ? `${status}: ${count}` : '' // Only show label if slice is > 5%
                     }
                     outerRadius={80}

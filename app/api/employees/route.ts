@@ -24,9 +24,9 @@ export async function POST(request: Request) {
         },
       }
     )
-    
+
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -61,11 +61,11 @@ export async function POST(request: Request) {
         .eq("store_id", store_id)
         .eq("employee_id", employee_id.toUpperCase().trim())
         .maybeSingle()
-      
+
       if (existing) {
         return NextResponse.json(
-          { 
-            error: `Employee ID "${employee_id}" already exists in this store. Employee: ${existing.name}` 
+          {
+            error: `Employee ID "${employee_id}" already exists in this store. Employee: ${existing.name}`
           },
           { status: 409 } // Conflict
         )
@@ -93,19 +93,19 @@ export async function POST(request: Request) {
     const { data: employee, error } = await supabase
       .from("employees")
       .insert(employeeData)
-      .select()
+      .select("*, stores(name, store_code)")
       .single()
 
     if (error) {
       console.error("[API /employees] Error creating employee:", error)
-      
+
       // Handle duplicate key error specifically
       if (error.code === '23505') {
         // Unique constraint violation
         if (error.message.includes('idx_employees_store_employee_id')) {
           return NextResponse.json(
-            { 
-              error: `Employee ID "${employee_id}" already exists in this store. Please use a different Employee ID or contact support.` 
+            {
+              error: `Employee ID "${employee_id}" already exists in this store. Please use a different Employee ID or contact support.`
             },
             { status: 409 } // Conflict
           )
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
           { status: 409 }
         )
       }
-      
+
       return NextResponse.json(
         { error: error.message || "Failed to create employee" },
         { status: 500 }
@@ -153,9 +153,9 @@ export async function PUT(request: Request) {
         },
       }
     )
-    
+
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }

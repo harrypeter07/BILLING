@@ -14,6 +14,7 @@ import { isIndexedDbMode } from "@/lib/utils/db-mode"
 export default function InvoicesPage() {
   const [invoices, setInvoices] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [isAddingMock, setIsAddingMock] = useState(false)
   const { isAdmin, isEmployee } = useUserRole()
 
   useEffect(() => {
@@ -21,7 +22,7 @@ export default function InvoicesPage() {
       try {
         setLoading(true)
         const isIndexedDb = isIndexedDbMode()
-        
+
         if (isIndexedDb) {
           // Load from Dexie
           const list = await db.invoices.toArray()
@@ -53,8 +54,9 @@ export default function InvoicesPage() {
 
   const handleAddMockInvoice = async () => {
     try {
+      setIsAddingMock(true)
       const isIndexedDb = isIndexedDbMode()
-      
+
       if (isIndexedDb) {
         // Load from Dexie
         const [customers, products] = await Promise.all([
@@ -65,29 +67,29 @@ export default function InvoicesPage() {
           alert('Need at least 1 customer and 1 product to create a mock invoice')
           return
         }
-        const customer = customers[Math.floor(Math.random()*customers.length)] as any
-        const product = products[Math.floor(Math.random()*products.length)] as any
-        const qty = Math.floor(Math.random()*5)+1
+        const customer = customers[Math.floor(Math.random() * customers.length)] as any
+        const product = products[Math.floor(Math.random() * products.length)] as any
+        const qty = Math.floor(Math.random() * 5) + 1
         const unit_price = product.price || 100
-        const discount_percent = Math.floor(Math.random()*10)
+        const discount_percent = Math.floor(Math.random() * 10)
         const gst_rate = product.gst_rate || 18
         // Compute totals (mirror of calculateLineItem)
         const subtotal = qty * unit_price
-        const discountAmount = (subtotal * discount_percent)/100
+        const discountAmount = (subtotal * discount_percent) / 100
         const taxableAmount = subtotal - discountAmount
-        const gstAmount = (taxableAmount * gst_rate)/100
+        const gstAmount = (taxableAmount * gst_rate) / 100
         const lineTotal = taxableAmount + gstAmount
         const invoiceId = crypto.randomUUID()
         const invoiceData: any = {
           id: invoiceId,
           customer_id: customer.id,
-          invoice_number: `INV-${Math.floor(Math.random()*100000).toString().padStart(5,'0')}`,
+          invoice_number: `INV-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`,
           invoice_date: new Date().toISOString().split('T')[0],
           status: 'draft',
           is_gst_invoice: true,
           subtotal: taxableAmount,
-          cgst_amount: gst_rate ? gstAmount/2 : 0,
-          sgst_amount: gst_rate ? gstAmount/2 : 0,
+          cgst_amount: gst_rate ? gstAmount / 2 : 0,
+          sgst_amount: gst_rate ? gstAmount / 2 : 0,
           igst_amount: 0,
           total_amount: lineTotal,
           notes: '',
@@ -125,55 +127,55 @@ export default function InvoicesPage() {
           alert('Not authenticated')
           return
         }
-        
+
         const [{ data: dbCustomers }, { data: dbProducts }] = await Promise.all([
           supabase.from('customers').select('*').eq('user_id', user.id),
           supabase.from('products').select('*').eq('user_id', user.id).eq('is_active', true),
         ])
-        
+
         if (!dbCustomers?.length || !dbProducts?.length) {
           alert('Need at least 1 customer and 1 product to create a mock invoice')
           return
         }
-        
-        const customer = dbCustomers[Math.floor(Math.random()*dbCustomers.length)]
-        const product = dbProducts[Math.floor(Math.random()*dbProducts.length)]
-        const qty = Math.floor(Math.random()*5)+1
+
+        const customer = dbCustomers[Math.floor(Math.random() * dbCustomers.length)]
+        const product = dbProducts[Math.floor(Math.random() * dbProducts.length)]
+        const qty = Math.floor(Math.random() * 5) + 1
         const unit_price = product.price || 100
-        const discount_percent = Math.floor(Math.random()*10)
+        const discount_percent = Math.floor(Math.random() * 10)
         const gst_rate = product.gst_rate || 18
-        
+
         // Compute totals
         const subtotal = qty * unit_price
-        const discountAmount = (subtotal * discount_percent)/100
+        const discountAmount = (subtotal * discount_percent) / 100
         const taxableAmount = subtotal - discountAmount
-        const gstAmount = (taxableAmount * gst_rate)/100
+        const gstAmount = (taxableAmount * gst_rate) / 100
         const lineTotal = taxableAmount + gstAmount
-        
+
         const invoiceData: any = {
           customer_id: customer.id,
-          invoice_number: `INV-${Math.floor(Math.random()*100000).toString().padStart(5,'0')}`,
+          invoice_number: `INV-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`,
           invoice_date: new Date().toISOString().split('T')[0],
           status: 'draft',
           is_gst_invoice: true,
           subtotal: taxableAmount,
-          cgst_amount: gst_rate ? gstAmount/2 : 0,
-          sgst_amount: gst_rate ? gstAmount/2 : 0,
+          cgst_amount: gst_rate ? gstAmount / 2 : 0,
+          sgst_amount: gst_rate ? gstAmount / 2 : 0,
           igst_amount: 0,
           total_amount: lineTotal,
           notes: '',
           terms: '',
           user_id: user.id,
         }
-        
+
         const { data: newInvoice, error: invoiceError } = await supabase
           .from('invoices')
           .insert(invoiceData)
           .select()
           .single()
-        
+
         if (invoiceError) throw invoiceError
-        
+
         const items = [{
           invoice_id: newInvoice.id,
           product_id: product.id,
@@ -186,10 +188,10 @@ export default function InvoicesPage() {
           line_total: lineTotal,
           gst_amount: gstAmount,
         }]
-        
+
         const { error: itemsError } = await supabase.from('invoice_items').insert(items)
         if (itemsError) throw itemsError
-        
+
         // Refresh invoices
         const { data: updatedInvoices } = await supabase
           .from('invoices')
@@ -201,6 +203,8 @@ export default function InvoicesPage() {
     } catch (error: any) {
       console.error('[Invoices] Error adding mock invoice:', error)
       alert('Failed to add mock invoice: ' + (error.message || error.toString()))
+    } finally {
+      setIsAddingMock(false)
     }
   }
 
@@ -216,10 +220,20 @@ export default function InvoicesPage() {
         <div className="flex flex-wrap items-center gap-2">
           {(isAdmin || isEmployee) && (
             <>
-              <Button type="button" variant="outline" onClick={handleAddMockInvoice} title="Add a mock invoice" className="text-xs sm:text-sm">
-                <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="hidden sm:inline">Add Mock Invoice</span>
-                <span className="sm:hidden">Mock</span>
+              <Button type="button" variant="outline" onClick={handleAddMockInvoice} disabled={isAddingMock} title="Add a mock invoice" className="text-xs sm:text-sm">
+                {isAddingMock ? (
+                  <>
+                    <div className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                    <span className="hidden sm:inline">Adding...</span>
+                    <span className="sm:hidden">...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                    <span className="hidden sm:inline">Add Mock Invoice</span>
+                    <span className="sm:hidden">Mock</span>
+                  </>
+                )}
               </Button>
               <Button asChild className="text-xs sm:text-sm">
                 <Link href="/invoices/new">
@@ -232,7 +246,7 @@ export default function InvoicesPage() {
           )}
         </div>
       </div>
-      
+
       <InvoicesTable invoices={invoices || []} />
     </div>
   )

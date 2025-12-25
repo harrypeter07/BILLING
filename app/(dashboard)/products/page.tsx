@@ -14,6 +14,7 @@ import { storageManager } from "@/lib/storage-manager"
 export default function ProductsPage() {
   const [products, setProducts] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isAddingMock, setIsAddingMock] = useState(false)
 
   const fetchProducts = async () => {
     const isIndexedDb = isIndexedDbMode()
@@ -76,7 +77,7 @@ export default function ProductsPage() {
           toast.error("Excel import is only available in IndexedDB mode")
           return
         }
-        
+
         const { importProductsFromExcel } = await import("@/lib/utils/excel-import")
         const res = await importProductsFromExcel(e.target.files[0])
         if (!res.success) throw new Error(res.errors[0] || "Import failed")
@@ -88,7 +89,7 @@ export default function ProductsPage() {
         const list = await db.products.toArray()
         setProducts(list)
         toast.success(`Products imported: ${toSave.length}`)
-        
+
       } catch (error: any) {
         toast.error("Import failed: " + (error.message || error.toString()))
       } finally {
@@ -114,17 +115,18 @@ export default function ProductsPage() {
 
   const handleAddMockProduct = async () => {
     try {
-      const rand = Math.floor(Math.random()*10000)
+      setIsAddingMock(true)
+      const rand = Math.floor(Math.random() * 10000)
       const isIndexedDb = isIndexedDbMode()
-      
+
       const product = {
         id: crypto.randomUUID(),
         name: `Mock Product ${rand}`,
         sku: `SKU-${rand}`,
-        category: ["General","Tools","Food"][rand%3],
-        price: Number((Math.random()*1000+10).toFixed(2)),
-        cost_price: Number((Math.random()*800+5).toFixed(2)),
-        stock_quantity: Math.floor(Math.random()*100)+1,
+        category: ["General", "Tools", "Food"][rand % 3],
+        price: Number((Math.random() * 1000 + 10).toFixed(2)),
+        cost_price: Number((Math.random() * 800 + 5).toFixed(2)),
+        stock_quantity: Math.floor(Math.random() * 100) + 1,
         unit: "piece",
         hsn_code: "1234",
         gst_rate: 18,
@@ -150,7 +152,7 @@ export default function ProductsPage() {
           user_id: user.id,
         })
         if (error) throw error
-        
+
         // Refresh from Supabase
         const { data: dbProducts } = await supabase
           .from("products")
@@ -162,6 +164,8 @@ export default function ProductsPage() {
       }
     } catch (error: any) {
       toast.error("Failed to add mock product: " + (error.message || error.toString()))
+    } finally {
+      setIsAddingMock(false)
     }
   }
 
@@ -174,10 +178,20 @@ export default function ProductsPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <ExcelImport />
-          <Button type="button" variant="outline" onClick={handleAddMockProduct} title="Add a mock product" className="text-xs sm:text-sm">
-            <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-            <span className="hidden sm:inline">Add Mock Product</span>
-            <span className="sm:hidden">Mock</span>
+          <Button type="button" variant="outline" onClick={handleAddMockProduct} disabled={isAddingMock} title="Add a mock product" className="text-xs sm:text-sm">
+            {isAddingMock ? (
+              <>
+                <div className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                <span className="hidden sm:inline">Adding...</span>
+                <span className="sm:hidden">...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Add Mock Product</span>
+                <span className="sm:hidden">Mock</span>
+              </>
+            )}
           </Button>
           <Button asChild className="text-xs sm:text-sm">
             <Link href="/products/new">

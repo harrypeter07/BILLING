@@ -28,6 +28,7 @@ interface HeaderProps {
 export function Header({ title }: HeaderProps) {
   const router = useRouter()
   const [userEmail, setUserEmail] = useState<string>("")
+  const [storeName, setStoreName] = useState<string>("")
   const [initials, setInitials] = useState<string>("U")
   const [hasMounted, setHasMounted] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -48,6 +49,16 @@ export function Header({ title }: HeaderProps) {
             const session = JSON.parse(employeeSession)
             setUserEmail(session.employeeName || session.employeeId || "Employee")
             setInitials(session.employeeName?.charAt(0).toUpperCase() || session.employeeId?.charAt(0).toUpperCase() || "E")
+
+            // Fetch store name for employee
+            const storeId = session.storeId || localStorage.getItem("currentStoreId")
+            if (storeId) {
+              const supabase = createClient()
+              const { data: storeData } = await supabase.from("stores").select("name").eq("id", storeId).single()
+              if (storeData) {
+                setStoreName(storeData.name)
+              }
+            }
             return
           } catch (e) {
             // Fall through to Supabase check
@@ -55,7 +66,7 @@ export function Header({ title }: HeaderProps) {
         }
       }
 
-      // Check for Supabase user
+      // Check for Supabase user (admin)
       const supabase = createClient()
       const {
         data: { user },
@@ -63,6 +74,15 @@ export function Header({ title }: HeaderProps) {
       if (user?.email) {
         setUserEmail(user.email)
         setInitials(user.email.charAt(0).toUpperCase())
+
+        // Fetch store name for admin
+        const storeId = localStorage.getItem("currentStoreId")
+        if (storeId) {
+          const { data: storeData } = await supabase.from("stores").select("name").eq("id", storeId).eq("admin_user_id", user.id).single()
+          if (storeData) {
+            setStoreName(storeData.name)
+          }
+        }
       }
     }
     fetchUser()
@@ -71,29 +91,29 @@ export function Header({ title }: HeaderProps) {
   useEffect(() => {
     setHasMounted(true);
     setIsOnline(typeof navigator !== "undefined" ? navigator.onLine : true)
-    
+
     // Get current database type
     const dbType = getDatabaseType();
     setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
-    
+
     // Listen for database type changes
     const handleStorageChange = () => {
       const dbType = getDatabaseType();
       setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
     };
-    
+
     window.addEventListener('storage', handleStorageChange);
     const handleOnline = () => setIsOnline(true)
     const handleOffline = () => setIsOnline(false)
     window.addEventListener("online", handleOnline)
     window.addEventListener("offline", handleOffline)
-    
+
     // Also check periodically (in case changed in same tab)
     const interval = setInterval(() => {
       const dbType = getDatabaseType();
       setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
     }, 1000);
-    
+
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       window.removeEventListener("online", handleOnline)
@@ -151,21 +171,32 @@ export function Header({ title }: HeaderProps) {
       <div className="flex items-center gap-4">
         {/* Show current database type */}
         {hasMounted && (
-          <Badge 
-            variant={databaseType === 'Supabase' ? "default" : "secondary"} 
+          <Badge
+            variant={databaseType === 'Supabase' ? "default" : "secondary"}
             className="text-xs font-semibold"
           >
             {databaseType}
           </Badge>
         )}
-        
+
         {/* Show role badge prominently */}
         {role && !roleLoading && (
-          <Badge 
-            variant={isAdmin ? "default" : isEmployee ? "secondary" : "outline"} 
+          <Badge
+            variant={isAdmin ? "default" : isEmployee ? "secondary" : "outline"}
             className="text-xs font-semibold"
           >
             {role.charAt(0).toUpperCase() + role.slice(1)}
+          </Badge>
+        )}
+
+
+        {/* Store name badge */}
+        {storeName && (
+          <Badge
+            variant="outline"
+            className="text-xs font-semibold bg-primary/10"
+          >
+            🏪 {storeName}
           </Badge>
         )}
 
