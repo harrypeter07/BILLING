@@ -128,7 +128,14 @@ export default function InventoryReportPage() {
 						</CardTitle>
 					</CardHeader>
 					<CardContent>
-						<div className="text-3xl font-bold">{products.length}</div>
+						<UITooltip>
+							<TooltipTrigger asChild>
+								<div className="text-3xl font-bold cursor-help">{products.length}</div>
+							</TooltipTrigger>
+							<TooltipContent>
+								Total Products: {products.length}
+							</TooltipContent>
+						</UITooltip>
 					</CardContent>
 				</Card>
 
@@ -159,9 +166,16 @@ export default function InventoryReportPage() {
 						</CardTitle>
 					</CardHeader>
 					<CardContent>
-						<div className="text-3xl font-bold text-yellow-600">
-							{lowStockProducts.length}
-						</div>
+						<UITooltip>
+							<TooltipTrigger asChild>
+								<div className="text-3xl font-bold text-yellow-600 cursor-help">
+									{lowStockProducts.length}
+								</div>
+							</TooltipTrigger>
+							<TooltipContent>
+								Low Stock Items: {lowStockProducts.length}
+							</TooltipContent>
+						</UITooltip>
 						<p className="text-xs text-muted-foreground mt-1">≤ 10 units</p>
 					</CardContent>
 				</Card>
@@ -171,9 +185,16 @@ export default function InventoryReportPage() {
 						<CardTitle className="text-sm font-medium">Out of Stock</CardTitle>
 					</CardHeader>
 					<CardContent>
-						<div className="text-3xl font-bold text-red-600">
-							{outOfStockProducts.length}
-						</div>
+						<UITooltip>
+							<TooltipTrigger asChild>
+								<div className="text-3xl font-bold text-red-600 cursor-help">
+									{outOfStockProducts.length}
+								</div>
+							</TooltipTrigger>
+							<TooltipContent>
+								Out of Stock Items: {outOfStockProducts.length}
+							</TooltipContent>
+						</UITooltip>
 						<p className="text-xs text-muted-foreground mt-1">0 units</p>
 					</CardContent>
 				</Card>
