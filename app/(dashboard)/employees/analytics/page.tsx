@@ -251,7 +251,16 @@ export default function EmployeeAnalyticsPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{overallStats.totalRevenue.toLocaleString()}</div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">
+                  ₹{overallStats.totalRevenue.toLocaleString()}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Total Revenue: ₹{overallStats.totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              </TooltipContent>
+            </Tooltip>
             <p className="text-xs text-muted-foreground">Combined</p>
           </CardContent>
         </Card>
@@ -262,9 +271,16 @@ export default function EmployeeAnalyticsPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              ₹{overallStats.totalEmployees > 0 ? Math.round(overallStats.totalRevenue / overallStats.totalEmployees).toLocaleString() : 0}
-            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">
+                  ₹{overallStats.totalEmployees > 0 ? Math.round(overallStats.totalRevenue / overallStats.totalEmployees).toLocaleString() : 0}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Average per Employee: ₹{overallStats.totalEmployees > 0 ? (overallStats.totalRevenue / overallStats.totalEmployees).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : 0}</p>
+              </TooltipContent>
+            </Tooltip>
             <p className="text-xs text-muted-foreground">Revenue average</p>
           </CardContent>
         </Card>
