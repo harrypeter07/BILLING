@@ -1,235 +1,297 @@
-"use client"
+"use client";
 
-import { useEffect, useState, useMemo } from "react"
-import { useRouter } from "next/navigation"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent } from "@/components/ui/card"
-import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { MoreHorizontal, Pencil, Trash2, Search, Eye, Filter, X } from "lucide-react"
-import { createClient } from "@/lib/supabase/client"
-import { useToast } from "@/hooks/use-toast"
+import { useEffect, useState, useMemo } from "react";
+import { useRouter } from "next/navigation";
+import {
+	Table,
+	TableBody,
+	TableCell,
+	TableHead,
+	TableHeader,
+	TableRow,
+} from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+	Tooltip,
+	TooltipTrigger,
+	TooltipContent,
+} from "@/components/ui/tooltip";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "@/components/ui/select";
+import {
+	MoreHorizontal,
+	Pencil,
+	Trash2,
+	Search,
+	Eye,
+	Filter,
+	X,
+} from "lucide-react";
+import { createClient } from "@/lib/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface Customer {
-  id: string
-  name: string
-  email: string | null
-  phone: string | null
-  gstin: string | null
-  billing_address: string | null
+	id: string;
+	name: string;
+	email: string | null;
+	phone: string | null;
+	gstin: string | null;
+	billing_address: string | null;
 }
 
 interface CustomersTableProps {
-  customers: Customer[]
+	customers: Customer[];
 }
 
-export function CustomersTable({ customers: initialCustomers }: CustomersTableProps) {
-  const [customers, setCustomers] = useState(initialCustomers)
-  useEffect(() => {
-    console.log('[CustomersTable] props changed, count =', initialCustomers?.length || 0)
-    setCustomers(initialCustomers || [])
-  }, [initialCustomers])
-  const [searchTerm, setSearchTerm] = useState("")
-  const [selectedGstinFilter, setSelectedGstinFilter] = useState<string>("all")
-  const router = useRouter()
-  const { toast } = useToast()
+export function CustomersTable({
+	customers: initialCustomers,
+}: CustomersTableProps) {
+	const [customers, setCustomers] = useState(initialCustomers);
+	useEffect(() => {
+		console.log(
+			"[CustomersTable] props changed, count =",
+			initialCustomers?.length || 0
+		);
+		setCustomers(initialCustomers || []);
+	}, [initialCustomers]);
+	const [searchTerm, setSearchTerm] = useState("");
+	const [selectedGstinFilter, setSelectedGstinFilter] = useState<string>("all");
+	const router = useRouter();
+	const { toast } = useToast();
 
-  const filteredCustomers = useMemo(() => {
-    return customers.filter((customer) => {
-      // Search filter
-      const matchesSearch =
-        customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        customer.phone?.includes(searchTerm) ||
-        customer.gstin?.toLowerCase().includes(searchTerm.toLowerCase())
+	const filteredCustomers = useMemo(() => {
+		return customers.filter((customer) => {
+			// Search filter
+			const matchesSearch =
+				customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+				customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+				customer.phone?.includes(searchTerm) ||
+				customer.gstin?.toLowerCase().includes(searchTerm.toLowerCase());
 
-      // GSTIN filter
-      const matchesGstin =
-        selectedGstinFilter === "all" ||
-        (selectedGstinFilter === "has-gstin" && customer.gstin) ||
-        (selectedGstinFilter === "no-gstin" && !customer.gstin)
+			// GSTIN filter
+			const matchesGstin =
+				selectedGstinFilter === "all" ||
+				(selectedGstinFilter === "has-gstin" && customer.gstin) ||
+				(selectedGstinFilter === "no-gstin" && !customer.gstin);
 
-      return matchesSearch && matchesGstin
-    })
-  }, [customers, searchTerm, selectedGstinFilter])
+			return matchesSearch && matchesGstin;
+		});
+	}, [customers, searchTerm, selectedGstinFilter]);
 
-  const hasActiveFilters = selectedGstinFilter !== "all"
+	const hasActiveFilters = selectedGstinFilter !== "all";
 
-  const clearFilters = () => {
-    setSelectedGstinFilter("all")
-  }
+	const clearFilters = () => {
+		setSelectedGstinFilter("all");
+	};
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this customer?")) return
+	const handleDelete = async (id: string) => {
+		if (!confirm("Are you sure you want to delete this customer?")) return;
 
-    const supabase = createClient()
-    const { error } = await supabase.from("customers").delete().eq("id", id)
+		const supabase = createClient();
+		const { error } = await supabase.from("customers").delete().eq("id", id);
 
-    if (error) {
-      toast({
-        title: "Error",
-        description: "Failed to delete customer",
-        variant: "destructive",
-      })
-    } else {
-      setCustomers(customers.filter((c) => c.id !== id))
-      toast({
-        title: "Success",
-        description: "Customer deleted successfully",
-      })
-    }
-  }
+		if (error) {
+			toast({
+				title: "Error",
+				description: "Failed to delete customer",
+				variant: "destructive",
+			});
+		} else {
+			setCustomers(customers.filter((c) => c.id !== id));
+			toast({
+				title: "Success",
+				description: "Customer deleted successfully",
+			});
+		}
+	};
 
-  return (
-    <Card>
-      <CardContent className="p-4 sm:p-6">
-        <div className="mb-4 space-y-4">
-          {/* Search and Total Count Row */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div className="relative flex-1 w-full sm:w-auto">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search customers by name, email, phone, or GSTIN..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
-              <span className="font-medium text-foreground">
-                Total:{" "}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <span className="font-semibold cursor-help">{customers.length}</span>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    Total Customers: {customers.length}
-                  </TooltipContent>
-                </Tooltip>
-              </span>
-              {filteredCustomers.length !== customers.length && (
-                <span className="text-muted-foreground">
-                  | Showing:{" "}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="font-semibold text-foreground cursor-help">{filteredCustomers.length}</span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      Filtered Results: {filteredCustomers.length} of {customers.length}
-                    </TooltipContent>
-                  </Tooltip>
-                </span>
-              )}
-            </div>
-          </div>
+	return (
+		<Card>
+			<CardContent className="p-4 sm:p-6">
+				<div className="mb-4 space-y-4">
+					{/* Search and Total Count Row */}
+					<div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+						<div className="relative flex-1 w-full sm:w-auto">
+							<Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+							<Input
+								placeholder="Search customers by name, email, phone, or GSTIN..."
+								value={searchTerm}
+								onChange={(e) => setSearchTerm(e.target.value)}
+								className="pl-9"
+							/>
+						</div>
+						<div className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
+							<span className="font-medium text-foreground">
+								Total:{" "}
+								<Tooltip>
+									<TooltipTrigger asChild>
+										<span className="font-semibold cursor-help">
+											{customers.length}
+										</span>
+									</TooltipTrigger>
+									<TooltipContent>
+										Total Customers: {customers.length}
+									</TooltipContent>
+								</Tooltip>
+							</span>
+							{filteredCustomers.length !== customers.length && (
+								<span className="text-muted-foreground">
+									| Showing:{" "}
+									<Tooltip>
+										<TooltipTrigger asChild>
+											<span className="font-semibold text-foreground cursor-help">
+												{filteredCustomers.length}
+											</span>
+										</TooltipTrigger>
+										<TooltipContent>
+											Filtered Results: {filteredCustomers.length} of{" "}
+											{customers.length}
+										</TooltipContent>
+									</Tooltip>
+								</span>
+							)}
+						</div>
+					</div>
 
-          {/* Filters Row */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Filter className="h-4 w-4" />
-              <span className="font-medium">Filters:</span>
-            </div>
-            
-            {/* GSTIN Filter */}
-            <Select value={selectedGstinFilter} onValueChange={setSelectedGstinFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="GSTIN" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Customers</SelectItem>
-                <SelectItem value="has-gstin">Has GSTIN</SelectItem>
-                <SelectItem value="no-gstin">No GSTIN</SelectItem>
-              </SelectContent>
-            </Select>
+					{/* Filters Row */}
+					<div className="flex flex-wrap items-center gap-3">
+						<div className="flex items-center gap-2 text-sm text-muted-foreground">
+							<Filter className="h-4 w-4" />
+							<span className="font-medium">Filters:</span>
+						</div>
 
-            {/* Clear Filters Button */}
-            {hasActiveFilters && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearFilters}
-                className="h-9 gap-2"
-              >
-                <X className="h-4 w-4" />
-                Clear Filters
-              </Button>
-            )}
-          </div>
-        </div>
+						{/* GSTIN Filter */}
+						<Select
+							value={selectedGstinFilter}
+							onValueChange={setSelectedGstinFilter}
+						>
+							<SelectTrigger className="w-[150px]">
+								<SelectValue placeholder="GSTIN" />
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="all">All Customers</SelectItem>
+								<SelectItem value="has-gstin">Has GSTIN</SelectItem>
+								<SelectItem value="no-gstin">No GSTIN</SelectItem>
+							</SelectContent>
+						</Select>
 
-        {filteredCustomers.length === 0 ? (
-          <div className="py-12 text-center">
-            <p className="text-muted-foreground">No customers found</p>
-            <Button asChild className="mt-4">
-              <a href="/customers/new">Add Your First Customer</a>
-            </Button>
-          </div>
-        ) : (
-          <div className="overflow-x-auto -mx-6 px-6">
-            <div className="min-w-[800px]">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="min-w-[150px]">Name</TableHead>
-                    <TableHead className="min-w-[180px]">Email</TableHead>
-                    <TableHead className="min-w-[120px]">Phone</TableHead>
-                    <TableHead className="min-w-[120px]">GSTIN</TableHead>
-                    <TableHead className="min-w-[200px]">Address</TableHead>
-                    <TableHead className="w-[70px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-              <TableBody>
-                {filteredCustomers.map((customer) => (
-                  <TableRow 
-                    key={customer.id}
-                    className="cursor-pointer hover:bg-muted/50 transition-colors"
-                    onClick={(e) => {
-                      // Don't navigate if clicking on the dropdown menu
-                      if ((e.target as HTMLElement).closest('[role="menuitem"], button')) {
-                        return
-                      }
-                      router.push(`/customers/${customer.id}/edit`)
-                    }}
-                  >
-                    <TableCell className="font-medium">{customer.name}</TableCell>
-                    <TableCell>{customer.email || "-"}</TableCell>
-                    <TableCell>{customer.phone || "-"}</TableCell>
-                    <TableCell>{customer.gstin || "-"}</TableCell>
-                    <TableCell className="max-w-xs truncate">{customer.billing_address || "-"}</TableCell>
-                    <TableCell onClick={(e) => e.stopPropagation()}>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => router.push(`/customers/${customer.id}/edit`)}>
-                            <Eye className="mr-2 h-4 w-4" />
-                            View/Edit Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => router.push(`/customers/${customer.id}/edit`)}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDelete(customer.id)} className="text-destructive">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  )
+						{/* Clear Filters Button */}
+						{hasActiveFilters && (
+							<Button
+								variant="ghost"
+								size="sm"
+								onClick={clearFilters}
+								className="h-9 gap-2"
+							>
+								<X className="h-4 w-4" />
+								Clear Filters
+							</Button>
+						)}
+					</div>
+				</div>
+
+				{filteredCustomers.length === 0 ? (
+					<div className="py-12 text-center">
+						<p className="text-muted-foreground">No customers found</p>
+						<Button asChild className="mt-4">
+							<a href="/customers/new">Add Your First Customer</a>
+						</Button>
+					</div>
+				) : (
+					<div className="overflow-x-auto -mx-6 px-6">
+						<div className="min-w-[800px]">
+							<Table>
+								<TableHeader>
+									<TableRow>
+										<TableHead className="min-w-[150px]">Name</TableHead>
+										<TableHead className="min-w-[180px]">Email</TableHead>
+										<TableHead className="min-w-[120px]">Phone</TableHead>
+										<TableHead className="min-w-[120px]">GSTIN</TableHead>
+										<TableHead className="min-w-[200px]">Address</TableHead>
+										<TableHead className="w-[70px]"></TableHead>
+									</TableRow>
+								</TableHeader>
+								<TableBody>
+									{filteredCustomers.map((customer) => (
+										<TableRow
+											key={customer.id}
+											className="cursor-pointer hover:bg-muted/50 transition-colors"
+											onClick={(e) => {
+												// Don't navigate if clicking on the dropdown menu
+												if (
+													(e.target as HTMLElement).closest(
+														'[role="menuitem"], button'
+													)
+												) {
+													return;
+												}
+												router.push(`/customers/${customer.id}/edit`);
+											}}
+										>
+											<TableCell className="font-medium">
+												{customer.name}
+											</TableCell>
+											<TableCell>{customer.email || "-"}</TableCell>
+											<TableCell>{customer.phone || "-"}</TableCell>
+											<TableCell>{customer.gstin || "-"}</TableCell>
+											<TableCell className="max-w-xs truncate">
+												{customer.billing_address || "-"}
+											</TableCell>
+											<TableCell onClick={(e) => e.stopPropagation()}>
+												<DropdownMenu>
+													<DropdownMenuTrigger asChild>
+														<Button variant="ghost" size="icon">
+															<MoreHorizontal className="h-4 w-4" />
+														</Button>
+													</DropdownMenuTrigger>
+													<DropdownMenuContent align="end">
+														<DropdownMenuItem
+															onClick={() =>
+																router.push(`/customers/${customer.id}/edit`)
+															}
+														>
+															<Eye className="mr-2 h-4 w-4" />
+															View/Edit Details
+														</DropdownMenuItem>
+														<DropdownMenuItem
+															onClick={() =>
+																router.push(`/customers/${customer.id}/edit`)
+															}
+														>
+															<Pencil className="mr-2 h-4 w-4" />
+															Edit
+														</DropdownMenuItem>
+														<DropdownMenuItem
+															onClick={() => handleDelete(customer.id)}
+															className="text-destructive"
+														>
+															<Trash2 className="mr-2 h-4 w-4" />
+															Delete
+														</DropdownMenuItem>
+													</DropdownMenuContent>
+												</DropdownMenu>
+											</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+							</Table>
+						</div>
+					</div>
+				)}
+			</CardContent>
+		</Card>
+	);
 }
