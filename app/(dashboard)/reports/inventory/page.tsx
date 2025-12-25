@@ -130,11 +130,11 @@ export default function InventoryReportPage() {
 					<CardContent>
 						<UITooltip>
 							<TooltipTrigger asChild>
-								<div className="text-3xl font-bold cursor-help">{products.length}</div>
+								<div className="text-3xl font-bold cursor-help">
+									{products.length}
+								</div>
 							</TooltipTrigger>
-							<TooltipContent>
-								Total Products: {products.length}
-							</TooltipContent>
+							<TooltipContent>Total Products: {products.length}</TooltipContent>
 						</UITooltip>
 					</CardContent>
 				</Card>
