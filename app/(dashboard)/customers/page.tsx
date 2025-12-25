@@ -13,11 +13,12 @@ import { isIndexedDbMode } from "@/lib/utils/db-mode"
 export default function CustomersPage() {
   const [customers, setCustomers] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isAddingMock, setIsAddingMock] = useState(false)
 
   const fetchCustomers = useCallback(async () => {
     const isIndexedDb = isIndexedDbMode()
     setIsLoading(true)
-    
+
     if (isIndexedDb) {
       // IndexedDB mode - load from Dexie
       try {
@@ -37,7 +38,7 @@ export default function CustomersPage() {
         const supabase = createClient()
         const authType = localStorage.getItem("authType")
         let userId: string | null = null
-        
+
         // For employees, get admin_user_id from store
         if (authType === "employee") {
           const empSession = localStorage.getItem("employeeSession")
@@ -45,7 +46,7 @@ export default function CustomersPage() {
             try {
               const session = JSON.parse(empSession)
               const storeId = session.storeId
-              
+
               if (storeId) {
                 // Get store to find admin_user_id
                 const { data: store } = await supabase
@@ -53,7 +54,7 @@ export default function CustomersPage() {
                   .select('admin_user_id')
                   .eq('id', storeId)
                   .single()
-                
+
                 if (store?.admin_user_id) {
                   userId = store.admin_user_id
                 } else {
@@ -146,9 +147,10 @@ export default function CustomersPage() {
 
   const handleAddMockCustomer = async () => {
     try {
+      setIsAddingMock(true)
       const rand = Math.floor(Math.random() * 10000)
       const isIndexedDb = isIndexedDbMode()
-      
+
       const mockCustomer = {
         id: crypto.randomUUID(),
         name: `Mock Customer ${rand}`,
@@ -159,7 +161,7 @@ export default function CustomersPage() {
         shipping_address: `${rand + 1} Street, Sector ${Math.floor(1 + Math.random() * 50)}, City`,
         notes: `Mock customer generated at ${new Date().toLocaleString()}`,
       }
-      
+
       if (isIndexedDb) {
         // Save to Dexie
         await storageManager.addCustomer(mockCustomer as any)
@@ -179,14 +181,14 @@ export default function CustomersPage() {
             try {
               const session = JSON.parse(empSession)
               const storeId = session.storeId
-              
+
               if (storeId) {
                 const { data: store } = await supabase
                   .from('stores')
                   .select('admin_user_id')
                   .eq('id', storeId)
                   .single()
-                
+
                 if (store?.admin_user_id) {
                   userId = store.admin_user_id
                 } else {
@@ -231,6 +233,8 @@ export default function CustomersPage() {
       }
     } catch (error: any) {
       toast.error("Failed to add mock customer: " + (error.message || error.toString()))
+    } finally {
+      setIsAddingMock(false)
     }
   }
 
@@ -242,16 +246,27 @@ export default function CustomersPage() {
           <p className="text-sm sm:text-base text-muted-foreground">Manage your customer database</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button 
-            type="button" 
-            variant="outline" 
+          <Button
+            type="button"
+            variant="outline"
             onClick={handleAddMockCustomer}
+            disabled={isAddingMock}
             title="Add a mock customer with random data"
             className="text-xs sm:text-sm"
           >
-            <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-            <span className="hidden sm:inline">Add Mock Customer</span>
-            <span className="sm:hidden">Mock</span>
+            {isAddingMock ? (
+              <>
+                <div className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                <span className="hidden sm:inline">Adding...</span>
+                <span className="sm:hidden">...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Add Mock Customer</span>
+                <span className="sm:hidden">Mock</span>
+              </>
+            )}
           </Button>
           <Button asChild className="text-xs sm:text-sm">
             <Link href="/customers/new">

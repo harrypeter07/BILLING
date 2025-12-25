@@ -151,7 +151,7 @@ export default function AdminAnalyticsPage() {
   return (
     <div className="space-y-4 md:space-y-6">
       <div>
-        <h1 className="text-2xl sm:text-3xl font-bold">Analytics Dashboard</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">Reports & Analytics Dashboard</h1>
         <p className="text-sm sm:text-base text-muted-foreground">Business performance and insights</p>
       </div>
 
@@ -225,30 +225,30 @@ export default function AdminAnalyticsPage() {
             <div className="overflow-x-auto">
               <ResponsiveContainer width="100%" height={300} minHeight={250}>
                 <PieChart>
-                <Pie
-                  data={analytics.invoiceStatus}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ status, count, percent }) => 
-                    percent > 0.05 ? `${status}: ${count}` : '' // Only show label if slice is > 5%
-                  }
-                  outerRadius={80}
-                  fill="#8884d8"
-                  dataKey="count"
-                >
-                  {analytics.invoiceStatus.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  formatter={(value: any, name: any, props: any) => [
-                    `${props.payload.status}: ${value}`,
-                    'Count'
-                  ]}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+                  <Pie
+                    data={analytics.invoiceStatus}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ status, count, percent }) =>
+                      percent > 0.05 ? `${status}: ${count}` : '' // Only show label if slice is > 5%
+                    }
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="count"
+                  >
+                    {analytics.invoiceStatus.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: any, name: any, props: any) => [
+                      `${props.payload.status}: ${value}`,
+                      'Count'
+                    ]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
             </div>
           </CardContent>
         </Card>
