@@ -122,7 +122,15 @@ export function Sidebar() {
           {/* Navigation */}
           <nav className="flex-1 space-y-1 overflow-y-auto p-4">
             {navigation.map((item) => {
-              const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
+              // More precise active state logic
+              // Check for exact match first, then check if it's a child route
+              // But exclude cases where a more specific route exists
+              const isExactMatch = pathname === item.href
+              const isChildRoute = pathname.startsWith(`${item.href}/`) && !navigation.some(
+                navItem => navItem.href !== item.href && pathname.startsWith(navItem.href)
+              )
+              const isActive = isExactMatch || isChildRoute
+
               return (
                 <Link
                   key={item.name}
