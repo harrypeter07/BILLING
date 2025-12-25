@@ -9,133 +9,18 @@ import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { storageManager } from "@/lib/storage-manager"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
+import { useCustomers, useInvalidateQueries } from "@/lib/hooks/use-cached-data"
 
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const { data: customers = [], isLoading } = useCustomers()
+  const { invalidateCustomers } = useInvalidateQueries()
   const [isAddingMock, setIsAddingMock] = useState(false)
-
-  const fetchCustomers = useCallback(async () => {
-    const isIndexedDb = isIndexedDbMode()
-    setIsLoading(true)
-
-    if (isIndexedDb) {
-      // IndexedDB mode - load from Dexie
-      try {
-        const list = await db.customers.toArray()
-        console.log('[CustomersPage][Dexie] fetched', list?.length || 0, 'customers')
-        setCustomers(list || [])
-      } catch (error) {
-        console.error('[CustomersPage][Dexie] load failed:', error)
-        toast.error('Failed to load customers')
-        setCustomers([])
-      } finally {
-        setIsLoading(false)
-      }
-    } else {
-      // Supabase mode - load from Supabase
-      try {
-        const supabase = createClient()
-        const authType = localStorage.getItem("authType")
-        let userId: string | null = null
-
-        // For employees, get admin_user_id from store
-        if (authType === "employee") {
-          const empSession = localStorage.getItem("employeeSession")
-          if (empSession) {
-            try {
-              const session = JSON.parse(empSession)
-              const storeId = session.storeId
-
-              if (storeId) {
-                // Get store to find admin_user_id
-                const { data: store } = await supabase
-                  .from('stores')
-                  .select('admin_user_id')
-                  .eq('id', storeId)
-                  .single()
-
-                if (store?.admin_user_id) {
-                  userId = store.admin_user_id
-                } else {
-                  console.warn('[CustomersPage] Store not found or invalid for employee')
-                  setCustomers([])
-                  setIsLoading(false)
-                  return
-                }
-              } else {
-                console.warn('[CustomersPage] No storeId in employee session')
-                setCustomers([])
-                setIsLoading(false)
-                return
-              }
-            } catch (e: any) {
-              console.error('[CustomersPage] Employee session error:', e)
-              setCustomers([])
-              setIsLoading(false)
-              return
-            }
-          } else {
-            console.warn('[CustomersPage] Employee session not found')
-            setCustomers([])
-            setIsLoading(false)
-            return
-          }
-        } else {
-          // For admin users
-          const {
-            data: { user },
-          } = await supabase.auth.getUser()
-          if (!user) {
-            setCustomers([])
-            setIsLoading(false)
-            return
-          }
-          userId = user.id
-        }
-
-        if (!userId) {
-          setCustomers([])
-          setIsLoading(false)
-          return
-        }
-
-        // Fetch customers for the determined user_id
-        const { data: dbCustomers, error } = await supabase
-          .from("customers")
-          .select("*")
-          .eq("user_id", userId)
-          .order("created_at", { ascending: false })
-
-        if (error) {
-          console.error('[CustomersPage][Supabase] Query error:', error)
-          throw error
-        }
-
-        console.log('[CustomersPage][Supabase] fetched', dbCustomers?.length || 0, 'customers')
-        setCustomers(dbCustomers || [])
-      } catch (error) {
-        console.error('[CustomersPage][Supabase] load failed:', error)
-        toast.error('Failed to load customers')
-        setCustomers([])
-      } finally {
-        setIsLoading(false)
-      }
-    }
-  }, [])
-
-  const initializedRef = useRef(false)
-  useEffect(() => {
-    if (initializedRef.current) return
-    initializedRef.current = true
-    fetchCustomers()
-  }, [fetchCustomers])
 
   // Listen for customer creation events
   useEffect(() => {
     const handleCustomerCreated = () => {
       console.log('[CustomersPage] Customer created event received, refetching customers.')
-      fetchCustomers()
+      invalidateCustomers()
     }
 
     window.addEventListener('customer:created', handleCustomerCreated)
@@ -143,7 +28,7 @@ export default function CustomersPage() {
     return () => {
       window.removeEventListener('customer:created', handleCustomerCreated)
     }
-  }, [fetchCustomers])
+  }, [invalidateCustomers])
 
   const handleAddMockCustomer = async () => {
     try {
@@ -165,8 +50,8 @@ export default function CustomersPage() {
       if (isIndexedDb) {
         // Save to Dexie
         await storageManager.addCustomer(mockCustomer as any)
-        const list = await db.customers.toArray()
-        setCustomers(list)
+        // Refresh customer list via cache invalidation
+        await invalidateCustomers()
         toast.success(`Mock customer "${mockCustomer.name}" added!`)
       } else {
         // Save to Supabase
@@ -228,8 +113,8 @@ export default function CustomersPage() {
         })
         if (error) throw error
         toast.success(`Mock customer "${mockCustomer.name}" added!`)
-        // Refresh data using fetchCustomers
-        await fetchCustomers()
+        // Refresh data using cache invalidation
+        await invalidateCustomers()
       }
     } catch (error: any) {
       toast.error("Failed to add mock customer: " + (error.message || error.toString()))

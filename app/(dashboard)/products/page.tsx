@@ -10,58 +10,23 @@ import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType, isIndexedDbMode } from "@/lib/utils/db-mode"
 import { storageManager } from "@/lib/storage-manager"
+import { useProducts, useInvalidateQueries } from "@/lib/hooks/use-cached-data"
 
 export default function ProductsPage() {
-  const [products, setProducts] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const { data: products = [], isLoading } = useProducts()
+  const { invalidateProducts } = useInvalidateQueries()
   const [isAddingMock, setIsAddingMock] = useState(false)
-
-  const fetchProducts = async () => {
-    const isIndexedDb = isIndexedDbMode()
-    if (isIndexedDb) {
-      try {
-        setIsLoading(true)
-        const list = await db.products.toArray()
-        console.log('[ProductsPage][Dexie] fetched', list?.length || 0, 'products')
-        if (!list || list.length === 0) { toast.warning('No products found') }
-        setProducts(list)
-      } catch (e) {
-        console.error('[ProductsPage][Dexie] load failed:', e)
-      } finally {
-        setIsLoading(false)
-      }
-    } else {
-      setIsLoading(true)
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { setProducts([]); setIsLoading(false); return }
-      const { data: dbProducts } = await supabase
-        .from("products")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("created_at", { ascending: false })
-      setProducts(dbProducts || [])
-      setIsLoading(false)
-    }
-  }
-
-  const initializedRef = useRef(false)
-  useEffect(() => {
-    if (initializedRef.current) return
-    initializedRef.current = true
-    fetchProducts()
-  }, [])
 
   // Listen for product deletion events
   useEffect(() => {
     const handleProductDeleted = () => {
-      fetchProducts()
+      invalidateProducts()
     }
     window.addEventListener('products:deleted', handleProductDeleted)
     return () => {
       window.removeEventListener('products:deleted', handleProductDeleted)
     }
-  }, [])
+  }, [invalidateProducts])
 
   // Excel import logic
   function ExcelImport() {
@@ -86,8 +51,7 @@ export default function ProductsPage() {
         for (const p of toSave) {
           await storageManager.addProduct(p as any)
         }
-        const list = await db.products.toArray()
-        setProducts(list)
+        await invalidateProducts()
         toast.success(`Products imported: ${toSave.length}`)
 
       } catch (error: any) {
@@ -134,32 +98,20 @@ export default function ProductsPage() {
       }
 
       if (isIndexedDb) {
-        // Save to Dexie
         await storageManager.addProduct(product as any)
-        const list = await db.products.toArray()
-        setProducts(list)
+        await invalidateProducts()
         toast.success(`Mock product "${product.name}" added!`)
       } else {
-        // Save to Supabase
+        // Supabase
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          toast.error("Not authenticated")
-          return
-        }
+        if (!user) { toast.error("User not authenticated"); return }
         const { error } = await supabase.from("products").insert({
           ...product,
-          user_id: user.id,
+          user_id: user.id
         })
         if (error) throw error
-
-        // Refresh from Supabase
-        const { data: dbProducts } = await supabase
-          .from("products")
-          .select("*")
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false })
-        setProducts(dbProducts || [])
+        await invalidateProducts()
         toast.success(`Mock product "${product.name}" added!`)
       }
     } catch (error: any) {

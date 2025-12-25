@@ -10,47 +10,13 @@ import { db } from "@/lib/dexie-client"
 import { storageManager } from "@/lib/storage-manager"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
+import { useInvoices, useInvalidateQueries } from "@/lib/hooks/use-cached-data"
 
 export default function InvoicesPage() {
-  const [invoices, setInvoices] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: invoices = [], isLoading: loading } = useInvoices()
+  const { invalidateInvoices } = useInvalidateQueries()
   const [isAddingMock, setIsAddingMock] = useState(false)
   const { isAdmin, isEmployee } = useUserRole()
-
-  useEffect(() => {
-    (async () => {
-      try {
-        setLoading(true)
-        const isIndexedDb = isIndexedDbMode()
-
-        if (isIndexedDb) {
-          // Load from Dexie
-          const list = await db.invoices.toArray()
-          // Also load customer names
-          const customers = await db.customers.toArray()
-          const customersMap = new Map(customers.map(c => [c.id, c]))
-          const invoicesWithCustomers = list.map(inv => ({
-            ...inv,
-            customers: customersMap.get(inv.customer_id) ? { name: customersMap.get(inv.customer_id)!.name } : null
-          }))
-          setInvoices(invoicesWithCustomers)
-        } else {
-          // Load from Supabase
-          const supabase = createClient()
-          const { data: { user } } = await supabase.auth.getUser()
-          if (!user) { setInvoices([]); return }
-          const { data } = await supabase
-            .from('invoices')
-            .select('*, customers(name)')
-            .eq('user_id', user.id)
-            .order('created_at', { ascending: false })
-          setInvoices(data || [])
-        }
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [])
 
   const handleAddMockInvoice = async () => {
     try {
@@ -111,14 +77,7 @@ export default function InvoicesPage() {
           created_at: new Date().toISOString(),
         }]
         await storageManager.addInvoice(invoiceData, items)
-        const list = await db.invoices.toArray()
-        const customersList = await db.customers.toArray()
-        const customersMap = new Map(customersList.map(c => [c.id, c]))
-        const invoicesWithCustomers = list.map(inv => ({
-          ...inv,
-          customers: customersMap.get(inv.customer_id) ? { name: customersMap.get(inv.customer_id)!.name } : null
-        }))
-        setInvoices(invoicesWithCustomers)
+        await invalidateInvoices()
       } else {
         // Load from Supabase
         const supabase = createClient()
@@ -193,12 +152,7 @@ export default function InvoicesPage() {
         if (itemsError) throw itemsError
 
         // Refresh invoices
-        const { data: updatedInvoices } = await supabase
-          .from('invoices')
-          .select('*, customers(name)')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false })
-        setInvoices(updatedInvoices || [])
+        await invalidateInvoices()
       }
     } catch (error: any) {
       console.error('[Invoices] Error adding mock invoice:', error)

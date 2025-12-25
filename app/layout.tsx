@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "sonner"
 import { SyncStatus } from "@/components/sync-status"
 import { LicenseGuard } from "@/components/license-guard"
+import { QueryProvider } from "@/lib/providers/query-provider"
 import "./globals.css"
 
 const _geist = Geist({ subsets: ["latin"] })
@@ -76,18 +77,20 @@ export default function RootLayout({
         <link rel="icon" href="/favicon.ico" />
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
-      <body 
+      <body
         className="font-sans antialiased"
         suppressHydrationWarning
       >
-        <LicenseGuard>
-        {children}
-        <div className="fixed bottom-3 right-3 rounded-md border bg-background/80 px-3 py-2 shadow">
-          <SyncStatus />
-        </div>
-        </LicenseGuard>
-        <Toaster />
-        <SonnerToaster />
+        <QueryProvider>
+          <LicenseGuard>
+            {children}
+            <div className="fixed bottom-3 right-3 rounded-md border bg-background/80 px-3 py-2 shadow">
+              <SyncStatus />
+            </div>
+          </LicenseGuard>
+          <Toaster />
+          <SonnerToaster />
+        </QueryProvider>
         <Analytics />
       </body>
     </html>

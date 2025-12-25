@@ -12,7 +12,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
 } from "recharts"
 import { createClient } from "@/lib/supabase/client"
@@ -20,6 +20,7 @@ import { useToast } from "@/hooks/use-toast"
 import { db } from "@/lib/dexie-client"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { getDatabaseType } from "@/lib/utils/db-mode"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface AnalyticsData {
   totalRevenue: number
@@ -156,47 +157,77 @@ export default function AdminAnalyticsPage() {
       </div>
 
       {/* Key Metrics */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">₹{analytics.totalRevenue.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">All time</p>
-          </CardContent>
-        </Card>
+      <TooltipProvider>
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="text-2xl font-bold truncate cursor-help">₹{analytics.totalRevenue.toLocaleString()}</div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Total Revenue: ₹{analytics.totalRevenue.toLocaleString()}</p>
+                </TooltipContent>
+              </Tooltip>
+              <p className="text-xs text-muted-foreground">All time</p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Invoices</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{analytics.totalInvoices}</div>
-            <p className="text-xs text-muted-foreground">Created</p>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Total Invoices</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="text-2xl font-bold truncate cursor-help">{analytics.totalInvoices}</div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Total Invoices: {analytics.totalInvoices}</p>
+                </TooltipContent>
+              </Tooltip>
+              <p className="text-xs text-muted-foreground">Created</p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Average Order Value</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">₹{analytics.averageOrderValue.toLocaleString()}</div>
-            <p className="text-xs text-muted-foreground">Per invoice</p>
-          </CardContent>
-        </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Average Order Value</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="text-2xl font-bold truncate cursor-help">₹{analytics.averageOrderValue.toLocaleString()}</div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Average Order Value: ₹{analytics.averageOrderValue.toLocaleString()}</p>
+                </TooltipContent>
+              </Tooltip>
+              <p className="text-xs text-muted-foreground">Per invoice</p>
+            </CardContent>
+          </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{analytics.totalCustomers}</div>
-            <p className="text-xs text-muted-foreground">Active</p>
-          </CardContent>
-        </Card>
-      </div>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="text-2xl font-bold truncate cursor-help">{analytics.totalCustomers}</div>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Total Customers: {analytics.totalCustomers}</p>
+                </TooltipContent>
+              </Tooltip>
+              <p className="text-xs text-muted-foreground">Active</p>
+            </CardContent>
+          </Card>
+        </div>
+      </TooltipProvider>
 
       {/* Charts */}
       <div className="grid gap-4 md:gap-6 md:grid-cols-2">
@@ -210,7 +241,7 @@ export default function AdminAnalyticsPage() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="month" />
                 <YAxis />
-                <Tooltip />
+                <RechartsTooltip />
                 <Line type="monotone" dataKey="sales" stroke="#3b82f6" />
               </LineChart>
             </ResponsiveContainer>
@@ -241,7 +272,7 @@ export default function AdminAnalyticsPage() {
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip
+                  <RechartsTooltip
                     formatter={(value: any, name: any, props: any) => [
                       `${props.payload.status}: ${value}`,
                       'Count'
