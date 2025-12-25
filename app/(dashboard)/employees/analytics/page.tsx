@@ -10,6 +10,7 @@ import { useUserRole } from "@/lib/hooks/use-user-role"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { BarChart3, TrendingUp, DollarSign, FileText, Users } from "lucide-react"
 import Link from "next/link"
 
@@ -55,7 +56,7 @@ export default function EmployeeAnalyticsPage() {
         try {
           const supabase = createClient()
           const { data: { user } } = await supabase.auth.getUser()
-          
+
           if (!user) {
             console.warn("[EmployeeAnalytics] No user found, using IndexedDB fallback")
             const allEmployees = await db.employees.toArray()
@@ -296,33 +297,91 @@ export default function EmployeeAnalyticsPage() {
                       <TableHead className="min-w-[120px]">Actions</TableHead>
                     </TableRow>
                   </TableHeader>
-                <TableBody>
-                  {employees.map((emp) => (
-                    <TableRow key={emp.id}>
-                      <TableCell className="font-medium">{emp.name}</TableCell>
-                      <TableCell className="font-mono text-sm">{emp.employee_id}</TableCell>
-                      <TableCell className="text-right">{emp.invoiceCount}</TableCell>
-                      <TableCell className="text-right font-semibold">₹{emp.totalRevenue.toLocaleString()}</TableCell>
-                      <TableCell className="text-right">₹{Math.round(emp.avgInvoiceValue).toLocaleString()}</TableCell>
-                      <TableCell>
-                        {emp.lastInvoiceDate
-                          ? new Date(emp.lastInvoiceDate).toLocaleDateString()
-                          : "Never"}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={emp.is_active ? "default" : "secondary"}>
-                          {emp.is_active ? "Active" : "Inactive"}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Link href={`/employees/${emp.id}`} className="text-sm text-primary hover:underline">
-                          View Details
-                        </Link>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  <TableBody>
+                    {employees.map((emp) => (
+                      <TableRow key={emp.id}>
+                        <TableCell className="font-medium">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="truncate block max-w-[150px] cursor-help">{emp.name}</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{emp.name}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="truncate block max-w-[100px] cursor-help">{emp.employee_id}</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Employee ID: {emp.employee_id}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="cursor-help">{emp.invoiceCount}</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>{emp.invoiceCount} invoice{emp.invoiceCount !== 1 ? 's' : ''} created</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell className="text-right font-semibold">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="truncate block max-w-[130px] cursor-help">₹{emp.totalRevenue.toLocaleString()}</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Total Revenue: ₹{emp.totalRevenue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="truncate block max-w-[110px] cursor-help">₹{Math.round(emp.avgInvoiceValue).toLocaleString()}</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Average per Invoice: ₹{emp.avgInvoiceValue.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="truncate block max-w-[120px] cursor-help">
+                                {emp.lastInvoiceDate
+                                  ? new Date(emp.lastInvoiceDate).toLocaleDateString()
+                                  : "Never"}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>
+                                {emp.lastInvoiceDate
+                                  ? `Last invoice: ${new Date(emp.lastInvoiceDate).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' })}`
+                                  : "No invoices created yet"}
+                              </p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={emp.is_active ? "default" : "secondary"}>
+                            {emp.is_active ? "Active" : "Inactive"}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>
+                          <Link href={`/employees/${emp.id}`} className="text-sm text-primary hover:underline">
+                            View Details
+                          </Link>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
             </div>
           )}
