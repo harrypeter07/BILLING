@@ -10,92 +10,45 @@ import Link from "next/link"
 import { ArrowLeft, Printer } from "lucide-react"
 import { InvoiceActions } from "@/components/features/invoices/invoice-actions"
 import { InvoicePrint } from "@/components/features/invoices/invoice-print"
-import { db } from "@/lib/dexie-client"
 import { useToast } from "@/hooks/use-toast"
+import { useInvoice } from "@/lib/hooks/use-cached-data"
 
 export default function InvoiceDetailPageClient() {
   const params = useParams()
   const router = useRouter()
   const { toast } = useToast()
   const invoiceId = params.id as string
-  const [invoice, setInvoice] = useState<any>(null)
-  const [items, setItems] = useState<any[]>([])
-  const [customer, setCustomer] = useState<any>(null)
+  const { data: invoiceData, isLoading: loading, error } = useInvoice(invoiceId)
   const [settings, setSettings] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+
+  // Extract invoice, items, and customer from the hook data
+  const invoice = invoiceData
+  const items = invoiceData?.invoice_items || []
+  const customer = invoiceData?.customers
 
   useEffect(() => {
-    fetchInvoice()
-  }, [invoiceId])
-
-  const fetchInvoice = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      {
-        // Supabase mode - use API route to avoid RLS issues
-        try {
-          // Determine if this is an employee session
-          const authType = localStorage.getItem("authType")
-          let apiUrl = `/api/invoices/${invoiceId}`
-          
-          if (authType === "employee") {
-            const employeeSession = localStorage.getItem("employeeSession")
-            if (employeeSession) {
-              const session = JSON.parse(employeeSession)
-              // Add store_id to query params for employee access
-              apiUrl += `?store_id=${encodeURIComponent(session.storeId)}`
-            }
-          }
-
-          // Use API route to bypass RLS issues
-          const response = await fetch(apiUrl)
-          const data = await response.json()
-
-          if (!response.ok || !data.invoice) {
-            throw new Error(data.error || "Invoice not found")
-          }
-
-          setInvoice(data.invoice)
-          setItems(data.invoice.invoice_items || [])
-          
-          if (data.invoice.customers) {
-            setCustomer(data.invoice.customers)
-          }
-
-          // Set business settings if returned by API
-          if (data.profile) {
-            setSettings(data.profile)
-          }
-        } catch (apiError: any) {
-          // Fallback to IndexedDB (offline)
-          console.warn("API fetch failed, trying IndexedDB:", apiError?.message || apiError)
-          const inv = await db.invoices.get(invoiceId)
-          if (!inv) {
-            setError(apiError?.message || "Invoice not found")
-            return
-          }
-          setInvoice(inv)
-          const invoiceItems = await db.invoice_items
-            .where("invoice_id")
-            .equals(invoiceId)
-            .toArray()
-          setItems(invoiceItems || [])
-          if (inv.customer_id) {
-            const cust = await db.customers.get(inv.customer_id)
-            setCustomer(cust)
-          }
-        }
-      }
-    } catch (err: any) {
-      console.error("Error fetching invoice:", err)
-      setError(err.message || "Failed to fetch invoice")
-    } finally {
-      setLoading(false)
+    if (error) {
+      toast({ title: "Error", description: "Invoice not found", variant: "destructive" })
     }
-  }
+  }, [error, toast])
+
+  // Fetch business settings for printing
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const response = await fetch(`/api/invoices/${invoiceId}`)
+        const data = await response.json()
+        if (data.profile) {
+          setSettings(data.profile)
+        }
+      } catch (err) {
+        console.warn("Failed to fetch business settings:", err)
+      }
+    }
+    if (invoiceId) {
+      fetchSettings()
+    }
+  }, [invoiceId])
 
   if (loading) {
     return (
@@ -111,7 +64,7 @@ export default function InvoiceDetailPageClient() {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
         <div className="text-center space-y-4">
-          <p className="text-destructive">{error || "Invoice not found"}</p>
+          <p className="text-destructive">{error ? String(error) : "Invoice not found"}</p>
           <Button asChild>
             <Link href="/invoices">Back to Invoices</Link>
           </Button>
@@ -144,8 +97,8 @@ export default function InvoiceDetailPageClient() {
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
           <Badge className={statusColors[invoice.status]}>{invoice.status.toUpperCase()}</Badge>
-          <InvoicePrint 
-            invoiceId={invoiceId} 
+          <InvoicePrint
+            invoiceId={invoiceId}
             invoiceNumber={invoice.invoice_number}
             invoiceData={{
               ...invoice,
@@ -154,8 +107,8 @@ export default function InvoiceDetailPageClient() {
               profile: settings
             }}
           />
-          <InvoiceActions 
-            invoiceId={invoiceId} 
+          <InvoiceActions
+            invoiceId={invoiceId}
             invoiceNumber={invoice.invoice_number}
             invoiceData={{
               ...invoice,
@@ -233,30 +186,30 @@ export default function InvoiceDetailPageClient() {
           <div className="overflow-x-auto -mx-4 md:mx-0">
             <div className="inline-block min-w-full align-middle">
               <Table className="min-w-full">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Description</TableHead>
-                  <TableHead>Qty</TableHead>
-                  <TableHead>Unit Price</TableHead>
-                  <TableHead>Discount %</TableHead>
-                  {invoice.is_gst_invoice && <TableHead>GST %</TableHead>}
-                  {invoice.is_gst_invoice && <TableHead>GST Amount</TableHead>}
-                  <TableHead>Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items?.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>{item.description}</TableCell>
-                    <TableCell>{item.quantity}</TableCell>
-                    <TableCell>₹{item.unit_price.toFixed(2)}</TableCell>
-                    <TableCell>{item.discount_percent}%</TableCell>
-                    {invoice.is_gst_invoice && <TableCell>{item.gst_rate}%</TableCell>}
-                    {invoice.is_gst_invoice && <TableCell>₹{item.gst_amount.toFixed(2)}</TableCell>}
-                    <TableCell>₹{item.line_total.toFixed(2)}</TableCell>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Description</TableHead>
+                    <TableHead>Qty</TableHead>
+                    <TableHead>Unit Price</TableHead>
+                    <TableHead>Discount %</TableHead>
+                    {invoice.is_gst_invoice && <TableHead>GST %</TableHead>}
+                    {invoice.is_gst_invoice && <TableHead>GST Amount</TableHead>}
+                    <TableHead>Total</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
+                </TableHeader>
+                <TableBody>
+                  {items?.map((item: any) => (
+                    <TableRow key={item.id}>
+                      <TableCell>{item.description}</TableCell>
+                      <TableCell>{item.quantity}</TableCell>
+                      <TableCell>₹{item.unit_price.toFixed(2)}</TableCell>
+                      <TableCell>{item.discount_percent}%</TableCell>
+                      {invoice.is_gst_invoice && <TableCell>{item.gst_rate}%</TableCell>}
+                      {invoice.is_gst_invoice && <TableCell>₹{item.gst_amount.toFixed(2)}</TableCell>}
+                      <TableCell>₹{item.line_total.toFixed(2)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
               </Table>
             </div>
           </div>

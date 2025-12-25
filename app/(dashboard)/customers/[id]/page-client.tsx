@@ -12,19 +12,27 @@ import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { useToast } from "@/hooks/use-toast"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
+import { useCustomer } from "@/lib/hooks/use-cached-data"
 
 export default function CustomerDetailPageClient() {
   const params = useParams()
   const router = useRouter()
   const { toast } = useToast()
-  const [customer, setCustomer] = useState<any>(null)
+  const { data: customer, isLoading, error } = useCustomer(params.id as string)
   const [invoices, setInvoices] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    fetchCustomer()
-    fetchInvoices()
-  }, [params.id])
+    if (customer) {
+      fetchInvoices()
+    }
+  }, [customer])
+
+  useEffect(() => {
+    if (error) {
+      toast({ title: "Error", description: "Customer not found", variant: "destructive" })
+      router.push("/customers")
+    }
+  }, [error, router, toast])
 
   // Refetch invoices when invoice is created
   useEffect(() => {
@@ -38,81 +46,13 @@ export default function CustomerDetailPageClient() {
     }
   }, [params.id])
 
-  const fetchCustomer = async () => {
-    try {
-      setIsLoading(true)
-      const isIndexedDb = isIndexedDbMode()
-      
-      if (isIndexedDb) {
-        // Load from IndexedDB
-        const localCust = await db.customers?.get?.(params.id as string)
-        if (!localCust) {
-          toast({ title: "Error", description: "Customer not found", variant: "destructive" })
-          router.push("/customers")
-          return
-        }
-        setCustomer(localCust)
-      } else {
-        // Load from Supabase
-        const supabase = createClient()
-        const authType = localStorage.getItem("authType")
-        let userId: string | null = null
-
-        if (authType === "employee") {
-          const empSession = localStorage.getItem("employeeSession")
-          if (empSession) {
-            const session = JSON.parse(empSession)
-            const storeId = session.storeId
-            if (storeId) {
-              const { data: store } = await supabase
-                .from('stores')
-                .select('admin_user_id')
-                .eq('id', storeId)
-                .single()
-              if (store?.admin_user_id) {
-                userId = store.admin_user_id
-              }
-            }
-          }
-        } else {
-          const { data: { user } } = await supabase.auth.getUser()
-          if (user) userId = user.id
-        }
-
-        if (!userId) {
-          toast({ title: "Error", description: "Please log in to continue", variant: "destructive" })
-          router.push("/login")
-          return
-        }
-
-        const { data: cust, error } = await supabase
-          .from("customers")
-          .select("*")
-          .eq("id", params.id)
-          .eq("user_id", userId)
-          .single()
-
-        if (error || !cust) {
-          toast({ title: "Error", description: "Customer not found", variant: "destructive" })
-          router.push("/customers")
-          return
-        }
-        setCustomer(cust)
-      }
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to load customer", variant: "destructive" })
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
   const fetchInvoices = async () => {
     try {
       const customerId = params.id as string
       console.log('[CustomerDetail] Fetching invoices for customer:', customerId)
-      
+
       const isIndexedDb = isIndexedDbMode()
-      
+
       if (isIndexedDb) {
         // Load from IndexedDB - fetch invoices and their items
         // First, get all invoices to debug
@@ -120,10 +60,10 @@ export default function CustomerDetailPageClient() {
         console.log('[CustomerDetail][IndexedDB] All invoices:', allInvoices?.length || 0)
         console.log('[CustomerDetail][IndexedDB] Sample invoice customer_id:', allInvoices?.[0]?.customer_id)
         console.log('[CustomerDetail][IndexedDB] Looking for customer_id:', customerId)
-        
+
         const localInvs = await db.invoices?.where("customer_id").equals(customerId).toArray()
         console.log('[CustomerDetail][IndexedDB] Found invoices:', localInvs?.length || 0)
-        
+
         if (localInvs && localInvs.length > 0) {
           // Fetch invoice items for each invoice
           const invoicesWithItems = await Promise.all(
@@ -357,7 +297,7 @@ export default function CustomerDetailPageClient() {
                       const itemsCount = items.length
                       const gstAmount = Number(invoice.cgst_amount || 0) + Number(invoice.sgst_amount || 0) + Number(invoice.igst_amount || 0)
                       return (
-                        <TableRow 
+                        <TableRow
                           key={invoice.id}
                           className="cursor-pointer hover:bg-muted/50 transition-colors"
                           onClick={() => router.push(`/invoices/${invoice.id}`)}
@@ -383,10 +323,10 @@ export default function CustomerDetailPageClient() {
                           <TableCell>
                             <Badge
                               variant={
-                                invoice.status === "paid" 
-                                  ? "default" 
-                                  : invoice.status === "sent" 
-                                    ? "secondary" 
+                                invoice.status === "paid"
+                                  ? "default"
+                                  : invoice.status === "sent"
+                                    ? "secondary"
                                     : invoice.status === "cancelled"
                                       ? "destructive"
                                       : "outline"

@@ -13,6 +13,7 @@ import { db } from "@/lib/dexie-client"
 import { useToast } from "@/hooks/use-toast"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { useEmployee } from "@/lib/hooks/use-cached-data"
 
 interface Employee {
   id: string
@@ -22,7 +23,7 @@ interface Employee {
   employee_id: string
   role: string
   store_id?: string
-  store?: { name: string; store_code: string }
+  stores?: { name: string; store_code: string }
   created_at?: string
   is_active?: boolean
 }
@@ -32,8 +33,7 @@ export default function EmployeeDetailPageClient() {
   const router = useRouter()
   const { toast } = useToast()
   const { isAdmin, loading: roleLoading } = useUserRole()
-  const [employee, setEmployee] = useState<Employee | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const { data: employee, isLoading, error } = useEmployee(params.id as string)
   const [invoices, setInvoices] = useState<any[]>([])
 
   useEffect(() => {
@@ -41,37 +41,20 @@ export default function EmployeeDetailPageClient() {
       router.push("/employees")
       return
     }
-    fetchEmployee()
-    fetchInvoices()
-  }, [params.id, isAdmin, roleLoading, router])
+  }, [isAdmin, roleLoading, router])
 
-  const fetchEmployee = async () => {
-    try {
-      setIsLoading(true)
-      const supabase = createClient()
-      const { data: emp, error } = await supabase
-        .from("employees")
-        .select("*, stores(name, store_code)")
-        .eq("id", params.id)
-        .single()
-      
-      if (error || !emp) {
-        const localEmp = await db.employees?.get?.(params.id as string)
-        if (!localEmp) {
-          toast({ title: "Error", description: "Employee not found", variant: "destructive" })
-          router.push("/employees")
-          return
-        }
-        setEmployee(localEmp as Employee)
-      } else {
-        setEmployee(emp as Employee)
-      }
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to load employee", variant: "destructive" })
-    } finally {
-      setIsLoading(false)
+  useEffect(() => {
+    if (employee) {
+      fetchInvoices()
     }
-  }
+  }, [employee])
+
+  useEffect(() => {
+    if (error) {
+      toast({ title: "Error", description: "Employee not found", variant: "destructive" })
+      router.push("/employees")
+    }
+  }, [error, router, toast])
 
   const fetchInvoices = async () => {
     try {
@@ -82,7 +65,7 @@ export default function EmployeeDetailPageClient() {
         .eq("employee_id", params.id)
         .order("created_at", { ascending: false })
         .limit(10)
-      
+
       if (!error && invs) {
         setInvoices(invs)
       } else {
@@ -166,13 +149,13 @@ export default function EmployeeDetailPageClient() {
               </div>
               <Badge variant="outline">{employee.role || "Employee"}</Badge>
             </div>
-            {employee.store && (
+            {employee.stores && (
               <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Building2 className="h-4 w-4" />
                   Store
                 </div>
-                <p className="font-medium">{employee.store.name} ({employee.store.store_code})</p>
+                <p className="font-medium">{employee.stores.name} ({employee.stores.store_code})</p>
               </div>
             )}
             {employee.created_at && (
