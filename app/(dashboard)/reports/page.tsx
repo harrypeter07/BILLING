@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { DollarSign, TrendingUp, Package, Receipt } from "lucide-react"
 import { db } from "@/lib/dexie-client"
 
@@ -62,7 +63,14 @@ export default function ReportsPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{totalRevenue.toLocaleString("en-IN")}</div>
+            <UITooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">₹{totalRevenue.toLocaleString("en-IN")}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Total Revenue: ₹{totalRevenue.toLocaleString("en-IN")}
+              </TooltipContent>
+            </UITooltip>
             <p className="text-xs text-muted-foreground">All invoices</p>
           </CardContent>
         </Card>
@@ -73,7 +81,14 @@ export default function ReportsPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{paidRevenue.toLocaleString("en-IN")}</div>
+            <UITooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">₹{paidRevenue.toLocaleString("en-IN")}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Paid Revenue: ₹{paidRevenue.toLocaleString("en-IN")}
+              </TooltipContent>
+            </UITooltip>
             <p className="text-xs text-muted-foreground">Collected payments</p>
           </CardContent>
         </Card>
@@ -84,7 +99,14 @@ export default function ReportsPage() {
             <Receipt className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{totalGST.toLocaleString("en-IN")}</div>
+            <UITooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">₹{totalGST.toLocaleString("en-IN")}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Total GST: ₹{totalGST.toLocaleString("en-IN")}
+              </TooltipContent>
+            </UITooltip>
             <p className="text-xs text-muted-foreground">Tax collected</p>
           </CardContent>
         </Card>
@@ -95,8 +117,24 @@ export default function ReportsPage() {
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalProducts}</div>
-            <p className="text-xs text-muted-foreground">{lowStockCount} low stock items</p>
+            <UITooltip>
+              <TooltipTrigger asChild>
+                <div className="text-2xl font-bold cursor-help">{totalProducts}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Total Products: {totalProducts}
+              </TooltipContent>
+            </UITooltip>
+            <p className="text-xs text-muted-foreground">
+              <UITooltip>
+                <TooltipTrigger asChild>
+                  <span className="cursor-help">{lowStockCount} low stock items</span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Low Stock Items: {lowStockCount}
+                </TooltipContent>
+              </UITooltip>
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -116,9 +154,25 @@ export default function ReportsPage() {
                   <div key={status} className="flex items-center justify-between">
                     <div>
                       <p className="font-medium capitalize">{status}</p>
-                      <p className="text-sm text-muted-foreground">{count} invoices</p>
+                      <p className="text-sm text-muted-foreground">
+                        <UITooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-help">{count} invoices</span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {status.charAt(0).toUpperCase() + status.slice(1)} Invoices: {count}
+                          </TooltipContent>
+                        </UITooltip>
+                      </p>
                     </div>
-                    <p className="font-medium">₹{amount.toLocaleString("en-IN")}</p>
+                    <UITooltip>
+                      <TooltipTrigger asChild>
+                        <p className="font-medium text-sm md:text-base truncate max-w-[120px] cursor-help">₹{amount.toLocaleString("en-IN")}</p>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {status.charAt(0).toUpperCase() + status.slice(1)} Amount: ₹{amount.toLocaleString("en-IN")}
+                      </TooltipContent>
+                    </UITooltip>
                   </div>
                 )
               })}
@@ -137,21 +191,42 @@ export default function ReportsPage() {
                   <p className="font-medium">CGST</p>
                   <p className="text-sm text-muted-foreground">Central GST</p>
                 </div>
-                <p className="font-medium">₹{(invoices?.reduce((sum, inv) => sum + Number(inv.cgst_amount || 0), 0) || 0).toLocaleString("en-IN")}</p>
+                <UITooltip>
+                  <TooltipTrigger asChild>
+                    <p className="font-medium text-sm md:text-base truncate max-w-[120px] cursor-help">₹{(invoices?.reduce((sum, inv) => sum + Number(inv.cgst_amount || 0), 0) || 0).toLocaleString("en-IN")}</p>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    CGST: ₹{(invoices?.reduce((sum, inv) => sum + Number(inv.cgst_amount || 0), 0) || 0).toLocaleString("en-IN")}
+                  </TooltipContent>
+                </UITooltip>
               </div>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium">SGST</p>
                   <p className="text-sm text-muted-foreground">State GST</p>
                 </div>
-                <p className="font-medium">₹{(invoices?.reduce((sum, inv) => sum + Number(inv.sgst_amount || 0), 0) || 0).toLocaleString("en-IN")}</p>
+                <UITooltip>
+                  <TooltipTrigger asChild>
+                    <p className="font-medium text-sm md:text-base truncate max-w-[120px] cursor-help">₹{(invoices?.reduce((sum, inv) => sum + Number(inv.sgst_amount || 0), 0) || 0).toLocaleString("en-IN")}</p>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    SGST: ₹{(invoices?.reduce((sum, inv) => sum + Number(inv.sgst_amount || 0), 0) || 0).toLocaleString("en-IN")}
+                  </TooltipContent>
+                </UITooltip>
               </div>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium">IGST</p>
                   <p className="text-sm text-muted-foreground">Integrated GST</p>
                 </div>
-                <p className="font-medium">₹{(invoices?.reduce((sum, inv) => sum + Number(inv.igst_amount || 0), 0) || 0).toLocaleString("en-IN")}</p>
+                <UITooltip>
+                  <TooltipTrigger asChild>
+                    <p className="font-medium text-sm md:text-base truncate max-w-[120px] cursor-help">₹{(invoices?.reduce((sum, inv) => sum + Number(inv.igst_amount || 0), 0) || 0).toLocaleString("en-IN")}</p>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    IGST: ₹{(invoices?.reduce((sum, inv) => sum + Number(inv.igst_amount || 0), 0) || 0).toLocaleString("en-IN")}
+                  </TooltipContent>
+                </UITooltip>
               </div>
             </div>
           </CardContent>

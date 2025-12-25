@@ -55,8 +55,28 @@ export async function generateEmployeeIdSupabase(storeId: string, employeeName: 
   }
   
   if (!candidate) {
-    // Last resort: random 4-char alphanumeric
-    candidate = Math.random().toString(36).substring(2, 6).toUpperCase()
+    // Last resort: random 4-char alphanumeric (check for duplicates)
+    let attempts = 0
+    while (!candidate && attempts < 100) {
+      const randomId = Math.random().toString(36).substring(2, 6).toUpperCase()
+      const { data: existing } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("store_id", storeId)
+        .eq("employee_id", randomId)
+        .limit(1)
+      
+      if (!existing || existing.length === 0) {
+        candidate = randomId
+        break
+      }
+      attempts++
+    }
+    
+    // If still no candidate after 100 attempts, throw error
+    if (!candidate) {
+      throw new Error("Unable to generate unique employee ID. Too many employees in this store.")
+    }
   }
   
   return candidate

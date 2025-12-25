@@ -2,6 +2,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { DollarSign, Receipt, Users, Package, TrendingUp, AlertCircle, UserCog, Boxes, Shield, LogOut, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import Link from "next/link";
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/dexie-client';
@@ -177,27 +178,48 @@ export default function DashboardPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{totalRevenue.toLocaleString("en-IN")}</div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">₹{totalRevenue.toLocaleString("en-IN")}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Total Revenue: ₹{totalRevenue.toLocaleString("en-IN")}
+              </TooltipContent>
+            </Tooltip>
             <p className="text-xs text-muted-foreground">From paid invoices</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => router.push("/invoices")}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Total Invoices</CardTitle>
             <Receipt className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{invoicesCount || 0}</div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-2xl font-bold cursor-help">{invoicesCount || 0}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Total Invoices: {invoicesCount || 0}
+              </TooltipContent>
+            </Tooltip>
             <p className="text-xs text-muted-foreground">All time</p>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="cursor-pointer hover:bg-muted/50 transition-colors" onClick={() => router.push("/customers")}>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium">Customers</CardTitle>
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{customersCount || 0}</div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-2xl font-bold cursor-help">{customersCount || 0}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Active Customers: {customersCount || 0}
+              </TooltipContent>
+            </Tooltip>
             <p className="text-xs text-muted-foreground">Active customers</p>
           </CardContent>
         </Card>
@@ -207,7 +229,14 @@ export default function DashboardPage() {
             <Package className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{productsCount || 0}</div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-2xl font-bold cursor-help">{productsCount || 0}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Products in Inventory: {productsCount || 0}
+              </TooltipContent>
+            </Tooltip>
             <p className="text-xs text-muted-foreground">In inventory</p>
           </CardContent>
         </Card>
@@ -224,13 +253,20 @@ export default function DashboardPage() {
             {recentInvoices && recentInvoices.length > 0 ? (
               <div className="space-y-4">
                 {recentInvoices.map((invoice: any) => (
-                  <div key={invoice.id || invoice.invoice_number} className="flex items-center justify-between">
+                  <div key={invoice.id || invoice.invoice_number} className="flex items-center justify-between cursor-pointer hover:bg-muted/50 p-2 rounded transition-colors" onClick={() => router.push(`/invoices/${invoice.id}`)}>
                     <div>
                       <p className="font-medium">{invoice.invoice_number || invoice.id}</p>
                       <p className="text-sm text-muted-foreground">{invoice.customer_name || 'Customer'}</p>
                     </div>
                     <div className="text-right">
-                      <p className="font-medium">₹{Number(invoice.total_amount || invoice.total).toLocaleString("en-IN")}</p>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <p className="font-medium text-sm md:text-base truncate max-w-[120px] cursor-help">₹{Number(invoice.total_amount || invoice.total).toLocaleString("en-IN")}</p>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Amount: ₹{Number(invoice.total_amount || invoice.total).toLocaleString("en-IN")}
+                        </TooltipContent>
+                      </Tooltip>
                       <p className="text-sm text-muted-foreground capitalize">{invoice.status || "n/a"}</p>
                     </div>
                   </div>

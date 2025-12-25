@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
@@ -244,7 +245,14 @@ export default function InventoryPage() {
             <Boxes className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{totalProducts}</div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-3xl font-bold cursor-help">{totalProducts}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Total Products: {totalProducts} unique listing{totalProducts !== 1 ? 's' : ''}
+              </TooltipContent>
+            </Tooltip>
             <p className="text-xs text-muted-foreground mt-1">Unique listings being tracked</p>
           </CardContent>
         </Card>
@@ -254,7 +262,14 @@ export default function InventoryPage() {
             <Layers className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{totalUnits.toLocaleString("en-IN")}</div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-3xl font-bold cursor-help">{totalUnits.toLocaleString("en-IN")}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Total Units: {totalUnits.toLocaleString("en-IN")} across all warehouses
+              </TooltipContent>
+            </Tooltip>
             <p className="text-xs text-muted-foreground mt-1">Across all warehouses</p>
           </CardContent>
         </Card>
@@ -264,7 +279,14 @@ export default function InventoryPage() {
             <TrendingUp className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{formatCurrency(totalValue)}</div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">{formatCurrency(totalValue)}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Total Value: {formatCurrency(totalValue)}
+              </TooltipContent>
+            </Tooltip>
             <p className="text-xs text-muted-foreground mt-1">Potential sales value</p>
           </CardContent>
         </Card>
@@ -274,7 +296,14 @@ export default function InventoryPage() {
             <PiggyBank className="h-5 w-5 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">{formatCurrency(estimatedProfit)}</div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">{formatCurrency(estimatedProfit)}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Projected Profit: {formatCurrency(estimatedProfit)}
+              </TooltipContent>
+            </Tooltip>
             <p className="text-xs text-muted-foreground mt-1">Based on cost vs. sale price</p>
           </CardContent>
         </Card>
@@ -310,11 +339,20 @@ export default function InventoryPage() {
                         SKU: {product.sku || "N/A"} • {product.category || "Uncategorized"}
                       </p>
                     </div>
-                    <Badge variant="secondary" className="border-yellow-200 text-yellow-700">
-                      {product.unit === 'piece' 
-                        ? `${Math.round(Number(product.stock_quantity || 0))} ${product.unit || "units"}`
-                        : `${Number(product.stock_quantity || 0).toLocaleString("en-IN")} ${product.unit || "units"}`}
-                    </Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge variant="secondary" className="border-yellow-200 text-yellow-700 cursor-help">
+                          {product.unit === 'piece' 
+                            ? `${Math.round(Number(product.stock_quantity || 0))} ${product.unit || "units"}`
+                            : `${Number(product.stock_quantity || 0).toLocaleString("en-IN")} ${product.unit || "units"}`}
+                        </Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {product.unit === 'piece' 
+                          ? `Stock: ${Math.round(Number(product.stock_quantity || 0))} ${product.unit || "units"}`
+                          : `Stock: ${Number(product.stock_quantity || 0).toLocaleString("en-IN")} ${product.unit || "units"}`}
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                 ))}
               </div>
@@ -326,7 +364,16 @@ export default function InventoryPage() {
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle className="flex items-center gap-2">
               <AlertCircle className="h-5 w-5 text-red-600" />
-              Out of Stock ({outOfStockProducts.length})
+              Out of Stock (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="cursor-help">{outOfStockProducts.length}</span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {outOfStockProducts.length} product{outOfStockProducts.length !== 1 ? 's' : ''} out of stock
+                </TooltipContent>
+              </Tooltip>
+              )
             </CardTitle>
             {outOfStockProducts.length > 0 && (
               <Badge variant="destructive" className="border border-destructive/20">
@@ -378,22 +425,50 @@ export default function InventoryPage() {
                 >
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-semibold">{category.category}</p>
-                    <Badge variant="outline">{category.products} items</Badge>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Badge variant="outline" className="cursor-help">{category.products} items</Badge>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        {category.products} product{category.products !== 1 ? 's' : ''} in {category.category}
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                   <div className="mt-3 space-y-2 text-xs text-muted-foreground">
                     <div className="flex justify-between">
                       <span>Units in stock</span>
-                      <span className="font-medium text-foreground">{category.units}</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="font-medium text-foreground cursor-help">{category.units}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Units in stock: {category.units}
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                     <div className="flex justify-between">
                       <span>Inventory value</span>
-                      <span className="font-medium text-foreground">
-                        {formatCurrency(category.value)}
-                      </span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="font-medium text-foreground truncate text-sm max-w-[120px] text-right cursor-help">
+                            {formatCurrency(category.value)}
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Value: {formatCurrency(category.value)}
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                     <div className="flex justify-between">
                       <span>Low stock</span>
-                      <span className="font-medium text-foreground">{category.lowStock}</span>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="font-medium text-foreground cursor-help">{category.lowStock}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Low stock items: {category.lowStock}
+                        </TooltipContent>
+                      </Tooltip>
                     </div>
                   </div>
                 </div>
@@ -428,13 +503,27 @@ export default function InventoryPage() {
                     <div className="mt-3 space-y-2 text-xs text-muted-foreground">
                       <div className="flex justify-between">
                         <span>Stock</span>
-                        <span className="font-medium text-foreground">
-                          {qty} {product.unit || "units"}
-                        </span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="font-medium text-foreground cursor-help">
+                              {qty} {product.unit || "units"}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Stock: {qty} {product.unit || "units"}
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
                       <div className="flex justify-between">
                         <span>Value</span>
-                        <span className="font-medium text-foreground">{formatCurrency(value)}</span>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="font-medium text-foreground truncate text-sm max-w-[120px] text-right cursor-help">{formatCurrency(value)}</span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            Value: {formatCurrency(value)}
+                          </TooltipContent>
+                        </Tooltip>
                       </div>
                       {product.gst_rate != null && (
                         <div className="flex justify-between">
@@ -538,25 +627,63 @@ export default function InventoryPage() {
                         <TableCell className="text-xs text-muted-foreground">
                           {product.category || "Uncategorized"}
                         </TableCell>
-                        <TableCell className="text-right">{qty.toLocaleString("en-IN")}</TableCell>
+                        <TableCell className="text-right">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="cursor-help">{qty.toLocaleString("en-IN")}</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Stock: {qty.toLocaleString("en-IN")} {product.unit || "units"}
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
                         <TableCell className="text-right">{product.unit || "units"}</TableCell>
                         <TableCell className="text-right">
-                          {formatCurrency(Number(product.price || 0))}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-sm md:text-base truncate max-w-[100px] inline-block cursor-help">{formatCurrency(Number(product.price || 0))}</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Price: {formatCurrency(Number(product.price || 0))}
+                            </TooltipContent>
+                          </Tooltip>
                         </TableCell>
                         <TableCell className="text-right">
-                          {product.cost_price != null ? formatCurrency(Number(product.cost_price)) : "—"}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-sm md:text-base truncate max-w-[100px] inline-block cursor-help">{product.cost_price != null ? formatCurrency(Number(product.cost_price)) : "—"}</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Cost: {product.cost_price != null ? formatCurrency(Number(product.cost_price)) : "N/A"}
+                            </TooltipContent>
+                          </Tooltip>
                         </TableCell>
                         <TableCell className="text-right">
-                          {formatCurrency(qty * Number(product.price || 0))}
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="text-sm md:text-base truncate max-w-[120px] inline-block cursor-help">{formatCurrency(qty * Number(product.price || 0))}</span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Stock Value: {formatCurrency(qty * Number(product.price || 0))}
+                            </TooltipContent>
+                          </Tooltip>
                         </TableCell>
                         <TableCell className="text-center">
-                          <Badge
-                            variant={
-                              status === "out" ? "destructive" : status === "low" ? "secondary" : "default"
-                            }
-                          >
-                            {status === "out" ? "Out of stock" : status === "low" ? "Low stock" : "In stock"}
-                          </Badge>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Badge
+                                variant={
+                                  status === "out" ? "destructive" : status === "low" ? "secondary" : "default"
+                                }
+                                className="cursor-help"
+                              >
+                                {status === "out" ? "Out of stock" : status === "low" ? "Low stock" : "In stock"}
+                              </Badge>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              Status: {status === "out" ? "Out of stock - needs immediate replenishment" : status === "low" ? "Low stock - consider reordering soon" : "Adequate stock levels"}
+                            </TooltipContent>
+                          </Tooltip>
                         </TableCell>
                       </TableRow>
                     )

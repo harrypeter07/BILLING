@@ -15,7 +15,6 @@ import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 
 export default function EmployeeLoginPage() {
-  const [storeName, setStoreName] = useState("")
   const [employeeId, setEmployeeId] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
@@ -53,7 +52,6 @@ export default function EmployeeLoginPage() {
     
     checkExistingSession()
   }, [])
-  const isExcel = false
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -61,240 +59,121 @@ export default function EmployeeLoginPage() {
     setError(null)
 
     try {
-      // ALWAYS check Supabase FIRST for employee credentials
-      // This ensures login works from remote devices and incognito mode
-      const supabase = createClient()
+      // Validate input
+      if (!employeeId || !employeeId.trim()) {
+        throw new Error("Please enter your Employee ID")
+      }
+
+      if (!password || !password.trim()) {
+        throw new Error("Please enter your password")
+      }
+
+      // ALWAYS check Supabase for employee credentials
+      // Employees are always stored in Supabase for remote device login
+      const upperEmployeeId = employeeId.toUpperCase().trim()
+      const trimmedPassword = password.trim()
       
-      // Try Supabase first (even in Excel mode, employees should be in Supabase)
-      try {
-        // Find store by name OR store_code (case-insensitive, trimmed)
-        const trimmedStoreName = storeName.trim()
-        const upperStoreName = trimmedStoreName.toUpperCase()
-        
-        // Use API route to fetch stores (bypasses RLS issues with direct Supabase calls)
-        
-        let stores: any[] = []
-        let storeError: any = null
-        
-        try {
-          // Fetch all stores via API (this works even with RLS)
-          const storesResponse = await fetch('/api/stores?all=true')
-          const storesData = await storesResponse.json()
-          
-          // Log only if error occurs
-          
-          if (!storesResponse.ok) {
-            throw new Error(`API Error: ${storesData.error || storesResponse.statusText}`)
-          }
-          
-          if (!storesData.stores || storesData.stores.length === 0) {
-            throw new Error("No stores found in database")
-          }
-          
-          // Filter stores by code or name (client-side filtering)
-          // Try exact match first
-          stores = storesData.stores.filter((s: any) => {
-            const nameMatch = s.name?.toLowerCase().trim() === trimmedStoreName.toLowerCase()
-            const codeMatch = s.store_code?.toUpperCase().trim() === upperStoreName
-            return nameMatch || codeMatch
-          })
-          
-          // If no exact match, try partial name match
-          if (stores.length === 0) {
-            const partialMatch = storesData.stores.filter((s: any) =>
-              s.name?.toLowerCase().includes(trimmedStoreName.toLowerCase())
-            )
-            
-            if (partialMatch.length > 0) {
-              stores = [partialMatch[0]]
-            }
-          }
-          
-          // Store search completed
-        } catch (apiError: any) {
-          console.error("[EmployeeLogin] Stores API call failed:", apiError)
-          storeError = apiError
-          
-          // Error handled below
-        }
-        
-        if (storeError) {
-          throw new Error(
-            `Failed to fetch stores: ${storeError.message}\n\n` +
-            `Please ensure the stores API is accessible.`
-          )
-        }
-        
-        // Get the matched store (stores array already contains filtered results)
-        const store = stores && stores.length > 0 ? stores[0] : null
-        
-        if (!stores || stores.length === 0 || !store) {
-          // Fetch all stores to show what's available
-          try {
-            const storesResponse = await fetch('/api/stores?all=true')
-            const storesData = await storesResponse.json()
-            
-            const availableStores = storesData.stores?.map((s: any) => 
-              `"${s.name}" (code: ${s.store_code})`
-            ).join(', ') || "No stores found"
-            
-            throw new Error(
-              `Store not found: "${trimmedStoreName}" (searched as code: "${upperStoreName}").\n\n` +
-              `Available stores: ${availableStores}\n\n` +
-              `Please enter the exact Store Name or Store Code from the list above.`
-            )
-          } catch (apiError: any) {
-            throw new Error(
-              `Store not found: "${trimmedStoreName}".\n\n` +
-              `Could not fetch available stores. Please try again.`
-            )
-          }
-        }
-        
-        if (store) {
-          // Verify store belongs to an admin
-          if (!store.admin_user_id) {
-            throw new Error("Access denied: Store must be created by an admin")
-          }
-
-          // Find employee - ensure employee belongs to this store
-          const upperEmployeeId = employeeId.toUpperCase().trim()
-          
-          const employeeResponse = await fetch('/api/employees/lookup', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              employee_id: upperEmployeeId,
-              store_id: store.id
-            })
-          })
-          
-          const employeeData = await employeeResponse.json()
-          
-          if (!employeeResponse.ok || !employeeData.employee) {
-            throw new Error(
-              employeeData.error || 
-              `Employee "${upperEmployeeId}" not found in store "${store.name}" (${store.store_code}).\n\n` +
-              `Please verify:\n` +
-              `1. Employee ID is correct\n` +
-              `2. Employee belongs to this store`
-            )
-          }
-          
-          const employee = employeeData.employee
-
-          // Verify employee has a valid store_id that matches the store
-          if (!employee.store_id || employee.store_id !== store.id) {
-            throw new Error("Invalid employee-store association")
-          }
-
-          // Check password
-          const passwordMatches = employee.password === password || employee.employee_id === password
-          if (!passwordMatches) {
-            throw new Error("Invalid password. Please check your password or try using your Employee ID as password.")
-          }
-
-            // Create session
-            const session = {
-              employeeId: employee.employee_id,
-              employeeName: employee.name,
-              storeId: store.id,
-              storeName: store.name,
-              storeCode: store.store_code,
-            }
-            localStorage.setItem("employeeSession", JSON.stringify(session))
-            localStorage.setItem("currentStoreId", store.id)
-            localStorage.setItem("authType", "employee")
-
-            toast.success("Logged in as Employee")
-            // Use window.location to prevent React re-renders and infinite loops
-            setTimeout(() => {
-              window.location.href = "/dashboard"
-            }, 100)
-            return // Success - exit early
-          }
-      } catch (supabaseError: any) {
-        // Supabase lookup failed - continue to Excel fallback
-        // Error logged in catch block below
-      }
-
-      // Fallback to Excel mode if Supabase didn't work
-      if (isExcel) {
-        // Find store by name (case-insensitive) OR store_code
-        const trimmedStoreName = storeName.trim()
-        const upperStoreName = trimmedStoreName.toUpperCase()
-        
-        // Get all stores and filter
-        const allStores = await db.stores.toArray()
-        const stores = allStores.filter(s => 
-          s.name?.toLowerCase().trim() === trimmedStoreName.toLowerCase() ||
-          s.store_code?.toUpperCase().trim() === upperStoreName
+      console.log("[EmployeeLogin] Attempting login:", {
+        employee_id: upperEmployeeId,
+        password_length: trimmedPassword.length
+      })
+      
+      // Find employee by employee_id only (no store required)
+      const employeeResponse = await fetch('/api/employees/lookup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          employee_id: upperEmployeeId
+          // No store_id - find employee by ID only
+        })
+      })
+      
+      if (!employeeResponse.ok) {
+        const errorData = await employeeResponse.json()
+        throw new Error(
+          errorData.error || 
+          `Employee "${upperEmployeeId}" not found.\n\n` +
+          `Please verify your Employee ID is correct.`
         )
-        
-        if (stores.length === 0) {
-          const availableStores = allStores.map(s => `${s.name} (${s.store_code})`).join(', ')
-          throw new Error(
-            `Store not found. Please enter the exact Store Name or Store Code.\n` +
-            (availableStores ? `Available stores: ${availableStores}` : '')
-          )
-        }
-        const store = stores[0]
-
-        // Verify store belongs to an admin
-        if (!store.admin_user_id) {
-          throw new Error("Access denied: Store must be created by an admin")
-        }
-
-        // Find employee by employee_id and store_id
-        const upperEmployeeId = employeeId.toUpperCase().trim()
-        const employees = await db.employees
-          .where("employee_id").equals(upperEmployeeId)
-          .and(e => e.store_id === store.id)
-          .toArray()
-        
-        if (employees.length === 0) {
-          throw new Error(
-            `Employee "${upperEmployeeId}" not found in store "${store.name}" (${store.store_code}).\n\n` +
-            `Please verify the employee ID and store match.`
-          )
-        }
-        const employee = employees[0]
-
-        // Verify employee has a valid store_id that matches the store
-        if (!employee.store_id || employee.store_id !== store.id) {
-          throw new Error("Invalid employee-store association")
-        }
-
-        // Check password
-        const passwordMatches = employee.password === password || employee.employee_id === password
-        if (!passwordMatches) {
-          throw new Error("Invalid password. Please check your password or try using your Employee ID as password.")
-        }
-
-        // Create session
-        const session = {
-          employeeId: employee.employee_id,
-          employeeName: employee.name,
-          storeId: store.id,
-          storeName: store.name,
-          storeCode: store.store_code,
-        }
-        localStorage.setItem("employeeSession", JSON.stringify(session))
-        localStorage.setItem("currentStoreId", store.id)
-        localStorage.setItem("authType", "employee")
-
-        toast.success("Logged in as Employee")
-        // Use window.location to prevent React re-renders and infinite loops
-        setTimeout(() => {
-          window.location.href = "/dashboard"
-        }, 100)
-      } else {
-        // Pure Supabase mode (shouldn't reach here since we checked Supabase first)
-        // But keeping as fallback
-        throw new Error("Employee not found. Please ensure employee is synced to Supabase.")
       }
+      
+      const employeeData = await employeeResponse.json()
+      
+      if (!employeeData.employee) {
+        throw new Error(
+          `Employee "${upperEmployeeId}" not found.\n\n` +
+          `Please verify your Employee ID is correct.`
+        )
+      }
+      
+      const employee = employeeData.employee
+      
+      // Debug logging
+      console.log("[EmployeeLogin] Employee found:", {
+        employee_id: employee.employee_id,
+        name: employee.name,
+        has_password: !!employee.password,
+        password_length: employee.password?.length || 0,
+        is_active: employee.is_active,
+        store_id: employee.store_id
+      })
+      
+      // Supabase returns store relationship - handle both array and object formats
+      const store = Array.isArray(employee.stores) 
+        ? employee.stores[0] 
+        : employee.stores || employee.store
+
+      // Verify employee is active
+      if (!employee.is_active) {
+        throw new Error("Employee account is inactive. Please contact your administrator.")
+      }
+
+      // Check if password field exists
+      if (!employee.password) {
+        console.error("[EmployeeLogin] Employee password is missing from database")
+        throw new Error("Employee password not found in database. Please contact your administrator to reset your password.")
+      }
+
+      // Check password - compare with both stored password and employee_id (fallback)
+      const passwordMatches = employee.password === trimmedPassword || employee.employee_id === trimmedPassword
+      
+      console.log("[EmployeeLogin] Password validation:", {
+        provided_password: trimmedPassword,
+        stored_password: employee.password,
+        employee_id: employee.employee_id,
+        password_exact_match: employee.password === trimmedPassword,
+        employee_id_match: employee.employee_id === trimmedPassword,
+        final_match: passwordMatches
+      })
+      
+      if (!passwordMatches) {
+        throw new Error("Invalid password. Please check your password or try using your Employee ID as password.")
+      }
+
+      // Get store info from employee record
+      if (!store || !store.id) {
+        throw new Error("Employee store information not found. Please contact your administrator.")
+      }
+
+      // Create session
+      const session = {
+        employeeId: employee.employee_id,
+        employeeName: employee.name,
+        storeId: store.id,
+        storeName: store.name || "Unknown Store",
+        storeCode: store.store_code || "",
+      }
+      localStorage.setItem("employeeSession", JSON.stringify(session))
+      localStorage.setItem("currentStoreId", store.id)
+      localStorage.setItem("authType", "employee")
+
+      toast.success("Logged in as Employee")
+      // Use window.location to prevent React re-renders and infinite loops
+      setTimeout(() => {
+        window.location.href = "/dashboard"
+      }, 100)
     } catch (error: any) {
       setError(error.message || "Login failed")
     } finally {
@@ -316,30 +195,15 @@ export default function EmployeeLoginPage() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div className="flex-1">
-              <CardTitle>Employee Login</CardTitle>
-              <CardDescription>
-                Enter your store name or store code, employee ID, and password to login
-              </CardDescription>
+            <CardTitle>Employee Login</CardTitle>
+            <CardDescription>
+                Enter your employee ID and password to login
+            </CardDescription>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="store_name">Store Name or Store Code</Label>
-              <Input
-                id="store_name"
-                required
-                value={storeName}
-                onChange={(e) => setStoreName(e.target.value)}
-                placeholder="Enter store name (e.g., 'My Store') or code (e.g., 'MYS1')"
-                autoComplete="off"
-              />
-              <p className="text-xs text-muted-foreground">
-                You can enter either the full store name or the 4-character store code
-              </p>
-            </div>
-
             <div className="space-y-2">
               <Label htmlFor="employee_id">Employee ID</Label>
               <Input
@@ -350,6 +214,7 @@ export default function EmployeeLoginPage() {
                 placeholder="A1B2"
                 maxLength={4}
                 autoComplete="off"
+                autoFocus
               />
             </div>
 
@@ -364,7 +229,11 @@ export default function EmployeeLoginPage() {
               />
             </div>
 
-            {error && <p className="text-sm text-destructive">{error}</p>}
+            {error && (
+              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive whitespace-pre-line">
+                {error}
+              </div>
+            )}
 
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? "Logging in..." : "Login"}

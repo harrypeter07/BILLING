@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import { AlertCircle, Download } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -108,7 +109,14 @@ export default function InventoryReportPage() {
             <CardTitle className="text-sm font-medium">Total Stock Value</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">₹{totalStockValue.toLocaleString("en-IN")}</div>
+            <UITooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">₹{totalStockValue.toLocaleString("en-IN")}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Total Stock Value: ₹{totalStockValue.toLocaleString("en-IN")}
+              </TooltipContent>
+            </UITooltip>
           </CardContent>
         </Card>
 
@@ -188,9 +196,25 @@ export default function InventoryReportPage() {
                     <td className="py-2 px-2">{product.sku || "-"}</td>
                     <td className="py-2 px-2">{product.category || "-"}</td>
                     <td className="text-right py-2 px-2">{product.stock_quantity}</td>
-                    <td className="text-right py-2 px-2">₹{product.price.toLocaleString("en-IN")}</td>
                     <td className="text-right py-2 px-2">
-                      ₹{(product.stock_quantity * product.price).toLocaleString("en-IN")}
+                      <UITooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-sm md:text-base truncate max-w-[100px] inline-block cursor-help">₹{product.price.toLocaleString("en-IN")}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Price: ₹{product.price.toLocaleString("en-IN")}
+                        </TooltipContent>
+                      </UITooltip>
+                    </td>
+                    <td className="text-right py-2 px-2">
+                      <UITooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-sm md:text-base truncate max-w-[120px] inline-block cursor-help">₹{(product.stock_quantity * product.price).toLocaleString("en-IN")}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Stock Value: ₹{(product.stock_quantity * product.price).toLocaleString("en-IN")}
+                        </TooltipContent>
+                      </UITooltip>
                     </td>
                     <td className="text-center py-2 px-2">
                       <Badge

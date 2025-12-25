@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { MoreHorizontal, Eye, Pencil, Trash2, Search } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
@@ -147,7 +148,14 @@ export function InvoicesTable({ invoices: initialInvoices }: InvoicesTableProps)
                     <TableCell>{invoice.customers?.name || "No customer"}</TableCell>
                     <TableCell>{new Date(invoice.invoice_date).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
-                      ₹{Number(invoice.total_amount).toLocaleString("en-IN")}
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="text-sm md:text-base truncate max-w-[120px] inline-block cursor-help">₹{Number(invoice.total_amount).toLocaleString("en-IN")}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Amount: ₹{Number(invoice.total_amount).toLocaleString("en-IN")}
+                        </TooltipContent>
+                      </Tooltip>
                     </TableCell>
                     <TableCell>{getStatusBadge(invoice.status)}</TableCell>
                     <TableCell onClick={(e) => e.stopPropagation()}>

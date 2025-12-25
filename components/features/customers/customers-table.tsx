@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent } from "@/components/ui/card"
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { MoreHorizontal, Pencil, Trash2, Search, Eye, Filter, X } from "lucide-react"
@@ -99,11 +100,27 @@ export function CustomersTable({ customers: initialCustomers }: CustomersTablePr
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
               <span className="font-medium text-foreground">
-                Total: <span className="font-semibold">{customers.length}</span>
+                Total:{" "}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="font-semibold cursor-help">{customers.length}</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Total Customers: {customers.length}
+                  </TooltipContent>
+                </Tooltip>
               </span>
               {filteredCustomers.length !== customers.length && (
                 <span className="text-muted-foreground">
-                  | Showing: <span className="font-semibold text-foreground">{filteredCustomers.length}</span>
+                  | Showing:{" "}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="font-semibold text-foreground cursor-help">{filteredCustomers.length}</span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Filtered Results: {filteredCustomers.length} of {customers.length}
+                    </TooltipContent>
+                  </Tooltip>
                 </span>
               )}
             </div>
@@ -174,7 +191,7 @@ export function CustomersTable({ customers: initialCustomers }: CustomersTablePr
                       if ((e.target as HTMLElement).closest('[role="menuitem"], button')) {
                         return
                       }
-                      router.push(`/customers/${customer.id}`)
+                      router.push(`/customers/${customer.id}/edit`)
                     }}
                   >
                     <TableCell className="font-medium">{customer.name}</TableCell>
@@ -190,9 +207,9 @@ export function CustomersTable({ customers: initialCustomers }: CustomersTablePr
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => router.push(`/customers/${customer.id}`)}>
+                          <DropdownMenuItem onClick={() => router.push(`/customers/${customer.id}/edit`)}>
                             <Eye className="mr-2 h-4 w-4" />
-                            View Details
+                            View/Edit Details
                           </DropdownMenuItem>
                           <DropdownMenuItem onClick={() => router.push(`/customers/${customer.id}/edit`)}>
                             <Pencil className="mr-2 h-4 w-4" />

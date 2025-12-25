@@ -53,6 +53,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Store not found or access denied" }, { status: 403 })
     }
 
+    // If employee_id is provided, check for duplicates first
+    if (employee_id) {
+      const { data: existing } = await supabase
+        .from("employees")
+        .select("id, employee_id, name")
+        .eq("store_id", store_id)
+        .eq("employee_id", employee_id.toUpperCase().trim())
+        .maybeSingle()
+      
+      if (existing) {
+        return NextResponse.json(
+          { 
+            error: `Employee ID "${employee_id}" already exists in this store. Employee: ${existing.name}` 
+          },
+          { status: 409 } // Conflict
+        )
+      }
+    }
+
     const employeeData: any = {
       user_id: user.id,
       store_id,
@@ -63,7 +82,7 @@ export async function POST(request: Request) {
       salary: salary ? Number(salary) : null,
       joining_date: joining_date || null,
       is_active: is_active !== undefined ? is_active : true,
-      employee_id: employee_id || null,
+      employee_id: employee_id ? employee_id.toUpperCase().trim() : null,
     }
 
     // If password is provided, hash it (in production, use proper hashing)
@@ -79,7 +98,28 @@ export async function POST(request: Request) {
 
     if (error) {
       console.error("[API /employees] Error creating employee:", error)
-      return NextResponse.json({ error: error.message || "Failed to create employee" }, { status: 500 })
+      
+      // Handle duplicate key error specifically
+      if (error.code === '23505') {
+        // Unique constraint violation
+        if (error.message.includes('idx_employees_store_employee_id')) {
+          return NextResponse.json(
+            { 
+              error: `Employee ID "${employee_id}" already exists in this store. Please use a different Employee ID or contact support.` 
+            },
+            { status: 409 } // Conflict
+          )
+        }
+        return NextResponse.json(
+          { error: "An employee with this information already exists. Please check for duplicates." },
+          { status: 409 }
+        )
+      }
+      
+      return NextResponse.json(
+        { error: error.message || "Failed to create employee" },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({ employee }, { status: 201 })

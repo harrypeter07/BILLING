@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { MoreHorizontal, Pencil, Trash2, Search, Filter, X } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
@@ -152,11 +153,27 @@ export function ProductsTable({ products: initialProducts }: ProductsTableProps)
             </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
               <span className="font-medium text-foreground">
-                Total: <span className="font-semibold">{products.length}</span>
+                Total:{" "}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="font-semibold cursor-help">{products.length}</span>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    Total Products: {products.length}
+                  </TooltipContent>
+                </Tooltip>
               </span>
               {filteredProducts.length !== products.length && (
                 <span className="text-muted-foreground">
-                  | Showing: <span className="font-semibold text-foreground">{filteredProducts.length}</span>
+                  | Showing:{" "}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="font-semibold text-foreground cursor-help">{filteredProducts.length}</span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Filtered Results: {filteredProducts.length} of {products.length}
+                    </TooltipContent>
+                  </Tooltip>
                 </span>
               )}
             </div>
@@ -253,7 +270,16 @@ export function ProductsTable({ products: initialProducts }: ProductsTableProps)
                     <TableCell className="font-medium">{product.name}</TableCell>
                     <TableCell>{product.sku || "-"}</TableCell>
                     <TableCell>{product.category || "-"}</TableCell>
-                    <TableCell className="text-right">₹{Number(product.price).toLocaleString("en-IN")}</TableCell>
+                    <TableCell className="text-right"><span className="text-sm md:text-base truncate max-w-[100px] inline-block">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <span className="cursor-help">₹{Number(product.price).toLocaleString("en-IN")}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                          Price: ₹{Number(product.price).toLocaleString("en-IN")}
+                        </TooltipContent>
+                      </Tooltip>
+                    </span></TableCell>
                     <TableCell className="text-right">
                       {product.unit === 'piece' 
                         ? `${Math.round(product.stock_quantity)} ${product.unit}`

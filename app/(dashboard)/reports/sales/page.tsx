@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts"
@@ -117,7 +118,14 @@ export default function SalesReportPage() {
             <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">₹{totalSales.toLocaleString("en-IN")}</div>
+            <UITooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">₹{totalSales.toLocaleString("en-IN")}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Total Sales: ₹{totalSales.toLocaleString("en-IN")}
+              </TooltipContent>
+            </UITooltip>
             <p className="text-xs text-muted-foreground mt-1">{salesData.length} days of data</p>
           </CardContent>
         </Card>
@@ -127,7 +135,14 @@ export default function SalesReportPage() {
             <CardTitle className="text-sm font-medium">Average Daily Sales</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">₹{avgDaily.toLocaleString("en-IN")}</div>
+            <UITooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">₹{avgDaily.toLocaleString("en-IN")}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Avg Daily Sales: ₹{avgDaily.toLocaleString("en-IN")}
+              </TooltipContent>
+            </UITooltip>
             <p className="text-xs text-muted-foreground mt-1">Per day average</p>
           </CardContent>
         </Card>

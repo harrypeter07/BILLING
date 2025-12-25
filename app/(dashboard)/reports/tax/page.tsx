@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tooltip as UITooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
 import { Download } from "lucide-react"
@@ -98,7 +99,14 @@ export default function TaxReportPage() {
             <CardTitle className="text-sm font-medium">Total Tax Collected</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">₹{taxData.totalTax.toLocaleString("en-IN")}</div>
+            <UITooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">₹{taxData.totalTax.toLocaleString("en-IN")}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                Total Tax: ₹{taxData.totalTax.toLocaleString("en-IN")}
+              </TooltipContent>
+            </UITooltip>
           </CardContent>
         </Card>
 
@@ -107,7 +115,14 @@ export default function TaxReportPage() {
             <CardTitle className="text-sm font-medium">CGST</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">₹{taxData.cgst.toLocaleString("en-IN")}</div>
+            <UITooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">₹{taxData.cgst.toLocaleString("en-IN")}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                CGST: ₹{taxData.cgst.toLocaleString("en-IN")}
+              </TooltipContent>
+            </UITooltip>
             <p className="text-xs text-muted-foreground mt-1">Central GST</p>
           </CardContent>
         </Card>
@@ -117,7 +132,14 @@ export default function TaxReportPage() {
             <CardTitle className="text-sm font-medium">SGST</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">₹{taxData.sgst.toLocaleString("en-IN")}</div>
+            <UITooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">₹{taxData.sgst.toLocaleString("en-IN")}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                SGST: ₹{taxData.sgst.toLocaleString("en-IN")}
+              </TooltipContent>
+            </UITooltip>
             <p className="text-xs text-muted-foreground mt-1">State GST</p>
           </CardContent>
         </Card>
@@ -127,7 +149,14 @@ export default function TaxReportPage() {
             <CardTitle className="text-sm font-medium">IGST</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold">₹{taxData.igst.toLocaleString("en-IN")}</div>
+            <UITooltip>
+              <TooltipTrigger asChild>
+                <div className="text-xl md:text-2xl font-bold truncate cursor-help">₹{taxData.igst.toLocaleString("en-IN")}</div>
+              </TooltipTrigger>
+              <TooltipContent>
+                IGST: ₹{taxData.igst.toLocaleString("en-IN")}
+              </TooltipContent>
+            </UITooltip>
             <p className="text-xs text-muted-foreground mt-1">Integrated GST</p>
           </CardContent>
         </Card>
@@ -175,14 +204,28 @@ export default function TaxReportPage() {
                 <p className="font-medium">GST Invoices</p>
                 <p className="text-sm text-muted-foreground">With tax calculation</p>
               </div>
-              <p className="text-2xl font-bold">{taxData.gstInvoices}</p>
+              <UITooltip>
+                <TooltipTrigger asChild>
+                  <p className="text-2xl font-bold cursor-help">{taxData.gstInvoices}</p>
+                </TooltipTrigger>
+                <TooltipContent>
+                  GST Invoices: {taxData.gstInvoices}
+                </TooltipContent>
+              </UITooltip>
             </div>
             <div className="flex items-center justify-between p-4 border rounded-lg">
               <div>
                 <p className="font-medium">Non-GST Invoices</p>
                 <p className="text-sm text-muted-foreground">Without tax</p>
               </div>
-              <p className="text-2xl font-bold">{taxData.nonGstInvoices}</p>
+              <UITooltip>
+                <TooltipTrigger asChild>
+                  <p className="text-2xl font-bold cursor-help">{taxData.nonGstInvoices}</p>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Non-GST Invoices: {taxData.nonGstInvoices}
+                </TooltipContent>
+              </UITooltip>
             </div>
           </div>
         </CardContent>

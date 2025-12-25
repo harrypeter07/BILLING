@@ -169,127 +169,80 @@ export default function EmployeesPage() {
       const rand = Math.floor(Math.random()*10000)
       const name = `Employee ${rand}`
       
-      let employeeId: string
-      let employee: any
-      const dbType = getDatabaseType()
-
-      if (dbType === 'indexeddb') {
-        // IndexedDB mode - save to IndexedDB
-        const { generateEmployeeId } = await import("@/lib/utils/employee-id")
-        employeeId = await generateEmployeeId(currentStoreId, name)
-        
-        const { generateSecurePassword } = await import("@/lib/utils/password-generator")
-        const password = generateSecurePassword(employeeId)
-
-        employee = {
-          id: crypto.randomUUID(),
-          name,
-          email: `emp${rand}@example.com`,
-          phone: '',
-          role: 'employee',
-          salary: 0,
-          joining_date: new Date().toISOString().split('T')[0],
-          is_active: true,
-          employee_id: employeeId,
-          password,
-          store_id: currentStoreId,
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          user_id: 'local',
-        }
-
-        console.log("[Employees] Adding mock employee to IndexedDB:", employee)
-        await storageManager.addEmployee(employee)
-        
-        // Verify it was saved
-        const saved = await db.employees.get(employee.id)
-        if (saved) {
-          console.log("[Employees] Verified mock employee saved to IndexedDB")
-        } else {
-          console.error("[Employees] Mock employee NOT found after save!")
-        }
-        
-        toast({ 
-          title: "Success", 
-          description: `Mock employee "${name}" (ID: ${employeeId}) added. Password: ${password}` 
-        })
-        
-        // Refresh the list
-        fetchEmployees()
-      } else {
-        // Supabase mode - use API route
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          toast({ title: "Error", description: "You must be logged in to add employees", variant: "destructive" })
-          return
-        }
-
-        // Verify store belongs to this admin
-        const { data: storeData } = await supabase
-          .from("stores")
-          .select("admin_user_id")
-          .eq("id", currentStoreId)
-          .single()
-        
-        if (!storeData || storeData.admin_user_id !== user.id) {
-          toast({ title: "Error", description: "Store does not belong to you or store not found", variant: "destructive" })
-          return
-        }
-
-        // Generate employee ID for Supabase
-        const { generateEmployeeIdSupabase } = await import("@/lib/utils/employee-id-supabase")
-        employeeId = await generateEmployeeIdSupabase(currentStoreId, name)
-
-        // Generate secure password different from employee ID
-        const { generateSecurePassword } = await import("@/lib/utils/password-generator")
-        const securePassword = generateSecurePassword(employeeId)
-
-        employee = {
-          name,
-          email: `emp${rand}@example.com`,
-          phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
-          role: 'employee', // Always employee, not admin
-          salary: Math.floor(Math.random()*50000)+20000,
-          joining_date: new Date().toISOString().split('T')[0], // Supabase expects date format
-          is_active: true,
-          employee_id: employeeId,
-          password: securePassword, // Secure password different from employee ID
-          store_id: currentStoreId,
-        }
-
-        // Use API route to create employee (handles admin check and user_id automatically)
-        const response = await fetch('/api/employees', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(employee),
-        })
-
-        if (!response.ok) {
-          const error = await response.json()
-          throw new Error(error.error || `Failed to create employee: ${response.statusText}`)
-        }
-
-        const result = await response.json()
-        
-        // Also save to IndexedDB for consistency
-        if (result.employee) {
-          try {
-            await storageManager.addEmployee({
-              ...result.employee,
-              user_id: user.id,
-            })
-            console.log("[Employees] Mock employee also saved to IndexedDB")
-          } catch (e) {
-            console.warn("[Employees] Failed to save to IndexedDB:", e)
-          }
-        }
-        
-        // Refresh employee list
-        await fetchEmployees()
-        
-        toast({ title: "Success", description: `Mock employee "${employee.name}" (ID: ${employeeId}) added. Password: ${securePassword}` })
+      // ALWAYS save to Supabase (employees need to login from remote devices)
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        toast({ title: "Error", description: "You must be logged in to add employees", variant: "destructive" })
+        return
       }
+
+      // Verify store belongs to this admin
+      const { data: storeData } = await supabase
+        .from("stores")
+        .select("admin_user_id")
+        .eq("id", currentStoreId)
+        .single()
+      
+      if (!storeData || storeData.admin_user_id !== user.id) {
+        toast({ title: "Error", description: "Store does not belong to you or store not found", variant: "destructive" })
+        return
+      }
+
+      // Generate employee ID for Supabase
+      const { generateEmployeeIdSupabase } = await import("@/lib/utils/employee-id-supabase")
+      const employeeId = await generateEmployeeIdSupabase(currentStoreId, name)
+
+      // Generate secure password different from employee ID
+      const { generateSecurePassword } = await import("@/lib/utils/password-generator")
+      const securePassword = generateSecurePassword(employeeId)
+
+      const employee = {
+        name,
+        email: `emp${rand}@example.com`,
+        phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
+        role: 'employee', // Always employee, not admin
+        salary: Math.floor(Math.random()*50000)+20000,
+        joining_date: new Date().toISOString().split('T')[0], // Supabase expects date format
+        is_active: true,
+        employee_id: employeeId,
+        password: securePassword, // Secure password different from employee ID
+        store_id: currentStoreId,
+      }
+
+      // Use API route to create employee (handles admin check and user_id automatically)
+      const response = await fetch('/api/employees', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(employee),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || `Failed to create employee: ${response.statusText}`)
+      }
+
+      const result = await response.json()
+      
+      // Also save to IndexedDB for local consistency (if in IndexedDB mode)
+      const dbType = getDatabaseType()
+      if (dbType === 'indexeddb' && result.employee) {
+        try {
+          await storageManager.addEmployee({
+            ...result.employee,
+            user_id: user.id,
+          })
+          console.log("[Employees] Mock employee also saved to IndexedDB for local consistency")
+        } catch (e) {
+          console.warn("[Employees] Failed to save to IndexedDB:", e)
+          // Don't throw - Supabase save succeeded, that's what matters
+        }
+      }
+      
+      // Refresh employee list
+      await fetchEmployees()
+      
+      toast({ title: "Success", description: `Mock employee "${employee.name}" (ID: ${employeeId}) added. Password: ${securePassword}` })
     } catch (error: any) {
       console.error("[Employees] Error adding mock employee:", error)
       toast({ title: "Error", description: error.message || "Failed to add employee", variant: "destructive" })

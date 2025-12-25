@@ -143,104 +143,153 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
         employeeData.password = generateSecurePassword(employeeId)
       }
 
-      if (isExcel) {
-        // In IndexedDB mode: save ONLY to IndexedDB (no Supabase sync)
-        employeeData.user_id = userId || 'local' // Use 'local' if no user_id
-        employeeData.created_at = employeeData.created_at || new Date().toISOString()
-        employeeData.updated_at = new Date().toISOString()
-        
-        console.log("[EmployeeForm] Saving employee to IndexedDB (IndexedDB mode - no Supabase sync):", employeeData)
-        
-        // Save to IndexedDB only
-        if (employee?.id) {
-          await storageManager.updateEmployee(employeeData)
-          console.log("[EmployeeForm] Employee updated in IndexedDB")
-        } else {
-          await storageManager.addEmployee(employeeData)
-          console.log("[EmployeeForm] Employee added to IndexedDB")
+      // ALWAYS save to Supabase first (employees need to login from remote devices)
+      // Even in IndexedDB mode, employees must be in Supabase for authentication
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) {
+        throw new Error("Unauthorized - Please login to create employees")
+      }
+
+      // Verify store belongs to this admin
+      const { data: store } = await supabase
+        .from("stores")
+        .select("admin_user_id")
+        .eq("id", storeId)
+        .single()
+      
+      if (!store || store.admin_user_id !== user.id) {
+        throw new Error("Store does not belong to this admin")
+      }
+
+      if (employee?.id) {
+        // Update existing employee via API
+        const updateData = {
+          name: employeeData.name,
+          email: employeeData.email,
+          phone: employeeData.phone,
+          role: employeeData.role,
+          salary: employeeData.salary,
+          joining_date: employeeData.joining_date,
+          is_active: employeeData.is_active,
+          employee_id: employeeData.employee_id,
+          ...(formData.password && { password: employeeData.password }),
         }
+
+        const response = await fetch("/api/employees", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: employee.id, ...updateData }),
+        })
         
-        // Verify it was saved
-        const savedEmployee = await db.employees.get(employeeData.id)
-        if (savedEmployee) {
-          console.log("[EmployeeForm] Verified employee saved to IndexedDB:", savedEmployee.id)
-        } else {
-          console.error("[EmployeeForm] Employee NOT found in IndexedDB after save!")
+        if (!response.ok) {
+          const error = await response.json()
+          throw new Error(error.error || "Failed to update employee")
         }
-        
-        // NOTE: In IndexedDB mode, we do NOT sync to Supabase
-        // Employees are stored locally only
       } else {
-        // In Supabase mode: use API route (handles auth, validation, and RLS)
-        const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          throw new Error("Unauthorized")
-        }
-
-        // Verify store belongs to this admin
-        const { data: store } = await supabase
-          .from("stores")
-          .select("admin_user_id")
-          .eq("id", storeId)
-          .single()
+        // Create new employee via API (ALWAYS to Supabase)
+        const response = await fetch("/api/employees", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(employeeData),
+        })
         
-        if (!store || store.admin_user_id !== user.id) {
-          throw new Error("Store does not belong to this admin")
-        }
-
-        if (employee?.id) {
-          // Update existing employee via API
-          const updateData = {
-            name: employeeData.name,
-            email: employeeData.email,
-            phone: employeeData.phone,
-            role: employeeData.role,
-            salary: employeeData.salary,
-            joining_date: employeeData.joining_date,
-            is_active: employeeData.is_active,
-            employee_id: employeeData.employee_id,
-            ...(formData.password && { password: employeeData.password }),
-          }
-
-          const response = await fetch("/api/employees", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: employee.id, ...updateData }),
-          })
-          
-          if (!response.ok) {
-            const error = await response.json()
-            throw new Error(error.error || "Failed to update employee")
-          }
-        } else {
-          // Create new employee via API
-          const response = await fetch("/api/employees", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(employeeData),
-          })
-          
-          if (!response.ok) {
-            const error = await response.json()
-            throw new Error(error.error || "Failed to create employee")
-          }
-          
-          // Also save to IndexedDB for consistency
-          const createdEmployee = await response.json()
-          if (createdEmployee.employee) {
-            try {
-              await storageManager.addEmployee({
-                ...createdEmployee.employee,
-                user_id: user.id,
-              })
-              console.log("[EmployeeForm] Employee saved to IndexedDB for consistency")
-            } catch (e) {
-              console.warn("[EmployeeForm] Failed to save to IndexedDB:", e)
+        if (!response.ok) {
+          const error = await response.json()
+          // Handle duplicate employee ID error
+          if (response.status === 409 && error.error?.includes("Employee ID")) {
+            // Conflict - duplicate employee ID
+            // Try to regenerate employee ID and retry (only once)
+            console.warn("[EmployeeForm] Duplicate employee ID detected, regenerating...")
+            const { generateEmployeeIdSupabase } = await import("@/lib/utils/employee-id-supabase")
+            const newEmployeeId = await generateEmployeeIdSupabase(storeId, formData.name)
+            
+            // Update employee data with new ID
+            const retryEmployeeData = {
+              ...employeeData,
+              employee_id: newEmployeeId
             }
+            
+            // Also regenerate password if it was based on the old employee ID
+            if (!formData.password && retryEmployeeData.password === employeeId) {
+              const { generateSecurePassword } = await import("@/lib/utils/password-generator")
+              retryEmployeeData.password = generateSecurePassword(newEmployeeId)
+            }
+            
+            // Retry with new employee ID
+            const retryResponse = await fetch("/api/employees", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(retryEmployeeData),
+            })
+            
+            if (!retryResponse.ok) {
+              const retryError = await retryResponse.json()
+              throw new Error(retryError.error || `Failed to create employee. Original error: ${error.error}`)
+            }
+            
+            const createdEmployee = await retryResponse.json()
+            
+            // Also save to IndexedDB for local consistency (if in IndexedDB mode)
+            if (isExcel && createdEmployee.employee) {
+              try {
+                await storageManager.addEmployee({
+                  ...createdEmployee.employee,
+                  user_id: user.id,
+                })
+                console.log("[EmployeeForm] Employee also saved to IndexedDB for local consistency")
+              } catch (e) {
+                console.warn("[EmployeeForm] Failed to save to IndexedDB:", e)
+                // Don't throw - Supabase save succeeded, that's what matters
+              }
+            }
+            
+            toast({ 
+              title: "Success", 
+              description: `Employee created with ID: ${newEmployeeId}. Password: ${retryEmployeeData.password}` 
+            })
+            
+            // Refresh the employees list
+            if (typeof window !== 'undefined') {
+              window.dispatchEvent(new CustomEvent('employees:refresh'))
+            }
+            
+            router.push("/employees")
+            router.refresh()
+            return // Exit early after successful retry
+          }
+          throw new Error(error.error || "Failed to create employee")
+        }
+        
+        const createdEmployee = await response.json()
+        
+        // Also save to IndexedDB for local consistency (if in IndexedDB mode)
+        if (isExcel && createdEmployee.employee) {
+          try {
+            await storageManager.addEmployee({
+              ...createdEmployee.employee,
+              user_id: user.id,
+            })
+            console.log("[EmployeeForm] Employee also saved to IndexedDB for local consistency")
+          } catch (e) {
+            console.warn("[EmployeeForm] Failed to save to IndexedDB:", e)
+            // Don't throw - Supabase save succeeded, that's what matters
           }
         }
       }
+      
+      // For IndexedDB mode, also save locally for consistency
+      if (isExcel && employee?.id) {
+        try {
+          await storageManager.updateEmployee(employeeData)
+          console.log("[EmployeeForm] Employee also updated in IndexedDB")
+        } catch (e) {
+          console.warn("[EmployeeForm] Failed to update in IndexedDB:", e)
+          // Don't throw - Supabase update succeeded
+        }
+      }
+      
 
       toast({ 
         title: "Success", 
