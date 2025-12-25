@@ -242,13 +242,44 @@ export function CustomersTable({
 											}}
 										>
 											<TableCell className="font-medium">
-												{customer.name}
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help">{customer.name}</span>
+													</TooltipTrigger>
+													<TooltipContent>Customer Name: {customer.name}</TooltipContent>
+												</Tooltip>
 											</TableCell>
-											<TableCell>{customer.email || "-"}</TableCell>
-											<TableCell>{customer.phone || "-"}</TableCell>
-											<TableCell>{customer.gstin || "-"}</TableCell>
+											<TableCell>
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help">{customer.email || "-"}</span>
+													</TooltipTrigger>
+													<TooltipContent>{customer.email ? `Email: ${customer.email}` : "No email provided"}</TooltipContent>
+												</Tooltip>
+											</TableCell>
+											<TableCell>
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help">{customer.phone || "-"}</span>
+													</TooltipTrigger>
+													<TooltipContent>{customer.phone ? `Phone: ${customer.phone}` : "No phone provided"}</TooltipContent>
+												</Tooltip>
+											</TableCell>
+											<TableCell>
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help">{customer.gstin || "-"}</span>
+													</TooltipTrigger>
+													<TooltipContent>{customer.gstin ? `GSTIN: ${customer.gstin}` : "No GSTIN provided"}</TooltipContent>
+												</Tooltip>
+											</TableCell>
 											<TableCell className="max-w-xs truncate">
-												{customer.billing_address || "-"}
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help block truncate">{customer.billing_address || "-"}</span>
+													</TooltipTrigger>
+													<TooltipContent>{customer.billing_address ? `Address: ${customer.billing_address}` : "No address provided"}</TooltipContent>
+												</Tooltip>
 											</TableCell>
 											<TableCell onClick={(e) => e.stopPropagation()}>
 												<DropdownMenu>

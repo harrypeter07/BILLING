@@ -184,13 +184,28 @@ export function InvoicesTable({
 											}}
 										>
 											<TableCell className="font-medium">
-												{invoice.invoice_number}
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help">{invoice.invoice_number}</span>
+													</TooltipTrigger>
+													<TooltipContent>Invoice Number: {invoice.invoice_number}</TooltipContent>
+												</Tooltip>
 											</TableCell>
 											<TableCell>
-												{invoice.customers?.name || "No customer"}
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help">{invoice.customers?.name || "No customer"}</span>
+													</TooltipTrigger>
+													<TooltipContent>{invoice.customers?.name ? `Customer: ${invoice.customers.name}` : "No customer assigned"}</TooltipContent>
+												</Tooltip>
 											</TableCell>
 											<TableCell>
-												{new Date(invoice.invoice_date).toLocaleDateString()}
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help">{new Date(invoice.invoice_date).toLocaleDateString()}</span>
+													</TooltipTrigger>
+													<TooltipContent>Invoice Date: {new Date(invoice.invoice_date).toLocaleDateString()}</TooltipContent>
+												</Tooltip>
 											</TableCell>
 											<TableCell className="text-right">
 												<Tooltip>
@@ -210,7 +225,14 @@ export function InvoicesTable({
 													</TooltipContent>
 												</Tooltip>
 											</TableCell>
-											<TableCell>{getStatusBadge(invoice.status)}</TableCell>
+											<TableCell>
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help inline-block">{getStatusBadge(invoice.status)}</span>
+													</TooltipTrigger>
+													<TooltipContent>Status: {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}</TooltipContent>
+												</Tooltip>
+											</TableCell>
 											<TableCell onClick={(e) => e.stopPropagation()}>
 												<DropdownMenu>
 													<DropdownMenuTrigger asChild>

@@ -30,6 +30,7 @@ interface Employee {
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isAddingMock, setIsAddingMock] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const { toast } = useToast()
   const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole()
@@ -60,7 +61,7 @@ export default function EmployeesPage() {
       console.log("[Employees] Refresh event received, fetching employees...")
       fetchEmployees()
     }
-    
+
     window.addEventListener('employees:refresh', handleRefresh)
     return () => {
       window.removeEventListener('employees:refresh', handleRefresh)
@@ -78,7 +79,7 @@ export default function EmployeesPage() {
         try {
           const supabase = createClient()
           const { data: { user } } = await supabase.auth.getUser()
-          
+
           if (!user) {
             console.warn("[Employees] No user found, using IndexedDB fallback")
             const allEmployees = await db.employees.toArray()
@@ -99,10 +100,10 @@ export default function EmployeesPage() {
             console.error("[Employees] Supabase query error:", error)
             throw error
           }
-          
+
           console.log("[Employees] Found", data?.length || 0, "employees in Supabase")
           setEmployees(data || [])
-          
+
           // Also sync to IndexedDB for consistency
           if (data && data.length > 0) {
             try {
@@ -159,6 +160,7 @@ export default function EmployeesPage() {
 
   const handleAddMockEmployee = async () => {
     try {
+      setIsAddingMock(true)
       // Get current store
       const currentStoreId = localStorage.getItem("currentStoreId")
       if (!currentStoreId) {
@@ -166,9 +168,9 @@ export default function EmployeesPage() {
         return
       }
 
-      const rand = Math.floor(Math.random()*10000)
+      const rand = Math.floor(Math.random() * 10000)
       const name = `Employee ${rand}`
-      
+
       // ALWAYS save to Supabase (employees need to login from remote devices)
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
@@ -183,7 +185,7 @@ export default function EmployeesPage() {
         .select("admin_user_id")
         .eq("id", currentStoreId)
         .single()
-      
+
       if (!storeData || storeData.admin_user_id !== user.id) {
         toast({ title: "Error", description: "Store does not belong to you or store not found", variant: "destructive" })
         return
@@ -200,9 +202,9 @@ export default function EmployeesPage() {
       const employee = {
         name,
         email: `emp${rand}@example.com`,
-        phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
+        phone: `9${Math.floor(100000000 + Math.random() * 899999999)}`,
         role: 'employee', // Always employee, not admin
-        salary: Math.floor(Math.random()*50000)+20000,
+        salary: Math.floor(Math.random() * 50000) + 20000,
         joining_date: new Date().toISOString().split('T')[0], // Supabase expects date format
         is_active: true,
         employee_id: employeeId,
@@ -223,7 +225,7 @@ export default function EmployeesPage() {
       }
 
       const result = await response.json()
-      
+
       // Also save to IndexedDB for local consistency (if in IndexedDB mode)
       const dbType = getDatabaseType()
       if (dbType === 'indexeddb' && result.employee) {
@@ -238,14 +240,16 @@ export default function EmployeesPage() {
           // Don't throw - Supabase save succeeded, that's what matters
         }
       }
-      
+
       // Refresh employee list
       await fetchEmployees()
-      
+
       toast({ title: "Success", description: `Mock employee "${employee.name}" (ID: ${employeeId}) added. Password: ${securePassword}` })
     } catch (error: any) {
       console.error("[Employees] Error adding mock employee:", error)
       toast({ title: "Error", description: error.message || "Failed to add employee", variant: "destructive" })
+    } finally {
+      setIsAddingMock(false)
     }
   }
 
@@ -266,16 +270,27 @@ export default function EmployeesPage() {
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex flex-wrap items-center gap-2 flex-1">
-            <Button 
-              type="button" 
-              variant="outline" 
-              onClick={handleAddMockEmployee} 
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleAddMockEmployee}
+              disabled={isAddingMock}
               title="Add a mock employee"
               className="text-xs sm:text-sm"
             >
-              <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" /> 
-              <span className="hidden sm:inline">Add Mock Employee</span>
-              <span className="sm:hidden">Mock</span>
+              {isAddingMock ? (
+                <>
+                  <div className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  <span className="hidden sm:inline">Adding...</span>
+                  <span className="sm:hidden">...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                  <span className="hidden sm:inline">Add Mock Employee</span>
+                  <span className="sm:hidden">Mock</span>
+                </>
+              )}
             </Button>
             <Button asChild className="text-xs sm:text-sm">
               <Link href="/employees/new">
@@ -321,7 +336,7 @@ export default function EmployeesPage() {
                           {emp.is_active ? "Active" : "Inactive"}
                         </Badge>
                       </div>
-                      
+
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div>
                           <span className="text-muted-foreground">ID:</span>
@@ -374,8 +389,8 @@ export default function EmployeesPage() {
                         </Button>
                         {isAdmin && (
                           <>
-                            <Button 
-                              variant="ghost" 
+                            <Button
+                              variant="ghost"
                               size="sm"
                               onClick={async () => {
                                 if (!confirm(`Reset password for ${emp.name}?`)) return
@@ -391,8 +406,8 @@ export default function EmployeesPage() {
                             >
                               <Key className="h-3 w-3" />
                             </Button>
-                            <Button 
-                              variant="ghost" 
+                            <Button
+                              variant="ghost"
                               size="sm"
                               onClick={() => handleDelete(emp.id)}
                               className="px-2 text-destructive hover:text-destructive"
@@ -426,81 +441,81 @@ export default function EmployeesPage() {
                         <TableHead className="min-w-[180px]">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
-                  <TableBody>
-                    {filteredEmployees.map((emp: any) => (
-                      <TableRow key={emp.id}>
-                        <TableCell className="font-mono font-medium">{emp.employee_id || "N/A"}</TableCell>
-                        <TableCell className="font-medium">{emp.name}</TableCell>
-                        <TableCell className="max-w-[180px] truncate">{emp.email}</TableCell>
-                        <TableCell>{emp.phone}</TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {emp.password ? (
-                            <span title={emp.password} className="max-w-[100px] truncate block">{emp.password}</span>
-                          ) : (
-                            <span className="text-muted-foreground">{emp.employee_id || "N/A"}</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          {emp.stores ? (
-                            <span className="text-sm">
-                              {emp.stores.name} <span className="text-muted-foreground font-mono">({emp.stores.store_code})</span>
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">N/A</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="capitalize">{emp.role}</TableCell>
-                        <TableCell>₹{emp.salary?.toLocaleString() || "N/A"}</TableCell>
-                        <TableCell>{emp.joining_date ? new Date(emp.joining_date).toLocaleDateString() : "N/A"}</TableCell>
-                        <TableCell>
-                          <Badge variant={emp.is_active ? "default" : "secondary"}>
-                            {emp.is_active ? "Active" : "Inactive"}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap gap-2">
-                            <Button variant="ghost" size="icon" asChild title="View Details">
-                              <Link href={`/employees/${emp.id}`}>
-                                <Eye className="h-4 w-4" />
-                              </Link>
-                            </Button>
-                            <Button variant="ghost" size="icon" asChild title="Edit">
-                              <Link href={`/employees/${emp.id}/edit`}>
-                                <Edit2 className="h-4 w-4" />
-                              </Link>
-                            </Button>
-                            {isAdmin && (
-                              <Button 
-                                variant="ghost" 
-                                size="icon" 
-                                onClick={async () => {
-                                  if (!confirm(`Reset password for ${emp.name} to ${emp.employee_id || emp.id.slice(0, 4).toUpperCase()}?`)) return
-                                  try {
-                                    const newPassword = emp.employee_id || emp.id.slice(0, 4).toUpperCase()
-                                    const supabase = createClient()
-                                    await supabase.from("employees").update({ password: newPassword }).eq("id", emp.id)
-                                    toast({ title: "Success", description: `Password reset to ${newPassword}` })
-                                    fetchEmployees()
-                                  } catch (error: any) {
-                                    toast({ title: "Error", description: error.message || "Failed to reset password", variant: "destructive" })
-                                  }
-                                }}
-                                title="Reset Password"
-                              >
-                                <Key className="h-4 w-4" />
-                              </Button>
+                    <TableBody>
+                      {filteredEmployees.map((emp: any) => (
+                        <TableRow key={emp.id}>
+                          <TableCell className="font-mono font-medium">{emp.employee_id || "N/A"}</TableCell>
+                          <TableCell className="font-medium">{emp.name}</TableCell>
+                          <TableCell className="max-w-[180px] truncate">{emp.email}</TableCell>
+                          <TableCell>{emp.phone}</TableCell>
+                          <TableCell className="font-mono text-sm">
+                            {emp.password ? (
+                              <span title={emp.password} className="max-w-[100px] truncate block">{emp.password}</span>
+                            ) : (
+                              <span className="text-muted-foreground">{emp.employee_id || "N/A"}</span>
                             )}
-                            {isAdmin && (
-                              <Button variant="ghost" size="icon" onClick={() => handleDelete(emp.id)} title="Delete">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
+                          </TableCell>
+                          <TableCell>
+                            {emp.stores ? (
+                              <span className="text-sm">
+                                {emp.stores.name} <span className="text-muted-foreground font-mono">({emp.stores.store_code})</span>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground text-sm">N/A</span>
                             )}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                          </TableCell>
+                          <TableCell className="capitalize">{emp.role}</TableCell>
+                          <TableCell>₹{emp.salary?.toLocaleString() || "N/A"}</TableCell>
+                          <TableCell>{emp.joining_date ? new Date(emp.joining_date).toLocaleDateString() : "N/A"}</TableCell>
+                          <TableCell>
+                            <Badge variant={emp.is_active ? "default" : "secondary"}>
+                              {emp.is_active ? "Active" : "Inactive"}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex flex-wrap gap-2">
+                              <Button variant="ghost" size="icon" asChild title="View Details">
+                                <Link href={`/employees/${emp.id}`}>
+                                  <Eye className="h-4 w-4" />
+                                </Link>
+                              </Button>
+                              <Button variant="ghost" size="icon" asChild title="Edit">
+                                <Link href={`/employees/${emp.id}/edit`}>
+                                  <Edit2 className="h-4 w-4" />
+                                </Link>
+                              </Button>
+                              {isAdmin && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={async () => {
+                                    if (!confirm(`Reset password for ${emp.name} to ${emp.employee_id || emp.id.slice(0, 4).toUpperCase()}?`)) return
+                                    try {
+                                      const newPassword = emp.employee_id || emp.id.slice(0, 4).toUpperCase()
+                                      const supabase = createClient()
+                                      await supabase.from("employees").update({ password: newPassword }).eq("id", emp.id)
+                                      toast({ title: "Success", description: `Password reset to ${newPassword}` })
+                                      fetchEmployees()
+                                    } catch (error: any) {
+                                      toast({ title: "Error", description: error.message || "Failed to reset password", variant: "destructive" })
+                                    }
+                                  }}
+                                  title="Reset Password"
+                                >
+                                  <Key className="h-4 w-4" />
+                                </Button>
+                              )}
+                              {isAdmin && (
+                                <Button variant="ghost" size="icon" onClick={() => handleDelete(emp.id)} title="Delete">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               </div>
             </>

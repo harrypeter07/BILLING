@@ -346,10 +346,29 @@ export function ProductsTable({
 									{filteredProducts.map((product) => (
 										<TableRow key={product.id}>
 											<TableCell className="font-medium">
-												{product.name}
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help">{product.name}</span>
+													</TooltipTrigger>
+													<TooltipContent>Product Name: {product.name}</TooltipContent>
+												</Tooltip>
 											</TableCell>
-											<TableCell>{product.sku || "-"}</TableCell>
-											<TableCell>{product.category || "-"}</TableCell>
+											<TableCell>
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help">{product.sku || "-"}</span>
+													</TooltipTrigger>
+													<TooltipContent>{product.sku ? `SKU: ${product.sku}` : "No SKU provided"}</TooltipContent>
+												</Tooltip>
+											</TableCell>
+											<TableCell>
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help">{product.category || "-"}</span>
+													</TooltipTrigger>
+													<TooltipContent>{product.category ? `Category: ${product.category}` : "No category assigned"}</TooltipContent>
+												</Tooltip>
+											</TableCell>
 											<TableCell className="text-right">
 												<span className="text-sm md:text-base truncate max-w-[100px] inline-block">
 													<Tooltip>
@@ -366,19 +385,34 @@ export function ProductsTable({
 												</span>
 											</TableCell>
 											<TableCell className="text-right">
-												{product.unit === "piece"
-													? `${Math.round(product.stock_quantity)} ${
-															product.unit
-													  }`
-													: `${Number(product.stock_quantity).toLocaleString(
-															"en-IN"
-													  )} ${product.unit}`}
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help">
+															{product.unit === "piece"
+																? `${Math.round(product.stock_quantity)} ${product.unit
+																}`
+																: `${Number(product.stock_quantity).toLocaleString(
+																	"en-IN"
+																)} ${product.unit}`}
+														</span>
+													</TooltipTrigger>
+													<TooltipContent>
+														Stock Quantity: {product.unit === "piece"
+															? `${Math.round(product.stock_quantity)} ${product.unit}`
+															: `${Number(product.stock_quantity).toLocaleString("en-IN")} ${product.unit}`}
+													</TooltipContent>
+												</Tooltip>
 											</TableCell>
 											<TableCell>
 												{getStockBadge(product.stock_quantity)}
 											</TableCell>
 											<TableCell className="text-right">
-												{product.gst_rate}%
+												<Tooltip>
+													<TooltipTrigger asChild>
+														<span className="cursor-help">{product.gst_rate}%</span>
+													</TooltipTrigger>
+													<TooltipContent>GST Rate: {product.gst_rate}%</TooltipContent>
+												</Tooltip>
 											</TableCell>
 											<TableCell>
 												<DropdownMenu>
