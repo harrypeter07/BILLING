@@ -22,7 +22,16 @@ import { useMemo } from "react"
 import { Badge } from "@/components/ui/badge"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { createClient } from "@/lib/supabase/client"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { db } from "@/lib/dexie-client"
+import {
+  validateInvoiceAmount,
+  validateItemQuantity,
+  validateUnitPrice,
+  validateLineTotal,
+  validateGstRate,
+  validateDiscountPercent
+} from "@/lib/utils/db-validation"
 
 // Helper function to update product stock quantities after invoice creation
 async function updateProductStock(
@@ -35,7 +44,7 @@ async function updateProductStock(
   try {
     // Group items by product_id to sum quantities
     const productQuantities = new Map<string, number>()
-    
+
     for (const item of items) {
       if (item.product_id) {
         const currentQty = productQuantities.get(item.product_id) || 0
@@ -55,14 +64,14 @@ async function updateProductStock(
               currentStock = originalProduct.stock_quantity
             }
           }
-          
+
           if (currentStock === undefined) {
             const product = await db.products.get(productId)
             if (product && product.stock_quantity !== undefined) {
               currentStock = product.stock_quantity
             }
           }
-          
+
           if (currentStock !== undefined) {
             const newStock = Math.max(0, currentStock - quantityToDeduct)
             await db.products.update(productId, {
@@ -86,7 +95,7 @@ async function updateProductStock(
               currentStock = originalProduct.stock_quantity
             }
           }
-          
+
           if (currentStock === undefined) {
             const { data: product, error: fetchError } = await supabase
               .from('products')
@@ -190,12 +199,12 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
   const [invoiceNumber, setInvoiceNumber] = useState("")
   const [localCustomers, setLocalCustomers] = useState<Customer[]>(customers)
   const [products, setProducts] = useState<Product[]>(initialProducts)
-  
+
   // Merge prop customers with local additions without removing new ones
   useEffect(() => {
     setLocalCustomers((prev) => {
       const dedup = new Map<string, Customer>()
-      ;[...prev, ...customers].forEach((cust) => dedup.set(cust.id, cust))
+        ;[...prev, ...customers].forEach((cust) => dedup.set(cust.id, cust))
       return Array.from(dedup.values())
     })
   }, [customers])
@@ -204,7 +213,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
   useEffect(() => {
     setProducts(initialProducts)
   }, [initialProducts])
-  
+
   useEffect(() => {
     // Generate invoice number on mount if we have store/employee
     if (storeId && employeeId) {
@@ -258,16 +267,16 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
       const product = products.find((p) => p.id === itemToRemove.product_id)
       if (product && product.stock_quantity !== undefined) {
         const newStock = (product.stock_quantity || 0) + itemToRemove.quantity
-        setProducts(prevProducts => 
-          prevProducts.map(p => 
-            p.id === itemToRemove.product_id 
+        setProducts(prevProducts =>
+          prevProducts.map(p =>
+            p.id === itemToRemove.product_id
               ? { ...p, stock_quantity: newStock }
               : p
           )
         )
       }
     }
-    
+
     // Remove the item
     const newLineItems = lineItems.filter((item) => item.id !== id)
     setLineItems(newLineItems)
@@ -284,9 +293,9 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
               // Decrease stock in real-time when product is added
               if (product.stock_quantity !== undefined) {
                 const newStock = Math.max(0, (product.stock_quantity || 0) - (item.quantity || 1))
-                setProducts(prevProducts => 
-                  prevProducts.map(p => 
-                    p.id === value 
+                setProducts(prevProducts =>
+                  prevProducts.map(p =>
+                    p.id === value
                       ? { ...p, stock_quantity: newStock }
                       : p
                   )
@@ -311,9 +320,9 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
               const diff = oldQty - newQty // negative if increasing, positive if decreasing
               const currentStock = product.stock_quantity
               const newStock = Math.max(0, currentStock + diff)
-              setProducts(prevProducts => 
-                prevProducts.map(p => 
-                  p.id === item.product_id 
+              setProducts(prevProducts =>
+                prevProducts.map(p =>
+                  p.id === item.product_id
                     ? { ...p, stock_quantity: newStock }
                     : p
                 )
@@ -374,23 +383,23 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
   const addProductToInvoice = (product: Product) => {
     // Check if product already exists in line items
     const existingItem = lineItems.find(item => item.product_id === product.id)
-    
+
     if (existingItem) {
       // If product exists, increase quantity by 1
       updateLineItem(existingItem.id, "quantity", existingItem.quantity + 1)
-      
+
       // Decrease stock in real-time
       if (product.stock_quantity !== undefined) {
         const newStock = Math.max(0, (product.stock_quantity || 0) - 1)
-        setProducts(prevProducts => 
-          prevProducts.map(p => 
-            p.id === product.id 
+        setProducts(prevProducts =>
+          prevProducts.map(p =>
+            p.id === product.id
               ? { ...p, stock_quantity: newStock }
               : p
           )
         )
       }
-      
+
       toast({ title: "Quantity increased", description: `${product.name} quantity increased to ${existingItem.quantity + 1}` })
     } else {
       // If product doesn't exist, add new line item
@@ -405,22 +414,22 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
         hsn_code: product.hsn_code || "",
       }
       setLineItems([...lineItems, newLineItem])
-      
+
       // Decrease stock in real-time when product is added
       if (product.stock_quantity !== undefined) {
         const newStock = Math.max(0, (product.stock_quantity || 0) - 1)
-        setProducts(prevProducts => 
-          prevProducts.map(p => 
-            p.id === product.id 
+        setProducts(prevProducts =>
+          prevProducts.map(p =>
+            p.id === product.id
               ? { ...p, stock_quantity: newStock }
               : p
           )
         )
       }
-      
+
       toast({ title: "Product added", description: `${product.name} added to invoice` })
     }
-    
+
     setProductSearchTerm("")
   }
 
@@ -469,7 +478,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validate customer is selected
     if (!customerId || customerId.trim() === "") {
       toast({
@@ -479,10 +488,107 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
       });
       return;
     }
-    
+
     setIsLoading(true);
     try {
       const t = calculateTotals();
+
+      // Validate invoice total amount
+      const totalValidation = validateInvoiceAmount(t.total);
+      if (!totalValidation.isValid) {
+        toast({
+          title: "Invoice Amount Exceeds Limit",
+          description: totalValidation.error,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Validate subtotal
+      const subtotalValidation = validateInvoiceAmount(t.subtotal);
+      if (!subtotalValidation.isValid) {
+        toast({
+          title: "Subtotal Exceeds Limit",
+          description: subtotalValidation.error,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Validate each line item
+      for (let i = 0; i < lineItems.length; i++) {
+        const item = lineItems[i];
+
+        // Validate quantity
+        const qtyValidation = validateItemQuantity(item.quantity);
+        if (!qtyValidation.isValid) {
+          toast({
+            title: `Line Item ${i + 1} Error`,
+            description: qtyValidation.error,
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        // Validate unit price
+        const priceValidation = validateUnitPrice(item.unit_price);
+        if (!priceValidation.isValid) {
+          toast({
+            title: `Line Item ${i + 1} Error`,
+            description: priceValidation.error,
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        // Validate GST rate
+        const gstValidation = validateGstRate(item.gst_rate);
+        if (!gstValidation.isValid) {
+          toast({
+            title: `Line Item ${i + 1} Error`,
+            description: gstValidation.error,
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        // Validate discount percent
+        const discountValidation = validateDiscountPercent(item.discount_percent);
+        if (!discountValidation.isValid) {
+          toast({
+            title: `Line Item ${i + 1} Error`,
+            description: discountValidation.error,
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        // Calculate and validate line total
+        const calc = calculateLineItem({
+          unitPrice: item.unit_price,
+          discountPercent: item.discount_percent,
+          gstRate: item.gst_rate,
+          quantity: item.quantity,
+        });
+        const lineTotal = calc.taxableAmount + calc.gstAmount;
+        const lineTotalValidation = validateLineTotal(lineTotal);
+        if (!lineTotalValidation.isValid) {
+          toast({
+            title: `Line Item ${i + 1} Total Exceeds Limit`,
+            description: lineTotalValidation.error,
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+      }
+
       const invoiceId = crypto.randomUUID();
       console.log('[InvoiceForm] Creating invoice with customer_id:', customerId);
       const invoiceData = {
@@ -505,7 +611,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
         employee_id: employeeId || undefined,
         created_by_employee_id: employeeId || undefined,
       };
-      
+
       // Calculate line totals and GST for each item
       const items = lineItems.map((li) => {
         const calc = calculateLineItem({
@@ -529,20 +635,20 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
           created_at: new Date().toISOString(),
         };
       });
-      
+
       console.log('[InvoiceForm] Saving invoice', invoiceData, items);
-      
+
       const isIndexedDb = isIndexedDbMode()
       if (isIndexedDb) {
         // Save to Dexie
         await storageManager.addInvoice(invoiceData, items);
-        
+
         // Decrease product stock quantities (use original products, not modified state)
         await updateProductStock(items, isIndexedDb, undefined, undefined, initialProducts);
-        
+
         // Dispatch event to notify customer detail page to refresh
         window.dispatchEvent(new CustomEvent('invoice:created', { detail: { customer_id: customerId } }));
-        
+
         toast({ title: "Success", description: "Invoice created successfully" });
         router.push("/invoices");
         router.refresh();
@@ -554,29 +660,29 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
           toast({ title: "Error", description: "Not authenticated", variant: "destructive" })
           return
         }
-        
+
         const { data: newInvoice, error: invoiceError } = await supabase
           .from('invoices')
           .insert({ ...invoiceData, user_id: user.id })
           .select()
           .single()
-        
+
         if (invoiceError) throw invoiceError
-        
+
         const itemsWithInvoiceId = items.map(item => ({
           ...item,
           invoice_id: newInvoice.id
         }))
-        
+
         const { error: itemsError } = await supabase.from('invoice_items').insert(itemsWithInvoiceId)
         if (itemsError) throw itemsError
-        
+
         // Decrease product stock quantities (use original products, not modified state)
         await updateProductStock(items, isIndexedDb, supabase, user.id, initialProducts);
-        
+
         // Dispatch event to notify customer detail page to refresh
         window.dispatchEvent(new CustomEvent('invoice:created', { detail: { customer_id: customerId } }));
-        
+
         toast({ title: "Success", description: "Invoice created successfully" });
         router.push("/invoices");
         router.refresh();
@@ -627,512 +733,518 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
           </div>
         )}
         <div className="grid gap-2 xl:grid-cols-[280px_minmax(320px,1fr)_520px]">
-        {/* Left column: customer + invoice meta */}
-        <div className="space-y-2">
-          <InlineCustomerForm
-            onCustomerCreated={(newCustomer) => {
-              setLocalCustomers((prev) => [newCustomer, ...prev.filter((c) => c.id !== newCustomer.id)])
-              setCustomerId(newCustomer.id)
-              const nextList = [newCustomer, ...localCustomers.filter((c) => c.id !== newCustomer.id)]
-              onCustomersUpdate?.(nextList)
-            }}
-          />
+          {/* Left column: customer + invoice meta */}
+          <div className="space-y-2">
+            <InlineCustomerForm
+              onCustomerCreated={(newCustomer) => {
+                setLocalCustomers((prev) => [newCustomer, ...prev.filter((c) => c.id !== newCustomer.id)])
+                setCustomerId(newCustomer.id)
+                const nextList = [newCustomer, ...localCustomers.filter((c) => c.id !== newCustomer.id)]
+                onCustomersUpdate?.(nextList)
+              }}
+            />
 
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Invoice Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 p-4">
-              <div className="grid gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="invoice_number" className="text-xs">
-                    Invoice Number
-                  </Label>
-                  <Input
-                    id="invoice_number"
-                    value={invoiceNumber}
-                    onChange={(e) => setInvoiceNumber(e.target.value)}
-                    required
-                    className="h-9 text-sm"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Invoice Details</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 p-4">
+                <div className="grid gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="invoice_date" className="text-xs">
-                      Date
+                    <Label htmlFor="invoice_number" className="text-xs">
+                      Invoice Number
                     </Label>
                     <Input
-                      id="invoice_date"
-                      type="date"
-                      value={invoiceDate}
-                      onChange={(e) => setInvoiceDate(e.target.value)}
+                      id="invoice_number"
+                      value={invoiceNumber}
+                      onChange={(e) => setInvoiceNumber(e.target.value)}
                       required
                       className="h-9 text-sm"
                     />
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="due_date" className="text-xs">
-                      Due
-                    </Label>
-                    <Input
-                      id="due_date"
-                      type="date"
-                      value={dueDate}
-                      onChange={(e) => setDueDate(e.target.value)}
-                      className="h-9 text-sm"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="invoice_date" className="text-xs">
+                        Date
+                      </Label>
+                      <Input
+                        id="invoice_date"
+                        type="date"
+                        value={invoiceDate}
+                        onChange={(e) => setInvoiceDate(e.target.value)}
+                        required
+                        className="h-9 text-sm"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="due_date" className="text-xs">
+                        Due
+                      </Label>
+                      <Input
+                        id="due_date"
+                        type="date"
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                        className="h-9 text-sm"
+                      />
+                    </div>
                   </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="customer" className="text-xs">
+                      Customer
+                    </Label>
+                    <Select
+                      value={customerId}
+                      onValueChange={(value) => {
+                        setCustomerId(value)
+                        // Find the selected customer and populate inline form if needed
+                        const selectedCustomer = localCustomers.find(c => c.id === value)
+                        if (selectedCustomer) {
+                          // Dispatch event to populate inline form
+                          window.dispatchEvent(new CustomEvent('customer:selected', {
+                            detail: selectedCustomer
+                          }))
+                        }
+                      }}
+                    >
+                      <SelectTrigger className="h-9 text-sm">
+                        <SelectValue placeholder="Select customer" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {localCustomers.map((customer) => (
+                          <SelectItem key={customer.id} value={customer.id}>
+                            {customer.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <div className="flex items-center gap-2 text-xs">
+                    <Switch id="gst_invoice" checked={isGstInvoice} onCheckedChange={setIsGstInvoice} />
+                    <Label htmlFor="gst_invoice" className="text-xs">
+                      GST Invoice
+                    </Label>
+                  </div>
+                  {isGstInvoice && (
+                    <div className="flex items-center gap-2 text-xs">
+                      <Switch id="same_state" checked={isSameState} onCheckedChange={setIsSameState} />
+                      <Label htmlFor="same_state" className="text-xs">
+                        Same State
+                      </Label>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardContent className="space-y-2 p-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="notes" className="text-xs">
+                    Notes
+                  </Label>
+                  <Textarea
+                    id="notes"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    rows={2}
+                    className="text-sm"
+                  />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="customer" className="text-xs">
-                    Customer
+                  <Label htmlFor="terms" className="text-xs">
+                    Terms
                   </Label>
-                  <Select 
-                    value={customerId} 
-                    onValueChange={(value) => {
-                      setCustomerId(value)
-                      // Find the selected customer and populate inline form if needed
-                      const selectedCustomer = localCustomers.find(c => c.id === value)
-                      if (selectedCustomer) {
-                        // Dispatch event to populate inline form
-                        window.dispatchEvent(new CustomEvent('customer:selected', { 
-                          detail: selectedCustomer 
-                        }))
-                      }
-                    }}
-                  >
-                    <SelectTrigger className="h-9 text-sm">
-                      <SelectValue placeholder="Select customer" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {localCustomers.map((customer) => (
-                        <SelectItem key={customer.id} value={customer.id}>
-                          {customer.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Textarea
+                    id="terms"
+                    value={terms}
+                    onChange={(e) => setTerms(e.target.value)}
+                    rows={2}
+                    className="text-sm"
+                  />
                 </div>
-              </div>
+              </CardContent>
+            </Card>
+          </div>
 
-              <div className="flex items-center justify-between rounded-md border px-3 py-2">
-                <div className="flex items-center gap-2 text-xs">
-                  <Switch id="gst_invoice" checked={isGstInvoice} onCheckedChange={setIsGstInvoice} />
-                  <Label htmlFor="gst_invoice" className="text-xs">
-                    GST Invoice
-                  </Label>
+          {/* Center column: product browser */}
+          <div className="space-y-3">
+            <Card className="h-full">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base">Select Products</CardTitle>
+                <p className="text-xs text-muted-foreground">Search or tap to add items instantly</p>
+              </CardHeader>
+              <CardContent className="space-y-2 p-4">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    placeholder="Search name, SKU, or category"
+                    value={productSearchTerm}
+                    onChange={(e) => setProductSearchTerm(e.target.value)}
+                    className="pl-9 h-9 text-sm"
+                  />
                 </div>
-                {isGstInvoice && (
-                  <div className="flex items-center gap-2 text-xs">
-                    <Switch id="same_state" checked={isSameState} onCheckedChange={setIsSameState} />
-                    <Label htmlFor="same_state" className="text-xs">
-                      Same State
-                    </Label>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
 
-          <Card>
-            <CardContent className="space-y-2 p-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="notes" className="text-xs">
-                  Notes
-                </Label>
-                <Textarea
-                  id="notes"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
-                  className="text-sm"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="terms" className="text-xs">
-                  Terms
-                </Label>
-                <Textarea
-                  id="terms"
-                  value={terms}
-                  onChange={(e) => setTerms(e.target.value)}
-                  rows={2}
-                  className="text-sm"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Center column: product browser */}
-        <div className="space-y-3">
-          <Card className="h-full">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">Select Products</CardTitle>
-              <p className="text-xs text-muted-foreground">Search or tap to add items instantly</p>
-            </CardHeader>
-            <CardContent className="space-y-2 p-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Search name, SKU, or category"
-                  value={productSearchTerm}
-                  onChange={(e) => setProductSearchTerm(e.target.value)}
-                  className="pl-9 h-9 text-sm"
-                />
-              </div>
-
-              {recentProducts.length > 0 && !productSearchTerm && (
-                <div>
-                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-                    <span>Recently added</span>
-                    <span>{recentProducts.length} items</span>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {recentProducts.map((product) => (
-                      <button
-                        key={product.id}
-                        type="button"
-                        onClick={() => addProductToInvoice(product)}
-                        className="rounded-md border px-3 py-2 text-left text-xs hover:bg-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-primary"
-                      >
-                        <p className="font-medium truncate">{product.name}</p>
-                        <div className="flex items-center justify-between text-[11px] text-muted-foreground">
-                          <span>₹{product.price.toLocaleString()}</span>
-                          {product.unit && <span>{product.unit}</span>}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>{productSearchTerm ? "Matching products" : "All products (A-Z)"}</span>
-                  <span>{filteredProducts.length} items</span>
-                </div>
-                <div className="max-h-[520px] overflow-y-auto pr-1">
-                  {filteredProducts.length === 0 ? (
-                    <div className="py-12 text-center text-xs text-muted-foreground">
-                      {productSearchTerm ? "No products found" : "No products available"}
+                {recentProducts.length > 0 && !productSearchTerm && (
+                  <div>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                      <span>Recently added</span>
+                      <span>{recentProducts.length} items</span>
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-3 gap-2">
-                      {filteredProducts.map((product) => (
+                    <div className="grid grid-cols-2 gap-2">
+                      {recentProducts.map((product) => (
                         <button
                           key={product.id}
                           type="button"
                           onClick={() => addProductToInvoice(product)}
-                          className="rounded-md border px-3 py-2 text-left hover:bg-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-primary"
+                          className="rounded-md border px-3 py-2 text-left text-xs hover:bg-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-primary"
                         >
-                          <p className="text-sm font-medium truncate">{product.name}</p>
-                          <div className="mt-1 text-[11px] text-muted-foreground space-y-1">
-                            <div className="flex items-center justify-between">
-                              <span>₹{product.price.toLocaleString()}</span>
-                              {product.category && <span className="truncate max-w-[80px]">{product.category}</span>}
-                            </div>
-                            {product.stock_quantity !== undefined && (
-                              <Badge
-                                variant={
-                                  product.stock_quantity > 10
-                                    ? "default"
-                                    : product.stock_quantity > 0
-                                      ? "secondary"
-                                      : "destructive"
-                                }
-                                className="text-[10px] font-normal"
-                              >
-                                {product.unit === 'piece' 
-                                  ? `${Math.round(product.stock_quantity)} ${product.unit}`
-                                  : `${Number(product.stock_quantity).toLocaleString("en-IN")} ${product.unit}`}
-                              </Badge>
-                            )}
+                          <p className="font-medium truncate">{product.name}</p>
+                          <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="truncate block max-w-[80px] cursor-help">₹{product.price.toLocaleString()}</span>
+                              </TooltipTrigger>
+                              <TooltipContent>Price: ₹{product.price.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TooltipContent>
+                            </Tooltip>
+                            {product.unit && <span>{product.unit}</span>}
                           </div>
                         </button>
                       ))}
                     </div>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+                  </div>
+                )}
 
-        {/* Right column: line items + totals */}
-        <div className="space-y-2">
-          <Card className="h-full">
-            <CardHeader className="pb-1 pt-2 px-3">
-              <CardTitle className="text-sm">Invoice Items</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1 p-2">
-              <div className="rounded-md border">
-                <div className="max-h-[380px] overflow-y-auto">
-                  <Table className="text-xs">
-                    <TableHeader className="bg-muted/30 sticky top-0 z-10">
-                      <TableRow className="h-9">
-                        <TableHead className="w-[120px] px-2 py-2 text-xs font-semibold">Product</TableHead>
-                        <TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">Qty</TableHead>
-                        <TableHead className="w-[90px] text-center px-1.5 py-2 text-xs font-semibold">Rate</TableHead>
-                        <TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">Disc%</TableHead>
-                        {isGstInvoice && <TableHead className="w-[70px] text-center px-1.5 py-2 text-xs font-semibold">GST</TableHead>}
-                        <TableHead className="w-[100px] text-right px-2 py-2 text-xs font-semibold">Amount</TableHead>
-                        <TableHead className="w-[40px] px-1 py-2"></TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {lineItems.map((item) => {
-                        const calc = calculateLineItem({
-                          unitPrice: item.unit_price,
-                          discountPercent: item.discount_percent,
-                          gstRate: item.gst_rate,
-                          quantity: item.quantity,
-                        })
-                        return (
-                          <TableRow key={item.id} className="h-12">
-                            <TableCell className="px-2 py-1.5">
-                              <Select
-                                value={item.product_id || ""}
-                                onValueChange={(value) => {
-                                  updateLineItem(item.id, "product_id", value)
-                                  // Auto-add new line item if this is the last row and a product is selected
-                                  if (lineItems.length > 0 && lineItems[lineItems.length - 1].id === item.id && value) {
-                                    setTimeout(() => {
-                                      addLineItem()
-                                    }, 100)
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>{productSearchTerm ? "Matching products" : "All products (A-Z)"}</span>
+                    <span>{filteredProducts.length} items</span>
+                  </div>
+                  <div className="max-h-[520px] overflow-y-auto pr-1">
+                    {filteredProducts.length === 0 ? (
+                      <div className="py-12 text-center text-xs text-muted-foreground">
+                        {productSearchTerm ? "No products found" : "No products available"}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        {filteredProducts.map((product) => (
+                          <button
+                            key={product.id}
+                            type="button"
+                            onClick={() => addProductToInvoice(product)}
+                            className="rounded-md border px-3 py-2 text-left hover:bg-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-primary"
+                          >
+                            <p className="text-sm font-medium truncate">{product.name}</p>
+                            <div className="mt-1 text-[11px] text-muted-foreground space-y-1">
+                              <div className="flex items-center justify-between">
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="truncate block max-w-[60px] cursor-help">₹{product.price.toLocaleString()}</span>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Price: ₹{product.price.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</TooltipContent>
+                                </Tooltip>
+                                {product.category && <span className="truncate max-w-[80px]">{product.category}</span>}
+                              </div>
+                              {product.stock_quantity !== undefined && (
+                                <Badge
+                                  variant={
+                                    product.stock_quantity > 10
+                                      ? "default"
+                                      : product.stock_quantity > 0
+                                        ? "secondary"
+                                        : "destructive"
                                   }
-                                }}
-                              >
-                                <SelectTrigger className="h-8 text-xs px-2">
-                                  <SelectValue placeholder="Select Product" />
-                                </SelectTrigger>
-                                <SelectContent className="max-h-60">
-                                  {products.map((product) => (
-                                    <SelectItem key={product.id} value={product.id}>
-                                      {product.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            </TableCell>
-                            {(() => {
-                              const fieldId = `${item.id}-qty`
-                              const qtyFocused = focusedField === fieldId
-                              const rateFieldId = `${item.id}-rate`
-                              const rateFocused = focusedField === rateFieldId
-                              const discFieldId = `${item.id}-disc`
-                              const discFocused = focusedField === discFieldId
-                              const gstFieldId = `${item.id}-gst`
-                              const gstFocused = focusedField === gstFieldId
-                              
-                              return (
-                                <>
-                                  <TableCell 
-                                    className={`px-1.5 py-1 transition-all duration-300 ${qtyFocused ? 'w-[110px]' : 'w-[75px]'}`}
-                                  >
-                                    <div className="flex flex-col">
-                                      <Input
-                                        type="number"
-                                        min="0"
-                                        step="1"
-                                        value={item.quantity || ""}
-                                        onChange={(e) =>
-                                          updateLineItem(item.id, "quantity", Number.parseInt(e.target.value) || 0)
-                                        }
-                                        onFocus={() => setFocusedField(fieldId)}
-                                        onBlur={() => setFocusedField(null)}
-                                        onMouseEnter={() => setFocusedField(fieldId)}
-                                        onMouseLeave={() => {
-                                          const activeEl = document.activeElement as HTMLElement
-                                          if (activeEl?.dataset?.fieldId !== fieldId) {
-                                            setFocusedField(null)
+                                  className="text-[10px] font-normal"
+                                >
+                                  {product.unit === 'piece'
+                                    ? `${Math.round(product.stock_quantity)} ${product.unit}`
+                                    : `${Number(product.stock_quantity).toLocaleString("en-IN")} ${product.unit}`}
+                                </Badge>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Right column: line items + totals */}
+          <div className="space-y-2">
+            <Card className="h-full">
+              <CardHeader className="pb-1 pt-2 px-3">
+                <CardTitle className="text-sm">Invoice Items</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-1 p-2">
+                <div className="rounded-md border">
+                  <div className="max-h-[380px] overflow-y-auto">
+                    <Table className="text-xs">
+                      <TableHeader className="bg-muted/30 sticky top-0 z-10">
+                        <TableRow className="h-9">
+                          <TableHead className="w-[120px] px-2 py-2 text-xs font-semibold">Product</TableHead>
+                          <TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">Qty</TableHead>
+                          <TableHead className="w-[90px] text-center px-1.5 py-2 text-xs font-semibold">Rate</TableHead>
+                          <TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">Disc%</TableHead>
+                          {isGstInvoice && <TableHead className="w-[70px] text-center px-1.5 py-2 text-xs font-semibold">GST</TableHead>}
+                          <TableHead className="w-[100px] text-right px-2 py-2 text-xs font-semibold">Amount</TableHead>
+                          <TableHead className="w-[40px] px-1 py-2"></TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {lineItems.map((item) => {
+                          const calc = calculateLineItem({
+                            unitPrice: item.unit_price,
+                            discountPercent: item.discount_percent,
+                            gstRate: item.gst_rate,
+                            quantity: item.quantity,
+                          })
+                          return (
+                            <TableRow key={item.id} className="h-12">
+                              <TableCell className="px-2 py-1.5">
+                                <Select
+                                  value={item.product_id || ""}
+                                  onValueChange={(value) => {
+                                    updateLineItem(item.id, "product_id", value)
+                                    // Auto-add new line item if this is the last row and a product is selected
+                                    if (lineItems.length > 0 && lineItems[lineItems.length - 1].id === item.id && value) {
+                                      setTimeout(() => {
+                                        addLineItem()
+                                      }, 100)
+                                    }
+                                  }}
+                                >
+                                  <SelectTrigger className="h-8 text-xs px-2">
+                                    <SelectValue placeholder="Select Product" />
+                                  </SelectTrigger>
+                                  <SelectContent className="max-h-60">
+                                    {products.map((product) => (
+                                      <SelectItem key={product.id} value={product.id}>
+                                        {product.name}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              </TableCell>
+                              {(() => {
+                                const fieldId = `${item.id}-qty`
+                                const qtyFocused = focusedField === fieldId
+                                const rateFieldId = `${item.id}-rate`
+                                const rateFocused = focusedField === rateFieldId
+                                const discFieldId = `${item.id}-disc`
+                                const discFocused = focusedField === discFieldId
+                                const gstFieldId = `${item.id}-gst`
+                                const gstFocused = focusedField === gstFieldId
+
+                                return (
+                                  <>
+                                    <TableCell
+                                      className={`px-1.5 py-1 transition-all duration-300 ${qtyFocused ? 'w-[110px]' : 'w-[75px]'}`}
+                                    >
+                                      <div className="flex flex-col">
+                                        <Input
+                                          type="number"
+                                          min="0"
+                                          step="1"
+                                          value={item.quantity || ""}
+                                          onChange={(e) =>
+                                            updateLineItem(item.id, "quantity", Number.parseInt(e.target.value) || 0)
                                           }
-                                        }}
-                                        data-field-id={fieldId}
-                                        required
-                                        className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
-                                          qtyFocused ? 'px-3 bg-primary/5 border-primary/50 shadow-sm' : 'px-1.5'
-                                        }`}
-                                      />
-                                      <div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
-                                        {item.quantity ? item.quantity : ''}
+                                          onFocus={() => setFocusedField(fieldId)}
+                                          onBlur={() => setFocusedField(null)}
+                                          onMouseEnter={() => setFocusedField(fieldId)}
+                                          onMouseLeave={() => {
+                                            const activeEl = document.activeElement as HTMLElement
+                                            if (activeEl?.dataset?.fieldId !== fieldId) {
+                                              setFocusedField(null)
+                                            }
+                                          }}
+                                          data-field-id={fieldId}
+                                          required
+                                          className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${qtyFocused ? 'px-3 bg-primary/5 border-primary/50 shadow-sm' : 'px-1.5'
+                                            }`}
+                                        />
+                                        <div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
+                                          {item.quantity ? item.quantity : ''}
+                                        </div>
                                       </div>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell 
-                                    className={`px-1.5 py-1 transition-all duration-300 ${rateFocused ? 'w-[120px]' : 'w-[90px]'}`}
-                                  >
-                                    <div className="flex flex-col">
-                                      <Input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={item.unit_price || ""}
-                                        onChange={(e) =>
-                                          updateLineItem(item.id, "unit_price", Number.parseFloat(e.target.value) || 0)
-                                        }
-                                        onFocus={() => setFocusedField(rateFieldId)}
-                                        onBlur={() => setFocusedField(null)}
-                                        onMouseEnter={() => setFocusedField(rateFieldId)}
-                                        onMouseLeave={() => {
-                                          const activeEl = document.activeElement as HTMLElement
-                                          if (activeEl?.dataset?.fieldId !== rateFieldId) {
-                                            setFocusedField(null)
-                                          }
-                                        }}
-                                        data-field-id={rateFieldId}
-                                        required
-                                        className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
-                                          rateFocused ? 'px-3 bg-primary/5 border-primary/50 shadow-sm' : 'px-1.5'
-                                        }`}
-                                      />
-                                      <div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
-                                        {item.unit_price ? `₹${item.unit_price.toFixed(2)}` : ''}
-                                      </div>
-                                    </div>
-                                  </TableCell>
-                                  <TableCell 
-                                    className={`px-1.5 py-1 transition-all duration-300 ${discFocused ? 'w-[110px]' : 'w-[75px]'}`}
-                                  >
-                                    <div className="flex flex-col">
-                                      <Input
-                                        type="number"
-                                        min="0"
-                                        max="100"
-                                        step="0.01"
-                                        value={item.discount_percent || ""}
-                                        onChange={(e) =>
-                                          updateLineItem(
-                                            item.id,
-                                            "discount_percent",
-                                            Number.parseFloat(e.target.value) || 0,
-                                          )
-                                        }
-                                        onFocus={() => setFocusedField(discFieldId)}
-                                        onBlur={() => setFocusedField(null)}
-                                        onMouseEnter={() => setFocusedField(discFieldId)}
-                                        onMouseLeave={() => {
-                                          const activeEl = document.activeElement as HTMLElement
-                                          if (activeEl?.dataset?.fieldId !== discFieldId) {
-                                            setFocusedField(null)
-                                          }
-                                        }}
-                                        data-field-id={discFieldId}
-                                        className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
-                                          discFocused ? 'px-3 bg-primary/5 border-primary/50 shadow-sm' : 'px-1.5'
-                                        }`}
-                                      />
-                                      <div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
-                                        {item.discount_percent ? `${item.discount_percent}%` : ''}
-                                      </div>
-                                    </div>
-                                  </TableCell>
-                                  {isGstInvoice && (
-                                    <TableCell 
-                                      className={`px-1.5 py-1 transition-all duration-300 ${gstFocused ? 'w-[100px]' : 'w-[70px]'}`}
+                                    </TableCell>
+                                    <TableCell
+                                      className={`px-1.5 py-1 transition-all duration-300 ${rateFocused ? 'w-[120px]' : 'w-[90px]'}`}
                                     >
                                       <div className="flex flex-col">
                                         <Input
                                           type="number"
                                           min="0"
                                           step="0.01"
-                                          value={item.gst_rate || ""}
+                                          value={item.unit_price || ""}
                                           onChange={(e) =>
-                                            updateLineItem(item.id, "gst_rate", Number.parseFloat(e.target.value) || 0)
+                                            updateLineItem(item.id, "unit_price", Number.parseFloat(e.target.value) || 0)
                                           }
-                                          onFocus={() => setFocusedField(gstFieldId)}
+                                          onFocus={() => setFocusedField(rateFieldId)}
                                           onBlur={() => setFocusedField(null)}
-                                          onMouseEnter={() => setFocusedField(gstFieldId)}
+                                          onMouseEnter={() => setFocusedField(rateFieldId)}
                                           onMouseLeave={() => {
                                             const activeEl = document.activeElement as HTMLElement
-                                            if (activeEl?.dataset?.fieldId !== gstFieldId) {
+                                            if (activeEl?.dataset?.fieldId !== rateFieldId) {
                                               setFocusedField(null)
                                             }
                                           }}
-                                          data-field-id={gstFieldId}
-                                          className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
-                                            gstFocused ? 'px-3 bg-primary/5 border-primary/50 shadow-sm' : 'px-1.5'
-                                          }`}
+                                          data-field-id={rateFieldId}
+                                          required
+                                          className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${rateFocused ? 'px-3 bg-primary/5 border-primary/50 shadow-sm' : 'px-1.5'
+                                            }`}
                                         />
                                         <div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
-                                          {item.gst_rate ? `${item.gst_rate}%` : ''}
+                                          {item.unit_price ? `₹${item.unit_price.toFixed(2)}` : ''}
                                         </div>
                                       </div>
                                     </TableCell>
-                                  )}
-                                </>
-                              )
-                            })()}
-                            <TableCell className="text-right font-bold text-sm px-2 py-1.5">
-                              ₹{calc.lineTotal.toFixed(2)}
-                            </TableCell>
-                            <TableCell className="px-1 py-1.5">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => removeLineItem(item.id)}
-                                className="h-7 w-7"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </Button>
-                            </TableCell>
-                          </TableRow>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
+                                    <TableCell
+                                      className={`px-1.5 py-1 transition-all duration-300 ${discFocused ? 'w-[110px]' : 'w-[75px]'}`}
+                                    >
+                                      <div className="flex flex-col">
+                                        <Input
+                                          type="number"
+                                          min="0"
+                                          max="100"
+                                          step="0.01"
+                                          value={item.discount_percent || ""}
+                                          onChange={(e) =>
+                                            updateLineItem(
+                                              item.id,
+                                              "discount_percent",
+                                              Number.parseFloat(e.target.value) || 0,
+                                            )
+                                          }
+                                          onFocus={() => setFocusedField(discFieldId)}
+                                          onBlur={() => setFocusedField(null)}
+                                          onMouseEnter={() => setFocusedField(discFieldId)}
+                                          onMouseLeave={() => {
+                                            const activeEl = document.activeElement as HTMLElement
+                                            if (activeEl?.dataset?.fieldId !== discFieldId) {
+                                              setFocusedField(null)
+                                            }
+                                          }}
+                                          data-field-id={discFieldId}
+                                          className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${discFocused ? 'px-3 bg-primary/5 border-primary/50 shadow-sm' : 'px-1.5'
+                                            }`}
+                                        />
+                                        <div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
+                                          {item.discount_percent ? `${item.discount_percent}%` : ''}
+                                        </div>
+                                      </div>
+                                    </TableCell>
+                                    {isGstInvoice && (
+                                      <TableCell
+                                        className={`px-1.5 py-1 transition-all duration-300 ${gstFocused ? 'w-[100px]' : 'w-[70px]'}`}
+                                      >
+                                        <div className="flex flex-col">
+                                          <Input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={item.gst_rate || ""}
+                                            onChange={(e) =>
+                                              updateLineItem(item.id, "gst_rate", Number.parseFloat(e.target.value) || 0)
+                                            }
+                                            onFocus={() => setFocusedField(gstFieldId)}
+                                            onBlur={() => setFocusedField(null)}
+                                            onMouseEnter={() => setFocusedField(gstFieldId)}
+                                            onMouseLeave={() => {
+                                              const activeEl = document.activeElement as HTMLElement
+                                              if (activeEl?.dataset?.fieldId !== gstFieldId) {
+                                                setFocusedField(null)
+                                              }
+                                            }}
+                                            data-field-id={gstFieldId}
+                                            className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${gstFocused ? 'px-3 bg-primary/5 border-primary/50 shadow-sm' : 'px-1.5'
+                                              }`}
+                                          />
+                                          <div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
+                                            {item.gst_rate ? `${item.gst_rate}%` : ''}
+                                          </div>
+                                        </div>
+                                      </TableCell>
+                                    )}
+                                  </>
+                                )
+                              })()}
+                              <TableCell className="text-right font-bold text-sm px-2 py-1.5">
+                                ₹{calc.lineTotal.toFixed(2)}
+                              </TableCell>
+                              <TableCell className="px-1 py-1.5">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => removeLineItem(item.id)}
+                                  className="h-7 w-7"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          )
+                        })}
+                      </TableBody>
+                    </Table>
+                  </div>
                 </div>
-              </div>
 
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
 
-          <Card>
-            <CardContent className="space-y-1.5 p-3 text-sm">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span className="font-medium">₹{totals.subtotal.toFixed(2)}</span>
-              </div>
-              {isGstInvoice && (
-                <>
-                  {isSameState ? (
-                    <>
+            <Card>
+              <CardContent className="space-y-1.5 p-3 text-sm">
+                <div className="flex justify-between">
+                  <span>Subtotal</span>
+                  <span className="font-medium">₹{totals.subtotal.toFixed(2)}</span>
+                </div>
+                {isGstInvoice && (
+                  <>
+                    {isSameState ? (
+                      <>
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>CGST</span>
+                          <span>₹{totals.cgst.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-xs text-muted-foreground">
+                          <span>SGST</span>
+                          <span>₹{totals.sgst.toFixed(2)}</span>
+                        </div>
+                      </>
+                    ) : (
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>CGST</span>
-                        <span>₹{totals.cgst.toFixed(2)}</span>
+                        <span>IGST</span>
+                        <span>₹{totals.igst.toFixed(2)}</span>
                       </div>
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>SGST</span>
-                        <span>₹{totals.sgst.toFixed(2)}</span>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>IGST</span>
-                      <span>₹{totals.igst.toFixed(2)}</span>
-                    </div>
-                  )}
-                </>
-              )}
-              <div className="flex justify-between border-t pt-2 text-base font-semibold">
-                <span>Total</span>
-                <span>₹{totals.total.toFixed(2)}</span>
-              </div>
-            </CardContent>
-          </Card>
+                    )}
+                  </>
+                )}
+                <div className="flex justify-between border-t pt-2 text-base font-semibold">
+                  <span>Total</span>
+                  <span>₹{totals.total.toFixed(2)}</span>
+                </div>
+              </CardContent>
+            </Card>
 
-          <div className="flex flex-col gap-2">
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Creating..." : "Create Invoice"}
-            </Button>
-            <Button type="button" variant="outline" onClick={() => router.back()} disabled={isLoading}>
-              Cancel
-            </Button>
+            <div className="flex flex-col gap-2">
+              <Button type="submit" disabled={isLoading}>
+                {isLoading ? "Creating..." : "Create Invoice"}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => router.back()} disabled={isLoading}>
+                Cancel
+              </Button>
+            </div>
           </div>
         </div>
-      </div>
-    </form>
+      </form>
     </div>
   )
 }

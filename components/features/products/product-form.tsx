@@ -14,6 +14,12 @@ import { useToast } from "@/hooks/use-toast"
 import { storageManager } from "@/lib/storage-manager"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { v4 as uuidv4 } from "uuid"
+import {
+  validateProductPrice,
+  validateProductCost,
+  validateStockQuantity,
+  validateGstRate
+} from "@/lib/utils/db-validation"
 
 interface Product {
   id?: string
@@ -55,9 +61,57 @@ export function ProductForm({ product }: ProductFormProps) {
     e.preventDefault();
     setIsLoading(true);
     try {
+      // Validate price
+      const priceValidation = validateProductPrice(formData.price);
+      if (!priceValidation.isValid) {
+        toast({
+          title: "Validation Error",
+          description: priceValidation.error,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Validate cost price
+      const costValidation = validateProductCost(formData.cost_price || 0);
+      if (!costValidation.isValid) {
+        toast({
+          title: "Validation Error",
+          description: costValidation.error,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Validate stock quantity
+      const stockValidation = validateStockQuantity(formData.stock_quantity);
+      if (!stockValidation.isValid) {
+        toast({
+          title: "Validation Error",
+          description: stockValidation.error,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Validate GST rate
+      const gstValidation = validateGstRate(formData.gst_rate);
+      if (!gstValidation.isValid) {
+        toast({
+          title: "Validation Error",
+          description: gstValidation.error,
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
       const payload: any = { id: product?.id || uuidv4(), ...formData }
       const isIndexedDb = isIndexedDbMode()
-      
+
       if (isIndexedDb) {
         // Save to Dexie
         if (product?.id) {
@@ -75,12 +129,12 @@ export function ProductForm({ product }: ProductFormProps) {
           toast({ title: "Error", description: "Not authenticated", variant: "destructive" })
           return
         }
-        
+
         const productData = {
           ...payload,
           user_id: user.id,
         }
-        
+
         if (product?.id) {
           const { error } = await supabase.from("products").update(productData).eq("id", product.id)
           if (error) throw error
@@ -111,12 +165,12 @@ export function ProductForm({ product }: ProductFormProps) {
           <div className="flex justify-end">
             <Button type="button" variant="outline" className="bg-transparent" onClick={() => {
               setFormData({
-                name: `Mock Product ${Math.floor(Math.random()*10000)}`,
-                sku: `SKU-${Math.floor(Math.random()*100000)}`,
+                name: `Mock Product ${Math.floor(Math.random() * 10000)}`,
+                sku: `SKU-${Math.floor(Math.random() * 100000)}`,
                 category: "Demo",
-                price: Number((Math.random()*500+10).toFixed(2)),
-                cost_price: Number((Math.random()*300+5).toFixed(2)),
-                stock_quantity: Math.floor(Math.random()*50)+1,
+                price: Number((Math.random() * 500 + 10).toFixed(2)),
+                cost_price: Number((Math.random() * 300 + 5).toFixed(2)),
+                stock_quantity: Math.floor(Math.random() * 50) + 1,
                 unit: "piece",
                 hsn_code: "9999",
                 gst_rate: 18,

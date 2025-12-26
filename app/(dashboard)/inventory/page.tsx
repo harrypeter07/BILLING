@@ -789,7 +789,7 @@ export default function InventoryPage() {
 														<TableCell className="text-right">
 															<Tooltip>
 																<TooltipTrigger asChild>
-																	<span className="cursor-help">
+																	<span className="truncate block max-w-[100px] cursor-help ml-auto">
 																		{qty.toLocaleString("en-IN")}
 																	</span>
 																</TooltipTrigger>
