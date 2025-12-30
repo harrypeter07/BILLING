@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -12,6 +12,18 @@ import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { storageManager } from "@/lib/storage-manager"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+} from "@/components/ui/command"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
 
 interface Customer {
   id?: string
@@ -31,6 +43,8 @@ export function CustomerForm({ customer }: CustomerFormProps) {
   const router = useRouter()
   const { toast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
+  const [existingCustomers, setExistingCustomers] = useState<Customer[]>([])
+  const [showSuggestions, setShowSuggestions] = useState(false)
 
   const [formData, setFormData] = useState({
     name: customer?.name || "",
@@ -41,9 +55,28 @@ export function CustomerForm({ customer }: CustomerFormProps) {
     notes: customer?.notes || "",
   })
 
+  // Load existing customers for autocomplete
+  useEffect(() => {
+    const loadCustomers = async () => {
+      try {
+        const customers = await storageManager.getCustomers()
+        setExistingCustomers(customers)
+      } catch (error) {
+        console.error('Failed to load customers:', error)
+      }
+    }
+    loadCustomers()
+  }, [])
+
+  // Filter customers based on name input
+  const filteredCustomers = existingCustomers.filter(c =>
+    c.id !== customer?.id && // Exclude current customer when editing
+    c.name.toLowerCase().includes(formData.name.toLowerCase())
+  ).slice(0, 5) // Show max 5 suggestions
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Validate required fields
     if (!formData.name.trim()) {
       toast({
@@ -53,7 +86,7 @@ export function CustomerForm({ customer }: CustomerFormProps) {
       });
       return;
     }
-    
+
     if (!formData.phone?.trim()) {
       toast({
         title: "Error",
@@ -62,7 +95,7 @@ export function CustomerForm({ customer }: CustomerFormProps) {
       });
       return;
     }
-    
+
     setIsLoading(true);
     try {
       const id = customer?.id || (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now()))
@@ -85,31 +118,56 @@ export function CustomerForm({ customer }: CustomerFormProps) {
     <Card>
       <CardContent className="p-6">
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="flex justify-end">
-            <Button type="button" variant="outline" className="bg-transparent" onClick={() => {
-              const rand = Math.floor(Math.random()*10000)
-              setFormData({
-                name: `Mock Customer ${rand}`,
-                email: `user${rand}@example.com`,
-                phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
-                billing_address: `Street ${rand}, City`,
-                shipping_address: `Street ${rand+1}, City`,
-                notes: "",
-              })
-            }}>Fill Mock</Button>
-          </div>
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name">
                 Customer Name <span className="text-destructive">*</span>
               </Label>
-              <Input
-                id="name"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., John Doe"
-              />
+              <Popover open={showSuggestions && filteredCustomers.length > 0} onOpenChange={setShowSuggestions}>
+                <PopoverTrigger asChild>
+                  <Input
+                    id="name"
+                    required
+                    value={formData.name}
+                    onChange={(e) => {
+                      setFormData({ ...formData, name: e.target.value })
+                      setShowSuggestions(true)
+                    }}
+                    onFocus={() => setShowSuggestions(true)}
+                    placeholder="e.g., John Doe"
+                    autoComplete="off"
+                  />
+                </PopoverTrigger>
+                {filteredCustomers.length > 0 && (
+                  <PopoverContent className="w-[300px] p-0" align="start">
+                    <Command>
+                      <CommandGroup heading="Existing Customers">
+                        {filteredCustomers.map((c) => (
+                          <CommandItem
+                            key={c.id}
+                            onSelect={() => {
+                              setFormData({
+                                name: c.name,
+                                email: c.email || "",
+                                phone: c.phone || "",
+                                billing_address: c.billing_address || "",
+                                shipping_address: c.shipping_address || "",
+                                notes: c.notes || "",
+                              })
+                              setShowSuggestions(false)
+                            }}
+                          >
+                            <div className="flex flex-col">
+                              <span className="font-medium">{c.name}</span>
+                              {c.phone && <span className="text-xs text-muted-foreground">{c.phone}</span>}
+                            </div>
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </Command>
+                  </PopoverContent>
+                )}
+              </Popover>
             </div>
 
             <div className="space-y-2">

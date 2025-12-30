@@ -40,6 +40,13 @@ export default function DashboardPage() {
 	const router = useRouter();
 	const { toast } = useToast();
 
+	// Redirect employees to invoice creation page
+	useEffect(() => {
+		if (!roleLoading && isEmployee) {
+			router.push("/invoices/new");
+		}
+	}, [isEmployee, roleLoading, router]);
+
 	useEffect(() => {
 		// Local (IndexedDB) mode
 		if (dbType !== "supabase") {
@@ -310,8 +317,8 @@ export default function DashboardPage() {
 					</CardContent>
 				</Card>
 				<Card
-					className="cursor-pointer hover:bg-muted/50 transition-colors"
-					onClick={() => router.push("/inventory")}
+					className={isAdmin ? "cursor-pointer hover:bg-muted/50 transition-colors" : ""}
+					onClick={isAdmin ? () => router.push("/inventory") : undefined}
 				>
 					<CardHeader className="flex flex-row items-center justify-between pb-2">
 						<CardTitle className="text-sm font-medium">Products</CardTitle>
@@ -332,6 +339,79 @@ export default function DashboardPage() {
 					</CardContent>
 				</Card>
 			</div>
+			{/* Excel UI removed in favor of IndexedDB-first local storage */}
+
+			<Card>
+				<CardHeader>
+					<CardTitle>Quick Actions</CardTitle>
+				</CardHeader>
+				<CardContent>
+					<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+						{(isEmployee || isAdmin) && (
+							<Button asChild className="h-auto flex-col gap-2 py-4">
+								<Link href="/invoices/new">
+									<Receipt className="h-6 w-6" />
+									<span>Create Invoice</span>
+								</Link>
+							</Button>
+						)}
+						{isAdmin && (
+							<Button
+								asChild
+								variant="outline"
+								className="h-auto flex-col gap-2 py-4 bg-transparent"
+							>
+								<Link href="/employees">
+									<UserCog className="h-6 w-6" />
+									<span>Manage Employees</span>
+								</Link>
+							</Button>
+						)}
+						{isAdmin && (
+							<Button
+								asChild
+								variant="outline"
+								className="h-auto flex-col gap-2 py-4 bg-transparent"
+							>
+								<Link href="/inventory">
+									<Boxes className="h-6 w-6" />
+									<span>Inventory Overview</span>
+								</Link>
+							</Button>
+						)}
+						<Button
+							asChild
+							variant="outline"
+							className="h-auto flex-col gap-2 py-4 bg-transparent"
+						>
+							<Link href="/products/new">
+								<Package className="h-6 w-6" />
+								<span>Add Product</span>
+							</Link>
+						</Button>
+						<Button
+							asChild
+							variant="outline"
+							className="h-auto flex-col gap-2 py-4 bg-transparent"
+						>
+							<Link href="/customers/new">
+								<Users className="h-6 w-6" />
+								<span>Add Customer</span>
+							</Link>
+						</Button>
+						<Button
+							asChild
+							variant="outline"
+							className="h-auto flex-col gap-2 py-4 bg-transparent"
+						>
+							<Link href="/reports">
+								<TrendingUp className="h-6 w-6" />
+								<span>View Reports</span>
+							</Link>
+						</Button>
+					</div>
+				</CardContent>
+			</Card>
 			<div className="grid gap-6 lg:grid-cols-2">
 				<Card>
 					<CardHeader>
@@ -444,77 +524,6 @@ export default function DashboardPage() {
 					</CardContent>
 				</Card>
 			</div>
-			{/* Excel UI removed in favor of IndexedDB-first local storage */}
-
-			<Card>
-				<CardHeader>
-					<CardTitle>Quick Actions</CardTitle>
-				</CardHeader>
-				<CardContent>
-					<div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-						{(isEmployee || isAdmin) && (
-							<Button asChild className="h-auto flex-col gap-2 py-4">
-								<Link href="/invoices/new">
-									<Receipt className="h-6 w-6" />
-									<span>Create Invoice</span>
-								</Link>
-							</Button>
-						)}
-						{isAdmin && (
-							<Button
-								asChild
-								variant="outline"
-								className="h-auto flex-col gap-2 py-4 bg-transparent"
-							>
-								<Link href="/employees">
-									<UserCog className="h-6 w-6" />
-									<span>Manage Employees</span>
-								</Link>
-							</Button>
-						)}
-						<Button
-							asChild
-							variant="outline"
-							className="h-auto flex-col gap-2 py-4 bg-transparent"
-						>
-							<Link href="/inventory">
-								<Boxes className="h-6 w-6" />
-								<span>Inventory Overview</span>
-							</Link>
-						</Button>
-						<Button
-							asChild
-							variant="outline"
-							className="h-auto flex-col gap-2 py-4 bg-transparent"
-						>
-							<Link href="/products/new">
-								<Package className="h-6 w-6" />
-								<span>Add Product</span>
-							</Link>
-						</Button>
-						<Button
-							asChild
-							variant="outline"
-							className="h-auto flex-col gap-2 py-4 bg-transparent"
-						>
-							<Link href="/customers/new">
-								<Users className="h-6 w-6" />
-								<span>Add Customer</span>
-							</Link>
-						</Button>
-						<Button
-							asChild
-							variant="outline"
-							className="h-auto flex-col gap-2 py-4 bg-transparent"
-						>
-							<Link href="/reports">
-								<TrendingUp className="h-6 w-6" />
-								<span>View Reports</span>
-							</Link>
-						</Button>
-					</div>
-				</CardContent>
-			</Card>
 
 			{/* License Management - Only for Admins */}
 			{isAdmin && (

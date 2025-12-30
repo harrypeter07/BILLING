@@ -30,12 +30,12 @@ const sharedNavigation = [
   { name: "Products", href: "/products", icon: Package },
   { name: "Customers", href: "/customers", icon: Users },
   { name: "Invoices", href: "/invoices", icon: Receipt },
-  { name: "Inventory", href: "/inventory", icon: Boxes },
 ]
 
 // Navigation items for different user roles
 const adminNavigation = [
   ...sharedNavigation,
+  { name: "Inventory", href: "/inventory", icon: Boxes },
   { name: "Reports & Analytics", href: "/admin/analytics", icon: BarChart3 },
   { name: "Employees", href: "/employees", icon: UserCog },
   { name: "Employee Analytics", href: "/employees/analytics", icon: BarChart3 },

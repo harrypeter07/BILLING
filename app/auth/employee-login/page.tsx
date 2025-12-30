@@ -27,7 +27,7 @@ export default function EmployeeLoginPage() {
     // Only check once on mount
     if (hasCheckedSession.current) return
     hasCheckedSession.current = true
-    
+
     const checkExistingSession = () => {
       const authType = localStorage.getItem("authType")
       if (authType === "employee") {
@@ -36,8 +36,8 @@ export default function EmployeeLoginPage() {
           try {
             const session = JSON.parse(employeeSession)
             if (session.employeeId && session.storeId) {
-              // Already logged in, redirect to dashboard
-              window.location.href = "/dashboard"
+              // Already logged in, redirect to invoice creation
+              window.location.href = "/invoices/new"
               return
             }
           } catch (e) {
@@ -49,7 +49,7 @@ export default function EmployeeLoginPage() {
         }
       }
     }
-    
+
     checkExistingSession()
   }, [])
 
@@ -72,12 +72,12 @@ export default function EmployeeLoginPage() {
       // Employees are always stored in Supabase for remote device login
       const upperEmployeeId = employeeId.toUpperCase().trim()
       const trimmedPassword = password.trim()
-      
+
       console.log("[EmployeeLogin] Attempting login:", {
         employee_id: upperEmployeeId,
         password_length: trimmedPassword.length
       })
-      
+
       // Find employee by employee_id only (no store required)
       const employeeResponse = await fetch('/api/employees/lookup', {
         method: 'POST',
@@ -89,27 +89,27 @@ export default function EmployeeLoginPage() {
           // No store_id - find employee by ID only
         })
       })
-      
+
       if (!employeeResponse.ok) {
         const errorData = await employeeResponse.json()
         throw new Error(
-          errorData.error || 
+          errorData.error ||
           `Employee "${upperEmployeeId}" not found.\n\n` +
           `Please verify your Employee ID is correct.`
         )
       }
-      
+
       const employeeData = await employeeResponse.json()
-      
+
       if (!employeeData.employee) {
         throw new Error(
           `Employee "${upperEmployeeId}" not found.\n\n` +
           `Please verify your Employee ID is correct.`
         )
       }
-      
+
       const employee = employeeData.employee
-      
+
       // Debug logging
       console.log("[EmployeeLogin] Employee found:", {
         employee_id: employee.employee_id,
@@ -119,10 +119,10 @@ export default function EmployeeLoginPage() {
         is_active: employee.is_active,
         store_id: employee.store_id
       })
-      
+
       // Supabase returns store relationship - handle both array and object formats
-      const store = Array.isArray(employee.stores) 
-        ? employee.stores[0] 
+      const store = Array.isArray(employee.stores)
+        ? employee.stores[0]
         : employee.stores || employee.store
 
       // Verify employee is active
@@ -138,7 +138,7 @@ export default function EmployeeLoginPage() {
 
       // Check password - compare with both stored password and employee_id (fallback)
       const passwordMatches = employee.password === trimmedPassword || employee.employee_id === trimmedPassword
-      
+
       console.log("[EmployeeLogin] Password validation:", {
         provided_password: trimmedPassword,
         stored_password: employee.password,
@@ -147,7 +147,7 @@ export default function EmployeeLoginPage() {
         employee_id_match: employee.employee_id === trimmedPassword,
         final_match: passwordMatches
       })
-      
+
       if (!passwordMatches) {
         throw new Error("Invalid password. Please check your password or try using your Employee ID as password.")
       }
@@ -172,7 +172,7 @@ export default function EmployeeLoginPage() {
       toast.success("Logged in as Employee")
       // Use window.location to prevent React re-renders and infinite loops
       setTimeout(() => {
-        window.location.href = "/dashboard"
+        window.location.href = "/invoices/new"
       }, 100)
     } catch (error: any) {
       setError(error.message || "Login failed")
@@ -195,10 +195,10 @@ export default function EmployeeLoginPage() {
               <ArrowLeft className="h-4 w-4" />
             </Button>
             <div className="flex-1">
-            <CardTitle>Employee Login</CardTitle>
-            <CardDescription>
+              <CardTitle>Employee Login</CardTitle>
+              <CardDescription>
                 Enter your employee ID and password to login
-            </CardDescription>
+              </CardDescription>
             </div>
           </div>
         </CardHeader>

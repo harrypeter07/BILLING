@@ -29,7 +29,10 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
   const [isLoading, setIsLoading] = useState(false)
   const [phoneMatches, setPhoneMatches] = useState<CustomerMatch[]>([])
   const [showPhoneDropdown, setShowPhoneDropdown] = useState(false)
+  const [nameMatches, setNameMatches] = useState<CustomerMatch[]>([])
+  const [showNameDropdown, setShowNameDropdown] = useState(false)
   const phoneInputRef = useRef<HTMLInputElement>(null)
+  const nameInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
 
   // Listen for customer selection from main dropdown
@@ -55,7 +58,7 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
   const searchCustomersByPhone = async (phoneNumber: string) => {
     // Remove any non-digit characters for searching
     const cleanPhone = phoneNumber.replace(/\D/g, '')
-    
+
     if (!cleanPhone || cleanPhone.length === 0) {
       setPhoneMatches([])
       setShowPhoneDropdown(false)
@@ -117,7 +120,7 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
             .eq('user_id', userId)
             .ilike('phone', `%${cleanPhone}%`)
             .limit(5)
-          
+
           if (data) {
             matches = data.map(c => ({
               id: c.id,
@@ -145,6 +148,102 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
     searchCustomersByPhone(value)
   }
 
+  // Search customers by name
+  const searchCustomersByName = async (customerName: string) => {
+    const cleanName = customerName.trim()
+
+    if (!cleanName || cleanName.length < 2) {
+      setNameMatches([])
+      setShowNameDropdown(false)
+      return
+    }
+
+    try {
+      const isIndexedDb = isIndexedDbMode()
+      let matches: CustomerMatch[] = []
+
+      if (isIndexedDb) {
+        // Search in IndexedDB
+        const allCustomers = await db.customers.toArray()
+        matches = allCustomers
+          .filter(c => {
+            if (!c.name) return false
+            return c.name.toLowerCase().includes(cleanName.toLowerCase())
+          })
+          .map(c => ({
+            id: c.id,
+            name: c.name,
+            phone: c.phone || null,
+            email: c.email || null,
+          }))
+          .slice(0, 5) // Limit to 5 results
+      } else {
+        // Search in Supabase
+        const supabase = createClient()
+        const authType = localStorage.getItem("authType")
+        let userId: string | null = null
+
+        if (authType === "employee") {
+          const empSession = localStorage.getItem("employeeSession")
+          if (empSession) {
+            const session = JSON.parse(empSession)
+            const storeId = session.storeId
+            if (storeId) {
+              const { data: store } = await supabase
+                .from('stores')
+                .select('admin_user_id')
+                .eq('id', storeId)
+                .single()
+              if (store?.admin_user_id) {
+                userId = store.admin_user_id
+              }
+            }
+          }
+        } else {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) userId = user.id
+        }
+
+        if (userId) {
+          const { data } = await supabase
+            .from('customers')
+            .select('id, name, phone, email')
+            .eq('user_id', userId)
+            .ilike('name', `%${cleanName}%`)
+            .limit(5)
+
+          if (data) {
+            matches = data.map(c => ({
+              id: c.id,
+              name: c.name,
+              phone: c.phone || null,
+              email: c.email || null,
+            }))
+          }
+        }
+      }
+
+      setNameMatches(matches)
+      setShowNameDropdown(matches.length > 0 && cleanName.length >= 2)
+    } catch (error) {
+      console.error('Error searching customers by name:', error)
+      setNameMatches([])
+      setShowNameDropdown(false)
+    }
+  }
+
+  // Handle name change - search on every keystroke
+  const handleNameChange = (value: string) => {
+    setName(value)
+    // Search immediately as user types (after 2 characters)
+    if (value.trim().length >= 2) {
+      searchCustomersByName(value)
+    } else {
+      setNameMatches([])
+      setShowNameDropdown(false)
+    }
+  }
+
   // Handle customer selection from dropdown
   const handleSelectCustomer = (customer: CustomerMatch) => {
     // Auto-fill all form fields with customer data
@@ -163,7 +262,7 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!name.trim()) {
       toast({
         title: "Error",
@@ -184,7 +283,7 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
 
     setIsLoading(true)
     setShowPhoneDropdown(false)
-    
+
     try {
       const customerData = {
         id: crypto.randomUUID(),
@@ -213,9 +312,9 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
         // Supabase mode - use API
         const supabase = createClient()
         const authType = localStorage.getItem("authType")
-        
+
         let userId: string | null = null
-        
+
         // For employees, get admin_user_id from store
         if (authType === "employee") {
           const empSession = localStorage.getItem("employeeSession")
@@ -223,7 +322,7 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
             try {
               const session = JSON.parse(empSession)
               const storeId = session.storeId
-              
+
               if (storeId) {
                 // Get store to find admin_user_id
                 const { data: store } = await supabase
@@ -231,7 +330,7 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
                   .select('admin_user_id')
                   .eq('id', storeId)
                   .single()
-                
+
                 if (store?.admin_user_id) {
                   userId = store.admin_user_id
                 } else {
@@ -270,7 +369,7 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
         }
 
         const { customer } = await response.json()
-        
+
         toast({
           title: "Success",
           description: `Customer "${customer.name}" added successfully`,
@@ -303,23 +402,58 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
       <CardContent className="p-4">
         <div className="space-y-3">
           <div className="space-y-2">
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 relative">
               <Label htmlFor="quick-name" className="text-xs">
                 Name <span className="text-destructive">*</span>
               </Label>
-              <Input
-                id="quick-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Customer name"
-                className="h-9 text-sm w-full"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && name.trim()) {
-                    e.preventDefault()
-                    handleSubmit(e as any)
-                  }
-                }}
-              />
+              <div className="relative">
+                <Input
+                  ref={nameInputRef}
+                  id="quick-name"
+                  value={name}
+                  onChange={(e) => handleNameChange(e.target.value)}
+                  onFocus={() => {
+                    // Show dropdown if there are matches when focusing
+                    if (nameMatches.length > 0 && name.trim().length >= 2) {
+                      setShowNameDropdown(true)
+                    }
+                  }}
+                  onBlur={() => {
+                    // Delay to allow click on dropdown item
+                    setTimeout(() => setShowNameDropdown(false), 200)
+                  }}
+                  placeholder="Customer name"
+                  className="h-9 text-sm w-full"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && name.trim()) {
+                      e.preventDefault()
+                      handleSubmit(e as any)
+                    }
+                  }}
+                />
+                {showNameDropdown && nameMatches.length > 0 && (
+                  <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-60 overflow-auto">
+                    {nameMatches.map((customer) => (
+                      <div
+                        key={customer.id}
+                        onMouseDown={(e) => {
+                          // Use onMouseDown to prevent blur from firing first
+                          e.preventDefault()
+                          handleSelectCustomer(customer)
+                        }}
+                        className="px-3 py-2 cursor-pointer hover:bg-accent border-b last:border-b-0 transition-colors"
+                      >
+                        <div className="flex flex-col">
+                          <span className="font-medium text-sm">{customer.name}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {customer.phone} {customer.email && `• ${customer.email}`}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className="space-y-1.5 relative">
               <Label htmlFor="quick-phone" className="text-xs">
@@ -383,9 +517,9 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
             </div>
           </div>
           <div className="flex justify-end pt-1">
-            <Button 
-              type="button" 
-              size="sm" 
+            <Button
+              type="button"
+              size="sm"
               disabled={isLoading || !name.trim() || !phone.trim()}
               onClick={handleSubmit}
             >

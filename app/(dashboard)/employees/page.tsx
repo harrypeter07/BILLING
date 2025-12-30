@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Search, Edit2, Trash2, Sparkles, Key, Eye } from "lucide-react"
+import { Plus, Search, Edit2, Trash2, Key, Eye } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
@@ -31,7 +31,6 @@ interface Employee {
 export default function EmployeesPage() {
   const { data: employees = [], isLoading } = useEmployees()
   const { invalidateEmployees } = useInvalidateQueries()
-  const [isAddingMock, setIsAddingMock] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
   const { toast } = useToast()
   const { isAdmin, isEmployee, isLoading: roleLoading } = useUserRole()
@@ -83,72 +82,6 @@ export default function EmployeesPage() {
     }
   }
 
-  const handleAddMockEmployee = async () => {
-    try {
-      setIsAddingMock(true)
-      const dbType = getDatabaseType()
-
-      // Get current store
-      const currentStoreId = localStorage.getItem("currentStoreId")
-      if (!currentStoreId) {
-        toast({ title: "Error", description: "No store selected. Please create a store first.", variant: "destructive" })
-        return
-      }
-
-      const rand = Math.floor(Math.random() * 10000)
-      const name = `Employee ${rand}`
-
-      // Generate employee ID for Supabase
-      const { generateEmployeeIdSupabase } = await import("@/lib/utils/employee-id-supabase")
-      const employeeId = await generateEmployeeIdSupabase(currentStoreId, name)
-
-      // Generate secure password different from employee ID
-      const { generateSecurePassword } = await import("@/lib/utils/password-generator")
-      const securePassword = generateSecurePassword(employeeId)
-
-      const mockData = {
-        name,
-        email: `emp${rand}@example.com`,
-        phone: `9${Math.floor(100000000 + Math.random() * 899999999)}`,
-        role: 'employee', // Always employee, not admin
-        salary: Math.floor(Math.random() * 50000) + 20000,
-        joining_date: new Date().toISOString().split('T')[0], // Supabase expects date format
-        is_active: true,
-        employee_id: employeeId,
-        password: securePassword, // Secure password different from employee ID
-        store_id: currentStoreId,
-      }
-
-      if (dbType === 'indexeddb') {
-        await storageManager.addEmployee(mockData as any)
-        await invalidateEmployees()
-        toast({ title: "Success", description: "Mock employee added locally" })
-      } else {
-        // Save to Supabase via API
-        const response = await fetch("/api/employees", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(mockData),
-        })
-
-        if (!response.ok) {
-          const errorData = await response.json()
-          throw new Error(errorData.error || "Failed to create employee")
-        }
-
-        await invalidateEmployees()
-        toast({ title: "Success", description: `Mock employee added. ID: ${employeeId}, Password: ${securePassword}` })
-      }
-    } catch (error: any) {
-      console.error("[Employees] Error adding mock employee:", error)
-      toast({ title: "Error", description: error.message || "Failed to add employee", variant: "destructive" })
-    } finally {
-      setIsAddingMock(false)
-    }
-  }
-
-  // Excel import removed
-
   const filteredEmployees = employees.filter(
     (emp) =>
       emp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -164,28 +97,6 @@ export default function EmployeesPage() {
         </div>
         <div className="flex flex-col sm:flex-row gap-2">
           <div className="flex flex-wrap items-center gap-2 flex-1">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleAddMockEmployee}
-              disabled={isAddingMock}
-              title="Add a mock employee"
-              className="text-xs sm:text-sm"
-            >
-              {isAddingMock ? (
-                <>
-                  <div className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  <span className="hidden sm:inline">Adding...</span>
-                  <span className="sm:hidden">...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                  <span className="hidden sm:inline">Add Mock Employee</span>
-                  <span className="sm:hidden">Mock</span>
-                </>
-              )}
-            </Button>
             <Button asChild className="text-xs sm:text-sm">
               <Link href="/employees/new">
                 <Plus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />

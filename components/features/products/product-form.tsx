@@ -9,11 +9,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card, CardContent } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { storageManager } from "@/lib/storage-manager"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { v4 as uuidv4 } from "uuid"
+import { PRODUCT_CATEGORIES } from "@/lib/constants/product-categories"
+import { useInvalidateQueries } from "@/lib/hooks/use-cached-data"
+import { db } from "@/lib/dexie-client"
 import {
   validateProductPrice,
   validateProductCost,
@@ -42,6 +46,7 @@ interface ProductFormProps {
 export function ProductForm({ product }: ProductFormProps) {
   const router = useRouter()
   const { toast } = useToast()
+  const { invalidateProducts } = useInvalidateQueries()
   const [isLoading, setIsLoading] = useState(false)
 
   const [formData, setFormData] = useState({
@@ -61,6 +66,17 @@ export function ProductForm({ product }: ProductFormProps) {
     e.preventDefault();
     setIsLoading(true);
     try {
+      // Validate selling price >= cost price
+      if (formData.cost_price && formData.price < formData.cost_price) {
+        toast({
+          title: "Validation Error",
+          description: "Selling price cannot be less than cost price",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
       // Validate price
       const priceValidation = validateProductPrice(formData.price);
       if (!priceValidation.isValid) {
@@ -109,8 +125,53 @@ export function ProductForm({ product }: ProductFormProps) {
         return;
       }
 
+      // Check for duplicate product (same name and category)
+      const isIndexedDb = isIndexedDbMode();
+      if (!product?.id) { // Only check for new products
+        if (isIndexedDb) {
+          const existingProducts = await db.products.toArray();
+          const duplicate = existingProducts.find(
+            p => p.name.toLowerCase().trim() === formData.name.toLowerCase().trim() &&
+              (p.category || '').toLowerCase().trim() === (formData.category || '').toLowerCase().trim()
+          );
+          if (duplicate) {
+            toast({
+              title: "Duplicate Product",
+              description: `A product with name "${formData.name}" in category "${formData.category || 'Uncategorized'}" already exists`,
+              variant: "destructive",
+            });
+            setIsLoading(false);
+            return;
+          }
+        } else {
+          const supabase = createClient();
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { data: existingProducts } = await supabase
+              .from('products')
+              .select('id, name, category')
+              .eq('user_id', user.id)
+              .ilike('name', formData.name.trim())
+              .limit(10);
+
+            const duplicate = existingProducts?.find(
+              p => p.name.toLowerCase().trim() === formData.name.toLowerCase().trim() &&
+                (p.category || '').toLowerCase().trim() === (formData.category || '').toLowerCase().trim()
+            );
+            if (duplicate) {
+              toast({
+                title: "Duplicate Product",
+                description: `A product with name "${formData.name}" in category "${formData.category || 'Uncategorized'}" already exists`,
+                variant: "destructive",
+              });
+              setIsLoading(false);
+              return;
+            }
+          }
+        }
+      }
+
       const payload: any = { id: product?.id || uuidv4(), ...formData }
-      const isIndexedDb = isIndexedDbMode()
 
       if (isIndexedDb) {
         // Save to Dexie
@@ -145,6 +206,10 @@ export function ProductForm({ product }: ProductFormProps) {
           toast({ title: "Success", description: "Product created" })
         }
       }
+
+      // Invalidate cache for instant UI update
+      await invalidateProducts();
+
       router.push("/products")
       router.refresh();
     } catch (error) {
@@ -162,22 +227,6 @@ export function ProductForm({ product }: ProductFormProps) {
     <Card>
       <CardContent className="p-6">
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="flex justify-end">
-            <Button type="button" variant="outline" className="bg-transparent" onClick={() => {
-              setFormData({
-                name: `Mock Product ${Math.floor(Math.random() * 10000)}`,
-                sku: `SKU-${Math.floor(Math.random() * 100000)}`,
-                category: "Demo",
-                price: Number((Math.random() * 500 + 10).toFixed(2)),
-                cost_price: Number((Math.random() * 300 + 5).toFixed(2)),
-                stock_quantity: Math.floor(Math.random() * 50) + 1,
-                unit: "piece",
-                hsn_code: "9999",
-                gst_rate: 18,
-                is_active: true,
-              })
-            }}>Fill Mock</Button>
-          </div>
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name">
@@ -204,12 +253,21 @@ export function ProductForm({ product }: ProductFormProps) {
 
             <div className="space-y-2">
               <Label htmlFor="category">Category</Label>
-              <Input
-                id="category"
+              <Select
                 value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                placeholder="e.g., Electronics"
-              />
+                onValueChange={(value) => setFormData({ ...formData, category: value })}
+              >
+                <SelectTrigger id="category">
+                  <SelectValue placeholder="Select a category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PRODUCT_CATEGORIES.map((cat) => (
+                    <SelectItem key={cat} value={cat}>
+                      {cat}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
@@ -275,15 +333,6 @@ export function ProductForm({ product }: ProductFormProps) {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="hsn_code">HSN Code</Label>
-              <Input
-                id="hsn_code"
-                value={formData.hsn_code}
-                onChange={(e) => setFormData({ ...formData, hsn_code: e.target.value })}
-                placeholder="e.g., 8517"
-              />
-            </div>
           </div>
 
           <div className="flex gap-4">

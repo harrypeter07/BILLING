@@ -112,7 +112,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
           const { generateEmployeeIdSupabase } = await import("@/lib/utils/employee-id-supabase")
           employeeId = await generateEmployeeIdSupabase(storeId, formData.name)
         }
-        
+
         // Generate password different from employee ID for security
         if (!password) {
           const { generateSecurePassword } = await import("@/lib/utils/password-generator")
@@ -147,7 +147,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
       // Even in IndexedDB mode, employees must be in Supabase for authentication
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
-      
+
       if (!user) {
         throw new Error("Unauthorized - Please login to create employees")
       }
@@ -158,7 +158,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
         .select("admin_user_id")
         .eq("id", storeId)
         .single()
-      
+
       if (!store || store.admin_user_id !== user.id) {
         throw new Error("Store does not belong to this admin")
       }
@@ -182,7 +182,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ id: employee.id, ...updateData }),
         })
-        
+
         if (!response.ok) {
           const error = await response.json()
           throw new Error(error.error || "Failed to update employee")
@@ -194,7 +194,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(employeeData),
         })
-        
+
         if (!response.ok) {
           const error = await response.json()
           // Handle duplicate employee ID error
@@ -204,33 +204,33 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
             console.warn("[EmployeeForm] Duplicate employee ID detected, regenerating...")
             const { generateEmployeeIdSupabase } = await import("@/lib/utils/employee-id-supabase")
             const newEmployeeId = await generateEmployeeIdSupabase(storeId, formData.name)
-            
+
             // Update employee data with new ID
             const retryEmployeeData = {
               ...employeeData,
               employee_id: newEmployeeId
             }
-            
+
             // Also regenerate password if it was based on the old employee ID
             if (!formData.password && retryEmployeeData.password === employeeId) {
               const { generateSecurePassword } = await import("@/lib/utils/password-generator")
               retryEmployeeData.password = generateSecurePassword(newEmployeeId)
             }
-            
+
             // Retry with new employee ID
             const retryResponse = await fetch("/api/employees", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(retryEmployeeData),
             })
-            
+
             if (!retryResponse.ok) {
               const retryError = await retryResponse.json()
               throw new Error(retryError.error || `Failed to create employee. Original error: ${error.error}`)
             }
-            
+
             const createdEmployee = await retryResponse.json()
-            
+
             // Also save to IndexedDB for local consistency (if in IndexedDB mode)
             if (isExcel && createdEmployee.employee) {
               try {
@@ -244,26 +244,26 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
                 // Don't throw - Supabase save succeeded, that's what matters
               }
             }
-            
-            toast({ 
-              title: "Success", 
-              description: `Employee created with ID: ${newEmployeeId}. Password: ${retryEmployeeData.password}` 
+
+            toast({
+              title: "Success",
+              description: `Employee created with ID: ${newEmployeeId}. Password: ${retryEmployeeData.password}`
             })
-            
+
             // Refresh the employees list
             if (typeof window !== 'undefined') {
               window.dispatchEvent(new CustomEvent('employees:refresh'))
             }
-            
+
             router.push("/employees")
             router.refresh()
             return // Exit early after successful retry
           }
           throw new Error(error.error || "Failed to create employee")
         }
-        
+
         const createdEmployee = await response.json()
-        
+
         // Also save to IndexedDB for local consistency (if in IndexedDB mode)
         if (isExcel && createdEmployee.employee) {
           try {
@@ -278,7 +278,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
           }
         }
       }
-      
+
       // For IndexedDB mode, also save locally for consistency
       if (isExcel && employee?.id) {
         try {
@@ -289,20 +289,20 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
           // Don't throw - Supabase update succeeded
         }
       }
-      
 
-      toast({ 
-        title: "Success", 
-        description: employee?.id 
-          ? "Employee updated successfully" 
-          : `Employee created with ID: ${employeeId}. Password: ${employeeData.password}` 
+
+      toast({
+        title: "Success",
+        description: employee?.id
+          ? "Employee updated successfully"
+          : `Employee created with ID: ${employeeId}. Password: ${employeeData.password}`
       })
-      
+
       // Refresh the employees list
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('employees:refresh'))
       }
-      
+
       router.push("/employees")
       router.refresh()
     } catch (error) {
@@ -320,22 +320,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
     <Card>
       <CardContent className="p-6">
         <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="flex justify-end">
-            <Button type="button" variant="outline" className="bg-transparent" onClick={() => {
-              const rand = Math.floor(Math.random()*10000)
-              setFormData({
-                name: `Employee ${rand}`,
-                email: `emp${rand}@example.com`,
-                phone: `9${Math.floor(100000000 + Math.random()*899999999)}`,
-                role: "employee",
-                salary: String(Math.floor(Math.random()*50000)+20000),
-                joining_date: new Date().toISOString().split('T')[0],
-                is_active: true,
-                password: "",
-              })
-            }}>Fill Mock</Button>
-          </div>
-          
+
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
               <Label htmlFor="name">

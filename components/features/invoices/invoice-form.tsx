@@ -24,6 +24,7 @@ import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { createClient } from "@/lib/supabase/client"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { db } from "@/lib/dexie-client"
+import { useInvalidateQueries } from "@/lib/hooks/use-cached-data"
 import {
   validateInvoiceAmount,
   validateItemQuantity,
@@ -195,6 +196,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
   const router = useRouter()
   const { toast } = useToast()
   const { isFullscreen, setIsFullscreen } = useFullscreen()
+  const { invalidateInvoices, invalidateProducts } = useInvalidateQueries()
   const [isLoading, setIsLoading] = useState(false)
   const [invoiceNumber, setInvoiceNumber] = useState("")
   const [localCustomers, setLocalCustomers] = useState<Customer[]>(customers)
@@ -649,6 +651,10 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
         // Dispatch event to notify customer detail page to refresh
         window.dispatchEvent(new CustomEvent('invoice:created', { detail: { customer_id: customerId } }));
 
+        // Invalidate cache for instant UI update
+        await invalidateInvoices();
+        await invalidateProducts(); // Also invalidate products since stock changed
+
         toast({ title: "Success", description: "Invoice created successfully" });
         router.push("/invoices");
         router.refresh();
@@ -682,6 +688,10 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
 
         // Dispatch event to notify customer detail page to refresh
         window.dispatchEvent(new CustomEvent('invoice:created', { detail: { customer_id: customerId } }));
+
+        // Invalidate cache for instant UI update
+        await invalidateInvoices();
+        await invalidateProducts(); // Also invalidate products since stock changed
 
         toast({ title: "Success", description: "Invoice created successfully" });
         router.push("/invoices");

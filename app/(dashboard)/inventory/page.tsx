@@ -27,6 +27,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { db } from "@/lib/dexie-client";
 import { getDatabaseType } from "@/lib/utils/db-mode";
+import { formatLargeNumber, formatFullNumber } from "@/lib/utils/number-formatter";
 import {
 	AlertCircle,
 	Boxes,
@@ -36,6 +37,8 @@ import {
 	Search,
 	Filter,
 } from "lucide-react";
+import { useUserRole } from "@/lib/hooks/use-user-role";
+import { useRouter } from "next/navigation";
 
 interface InventoryProduct {
 	id: string;
@@ -58,6 +61,15 @@ export default function InventoryPage() {
 	const [searchTerm, setSearchTerm] = useState("");
 	const [categoryFilter, setCategoryFilter] = useState<string>("all");
 	const [stockFilter, setStockFilter] = useState<string>("all");
+	const { isEmployee, isLoading: roleLoading } = useUserRole();
+	const router = useRouter();
+
+	// Redirect employees away from inventory page
+	useEffect(() => {
+		if (!roleLoading && isEmployee) {
+			router.push("/dashboard");
+		}
+	}, [isEmployee, roleLoading, router]);
 
 	useEffect(() => {
 		const updateDbType = () => setDatabaseType(getDatabaseType());
@@ -427,25 +439,23 @@ export default function InventoryPage() {
 												>
 													{product.unit === "piece"
 														? `${Math.round(
-																Number(product.stock_quantity || 0)
-														  )} ${product.unit || "units"}`
+															Number(product.stock_quantity || 0)
+														)} ${product.unit || "units"}`
 														: `${Number(
-																product.stock_quantity || 0
-														  ).toLocaleString("en-IN")} ${
-																product.unit || "units"
-														  }`}
+															product.stock_quantity || 0
+														).toLocaleString("en-IN")} ${product.unit || "units"
+														}`}
 												</Badge>
 											</TooltipTrigger>
 											<TooltipContent>
 												{product.unit === "piece"
 													? `Stock: ${Math.round(
-															Number(product.stock_quantity || 0)
-													  )} ${product.unit || "units"}`
+														Number(product.stock_quantity || 0)
+													)} ${product.unit || "units"}`
 													: `Stock: ${Number(
-															product.stock_quantity || 0
-													  ).toLocaleString("en-IN")} ${
-															product.unit || "units"
-													  }`}
+														product.stock_quantity || 0
+													).toLocaleString("en-IN")} ${product.unit || "units"
+													}`}
 											</TooltipContent>
 										</Tooltip>
 									</div>
@@ -559,11 +569,11 @@ export default function InventoryPage() {
 											<Tooltip>
 												<TooltipTrigger asChild>
 													<span className="font-medium text-foreground cursor-help">
-														{category.units}
+														{formatLargeNumber(category.units)}
 													</span>
 												</TooltipTrigger>
 												<TooltipContent>
-													Units in stock: {category.units}
+													Units in stock: {formatFullNumber(category.units)}
 												</TooltipContent>
 											</Tooltip>
 										</div>
@@ -821,8 +831,8 @@ export default function InventoryPage() {
 																	<span className="text-sm md:text-base truncate max-w-[100px] inline-block cursor-help">
 																		{product.cost_price != null
 																			? formatCurrency(
-																					Number(product.cost_price)
-																			  )
+																				Number(product.cost_price)
+																			)
 																			: "—"}
 																	</span>
 																</TooltipTrigger>
@@ -859,16 +869,16 @@ export default function InventoryPage() {
 																			status === "out"
 																				? "destructive"
 																				: status === "low"
-																				? "secondary"
-																				: "default"
+																					? "secondary"
+																					: "default"
 																		}
 																		className="cursor-help"
 																	>
 																		{status === "out"
 																			? "Out of stock"
 																			: status === "low"
-																			? "Low stock"
-																			: "In stock"}
+																				? "Low stock"
+																				: "In stock"}
 																	</Badge>
 																</TooltipTrigger>
 																<TooltipContent>
@@ -876,8 +886,8 @@ export default function InventoryPage() {
 																	{status === "out"
 																		? "Out of stock - needs immediate replenishment"
 																		: status === "low"
-																		? "Low stock - consider reordering soon"
-																		: "Adequate stock levels"}
+																			? "Low stock - consider reordering soon"
+																			: "Adequate stock levels"}
 																</TooltipContent>
 															</Tooltip>
 														</TableCell>
