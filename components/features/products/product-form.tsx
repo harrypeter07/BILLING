@@ -16,6 +16,7 @@ import { storageManager } from "@/lib/storage-manager"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { v4 as uuidv4 } from "uuid"
 import { PRODUCT_CATEGORIES } from "@/lib/constants/product-categories"
+import { PRODUCT_UNITS } from "@/lib/constants/product-units"
 import { useInvalidateQueries } from "@/lib/hooks/use-cached-data"
 import { db } from "@/lib/dexie-client"
 import {
@@ -24,6 +25,7 @@ import {
   validateStockQuantity,
   validateGstRate
 } from "@/lib/utils/db-validation"
+import { Plus } from "lucide-react"
 
 interface Product {
   id?: string
@@ -48,6 +50,8 @@ export function ProductForm({ product }: ProductFormProps) {
   const { toast } = useToast()
   const { invalidateProducts } = useInvalidateQueries()
   const [isLoading, setIsLoading] = useState(false)
+  const [showCustomUnit, setShowCustomUnit] = useState(false)
+  const [customUnit, setCustomUnit] = useState("")
 
   const [formData, setFormData] = useState({
     name: product?.name || "",
@@ -272,12 +276,72 @@ export function ProductForm({ product }: ProductFormProps) {
 
             <div className="space-y-2">
               <Label htmlFor="unit">Unit</Label>
-              <Input
-                id="unit"
-                value={formData.unit}
-                onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-                placeholder="e.g., piece, kg, liter"
-              />
+              {!showCustomUnit ? (
+                <div className="flex gap-2">
+                  <Select
+                    value={formData.unit}
+                    onValueChange={(value) => {
+                      if (value === "custom") {
+                        setShowCustomUnit(true)
+                        setCustomUnit("")
+                      } else {
+                        setFormData({ ...formData, unit: value })
+                      }
+                    }}
+                  >
+                    <SelectTrigger id="unit" className="flex-1">
+                      <SelectValue placeholder="Select unit" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {PRODUCT_UNITS.map((unit) => (
+                        <SelectItem key={unit} value={unit}>
+                          {unit}
+                        </SelectItem>
+                      ))}
+                      <SelectItem value="custom">
+                        <div className="flex items-center gap-2">
+                          <Plus className="h-4 w-4" />
+                          <span>Add Custom Unit</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Input
+                    id="custom-unit"
+                    value={customUnit}
+                    onChange={(e) => setCustomUnit(e.target.value)}
+                    placeholder="Enter custom unit"
+                    className="flex-1"
+                    autoFocus
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      if (customUnit.trim()) {
+                        setFormData({ ...formData, unit: customUnit.trim() })
+                        setShowCustomUnit(false)
+                        setCustomUnit("")
+                      }
+                    }}
+                  >
+                    Add
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setShowCustomUnit(false)
+                      setCustomUnit("")
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              )}
             </div>
 
             <div className="space-y-2">

@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { storageManager } from "@/lib/storage-manager"
+import { db } from "@/lib/dexie-client"
 import {
   Command,
   CommandEmpty,
@@ -59,8 +60,8 @@ export function CustomerForm({ customer }: CustomerFormProps) {
   useEffect(() => {
     const loadCustomers = async () => {
       try {
-        const customers = await storageManager.getCustomers()
-        setExistingCustomers(customers)
+        const customers = await db.customers.toArray()
+        setExistingCustomers(customers as Customer[])
       } catch (error) {
         console.error('Failed to load customers:', error)
       }

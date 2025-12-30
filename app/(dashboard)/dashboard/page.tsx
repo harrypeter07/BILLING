@@ -40,12 +40,7 @@ export default function DashboardPage() {
 	const router = useRouter();
 	const { toast } = useToast();
 
-	// Redirect employees to invoice creation page
-	useEffect(() => {
-		if (!roleLoading && isEmployee) {
-			router.push("/invoices/new");
-		}
-	}, [isEmployee, roleLoading, router]);
+	// Don't redirect employees anymore - show invoice form on dashboard instead
 
 	useEffect(() => {
 		// Local (IndexedDB) mode
@@ -250,6 +245,8 @@ export default function DashboardPage() {
 					Welcome back! Here's an overview of your business.
 				</p>
 			</div>
+
+			{/* Stats and Quick Actions */}
 			<div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
 				<Card>
 					<CardHeader className="flex flex-row items-center justify-between pb-2">
