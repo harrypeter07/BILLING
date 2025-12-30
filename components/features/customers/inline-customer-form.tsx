@@ -141,11 +141,15 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
     }
   }
 
-  // Handle phone number change - search on every keystroke
+  // Handle phone number change - only allow digits and max 10 characters
   const handlePhoneChange = (value: string) => {
-    setPhone(value)
+    // Remove all non-digit characters
+    const digitsOnly = value.replace(/\D/g, '')
+    // Limit to 10 digits
+    const limitedValue = digitsOnly.slice(0, 10)
+    setPhone(limitedValue)
     // Search immediately as user types
-    searchCustomersByPhone(value)
+    searchCustomersByPhone(limitedValue)
   }
 
   // Search customers by name
@@ -252,6 +256,8 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
     setEmail(customer.email || "")
     setPhoneMatches([])
     setShowPhoneDropdown(false)
+    setNameMatches([])
+    setShowNameDropdown(false)
     // Auto-select this customer in the invoice form
     onCustomerCreated({ id: customer.id, name: customer.name })
     toast({
@@ -279,6 +285,97 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
         variant: "destructive",
       })
       return
+    }
+
+    // Validate phone number - exactly 10 digits
+    const cleanPhone = phone.replace(/\D/g, '')
+    if (cleanPhone.length !== 10) {
+      toast({
+        title: "Invalid Phone Number",
+        description: "Phone number must be exactly 10 digits",
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Validate email format if provided
+    if (email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(email.trim())) {
+        toast({
+          title: "Invalid Email",
+          description: "Please enter a valid email address",
+          variant: "destructive",
+        })
+        return
+      }
+    }
+
+    // Check for duplicate email if email is provided
+    if (email.trim()) {
+      try {
+        const isIndexedDb = isIndexedDbMode()
+        let existingCustomer = null
+
+        if (isIndexedDb) {
+          // Check in IndexedDB
+          const allCustomers = await db.customers.toArray()
+          existingCustomer = allCustomers.find(
+            c => c.email && c.email.toLowerCase() === email.trim().toLowerCase()
+          )
+        } else {
+          // Check in Supabase
+          const supabase = createClient()
+          const authType = localStorage.getItem("authType")
+          let userId: string | null = null
+
+          if (authType === "employee") {
+            const empSession = localStorage.getItem("employeeSession")
+            if (empSession) {
+              const session = JSON.parse(empSession)
+              const storeId = session.storeId
+              if (storeId) {
+                const { data: store } = await supabase
+                  .from('stores')
+                  .select('admin_user_id')
+                  .eq('id', storeId)
+                  .single()
+                if (store?.admin_user_id) {
+                  userId = store.admin_user_id
+                }
+              }
+            }
+          } else {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) userId = user.id
+          }
+
+          if (userId) {
+            const { data } = await supabase
+              .from('customers')
+              .select('id, name, email')
+              .eq('user_id', userId)
+              .ilike('email', email.trim())
+              .limit(1)
+
+            if (data && data.length > 0) {
+              existingCustomer = data[0]
+            }
+          }
+        }
+
+        if (existingCustomer) {
+          toast({
+            title: "Duplicate Customer",
+            description: `A customer with email "${email.trim()}" already exists: ${existingCustomer.name}`,
+            variant: "destructive",
+          })
+          return
+        }
+      } catch (error) {
+        console.error('Error checking for duplicate email:', error)
+        // Continue with creation even if check fails
+      }
     }
 
     setIsLoading(true)
@@ -477,7 +574,8 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
                     // Delay to allow click on dropdown item
                     setTimeout(() => setShowPhoneDropdown(false), 200)
                   }}
-                  placeholder="+91 9876543210"
+                  placeholder="9876543210 (10 digits)"
+                  maxLength={10}
                   className="h-9 text-sm w-full"
                 />
                 {showPhoneDropdown && phoneMatches.length > 0 && (

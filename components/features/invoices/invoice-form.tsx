@@ -747,8 +747,19 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
           <div className="space-y-2">
             <InlineCustomerForm
               onCustomerCreated={(newCustomer) => {
-                setLocalCustomers((prev) => [newCustomer, ...prev.filter((c) => c.id !== newCustomer.id)])
-                setCustomerId(newCustomer.id)
+                console.log('[InvoiceForm] Customer created:', newCustomer)
+                // Add customer to list first using callback form to ensure we have latest state
+                setLocalCustomers((prev) => {
+                  const nextList = [newCustomer, ...prev.filter((c) => c.id !== newCustomer.id)]
+                  console.log('[InvoiceForm] Updated customer list:', nextList.length)
+                  return nextList
+                })
+                // Use setTimeout to ensure the Select component has re-rendered with the new customer
+                setTimeout(() => {
+                  console.log('[InvoiceForm] Setting customer ID:', newCustomer.id)
+                  setCustomerId(newCustomer.id)
+                }, 50)
+                // Notify parent component
                 const nextList = [newCustomer, ...localCustomers.filter((c) => c.id !== newCustomer.id)]
                 onCustomersUpdate?.(nextList)
               }}

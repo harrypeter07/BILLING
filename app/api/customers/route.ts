@@ -24,9 +24,9 @@ export async function POST(request: Request) {
         },
       }
     )
-    
+
     const { data: { user }, error: authError } = await supabase.auth.getUser()
-    
+
     if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
@@ -38,8 +38,42 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Customer name is required" }, { status: 400 })
     }
 
+    // Validate phone number - exactly 10 digits
+    if (phone && phone.trim()) {
+      const cleanPhone = phone.replace(/\D/g, '')
+      if (cleanPhone.length !== 10) {
+        return NextResponse.json({ error: "Phone number must be exactly 10 digits" }, { status: 400 })
+      }
+    }
+
+    // Validate email format if provided
+    if (email && email.trim()) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!emailRegex.test(email.trim())) {
+        return NextResponse.json({ error: "Please enter a valid email address" }, { status: 400 })
+      }
+    }
+
     // Use provided user_id (for employees) or current user's id (for admins)
     const targetUserId = user_id || user.id
+
+    // Check for duplicate email if provided
+    if (email && email.trim()) {
+      const { data: existingCustomer } = await supabase
+        .from("customers")
+        .select("id, name, email")
+        .eq("user_id", targetUserId)
+        .ilike("email", email.trim())
+        .limit(1)
+        .single()
+
+      if (existingCustomer) {
+        return NextResponse.json(
+          { error: `A customer with email "${email.trim()}" already exists: ${existingCustomer.name}` },
+          { status: 409 }
+        )
+      }
+    }
 
     const { data: customer, error } = await supabase
       .from("customers")
