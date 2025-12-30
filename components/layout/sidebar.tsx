@@ -43,7 +43,13 @@ const adminNavigation = [
   { name: "Settings", href: "/settings", icon: Settings },
 ]
 
-const employeeNavigation = sharedNavigation
+// Employee navigation - replace Dashboard with New Invoice
+const employeeNavigation = [
+  { name: "New Invoice", href: "/invoices/new", icon: Receipt },
+  { name: "Products", href: "/products", icon: Package },
+  { name: "Customers", href: "/customers", icon: Users },
+  { name: "Invoices", href: "/invoices", icon: Receipt },
+]
 
 export function Sidebar() {
   const pathname = usePathname()
