@@ -13,8 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { db } from "@/lib/dexie-client"
-import { getDatabaseType } from "@/lib/utils/db-mode"
-import { storageManager } from "@/lib/storage-manager"
+import { getDatabaseType, isIndexedDbMode } from "@/lib/utils/db-mode"
 import { useEmployees, useInvalidateQueries } from "@/lib/hooks/use-cached-data"
 
 interface Employee {
@@ -66,8 +65,18 @@ export default function EmployeesPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure?")) return
     try {
-      const supabase = createClient()
-      await supabase.from("employees").delete().eq("id", id)
+      const isIndexedDb = isIndexedDbMode();
+      
+      if (isIndexedDb) {
+        // Delete from IndexedDB
+        const { storageManager } = await import("@/lib/storage-manager");
+        await storageManager.deleteEmployee(id);
+      } else {
+        // Delete from Supabase
+        const supabase = createClient()
+        await supabase.from("employees").delete().eq("id", id)
+      }
+      
       invalidateEmployees() // Invalidate cache to refetch
       toast({
         title: "Success",

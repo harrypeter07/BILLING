@@ -40,6 +40,7 @@ import {
 	Filter,
 	X,
 } from "lucide-react";
+import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -100,20 +101,30 @@ export function CustomersTable({
 	const handleDelete = async (id: string) => {
 		if (!confirm("Are you sure you want to delete this customer?")) return;
 
-		const supabase = createClient();
-		const { error } = await supabase.from("customers").delete().eq("id", id);
+		try {
+			const isIndexedDb = isIndexedDbMode();
 
-		if (error) {
-			toast({
-				title: "Error",
-				description: "Failed to delete customer",
-				variant: "destructive",
-			});
-		} else {
+			if (isIndexedDb) {
+				// Delete from IndexedDB
+				const { storageManager } = await import("@/lib/storage-manager");
+				await storageManager.deleteCustomer(id);
+			} else {
+				// Delete from Supabase
+				const supabase = createClient();
+				const { error } = await supabase.from("customers").delete().eq("id", id);
+				if (error) throw error;
+			}
+
 			setCustomers(customers.filter((c) => c.id !== id));
 			toast({
 				title: "Success",
 				description: "Customer deleted successfully",
+			});
+		} catch (error) {
+			toast({
+				title: "Error",
+				description: "Failed to delete customer",
+				variant: "destructive",
 			});
 		}
 	};

@@ -146,9 +146,7 @@ export function ProductsTable({
 		if (!confirm("Are you sure you want to delete this product?")) return;
 
 		try {
-			const isIndexedDb =
-				typeof window !== "undefined" &&
-				localStorage.getItem("databaseType") !== "supabase";
+			const isIndexedDb = isIndexedDbMode();
 
 			if (isIndexedDb) {
 				// Delete from IndexedDB
@@ -161,7 +159,6 @@ export function ProductsTable({
 				if (error) throw error;
 			}
 
-			// Update local state
 			setProducts(products.filter((p) => p.id !== id));
 			toast({
 				title: "Success",

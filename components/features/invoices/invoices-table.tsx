@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/tooltip";
 import { MoreHorizontal, Eye, Pencil, Trash2, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { isIndexedDbMode } from "@/lib/utils/db-mode";
 import { useToast } from "@/hooks/use-toast";
 
 interface Invoice {
@@ -81,20 +82,30 @@ export function InvoicesTable({
 	const handleDelete = async (id: string) => {
 		if (!confirm("Are you sure you want to delete this invoice?")) return;
 
-		const supabase = createClient();
-		const { error } = await supabase.from("invoices").delete().eq("id", id);
+		try {
+			const isIndexedDb = isIndexedDbMode();
 
-		if (error) {
-			toast({
-				title: "Error",
-				description: "Failed to delete invoice",
-				variant: "destructive",
-			});
-		} else {
+			if (isIndexedDb) {
+				// Delete from IndexedDB
+				const { storageManager } = await import("@/lib/storage-manager");
+				await storageManager.deleteInvoice(id);
+			} else {
+				// Delete from Supabase
+				const supabase = createClient();
+				const { error } = await supabase.from("invoices").delete().eq("id", id);
+				if (error) throw error;
+			}
+
 			setInvoices(invoices.filter((inv) => inv.id !== id));
 			toast({
 				title: "Success",
 				description: "Invoice deleted successfully",
+			});
+		} catch (error) {
+			toast({
+				title: "Error",
+				description: "Failed to delete invoice",
+				variant: "destructive",
 			});
 		}
 	};

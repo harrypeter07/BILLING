@@ -1,18 +1,24 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
-import { storageManager } from "@/lib/storage-manager"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 interface InlineCustomerFormProps {
-  onCustomerCreated: (customer: { id: string; name: string }) => void
+  onCustomerCreated?: (customer: { id: string; name: string }) => void
+  onCustomerDataChange?: (data: { name: string; phone: string; email: string; isNewCustomer: boolean }) => void
+  invoiceNumber?: string
+  invoiceDate?: string
+  dueDate?: string
+  onInvoiceNumberChange?: (value: string) => void
+  onInvoiceDateChange?: (value: string) => void
+  onDueDateChange?: (value: string) => void
 }
 
 interface CustomerMatch {
@@ -22,11 +28,10 @@ interface CustomerMatch {
   email: string | null
 }
 
-export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProps) {
+export function InlineCustomerForm({ onCustomerCreated, onCustomerDataChange }: InlineCustomerFormProps) {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
   const [phoneMatches, setPhoneMatches] = useState<CustomerMatch[]>([])
   const [showPhoneDropdown, setShowPhoneDropdown] = useState(false)
   const [nameMatches, setNameMatches] = useState<CustomerMatch[]>([])
@@ -44,7 +49,7 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
         setEmail(customer.email || "")
         setPhone(customer.phone || "")
         // Also call onCustomerCreated to ensure customer is selected
-        onCustomerCreated({ id: customer.id, name: customer.name })
+        onCustomerCreated?.({ id: customer.id, name: customer.name })
       }
     }
 
@@ -259,249 +264,49 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
     setNameMatches([])
     setShowNameDropdown(false)
     // Auto-select this customer in the invoice form
-    onCustomerCreated({ id: customer.id, name: customer.name })
+    onCustomerCreated?.({ id: customer.id, name: customer.name })
     toast({
       title: "Customer selected",
       description: `Customer details filled: ${customer.name}`,
     })
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    if (!name.trim()) {
-      toast({
-        title: "Error",
-        description: "Customer name is required",
-        variant: "destructive",
-      })
-      return
+  // Notify parent component about customer data changes
+  const prevCustomerDataRef = useRef({ name: "", phone: "", email: "", isNewCustomer: false })
+  
+  useEffect(() => {
+    const hasValidName = name.trim().length > 0
+    const hasValidPhone = phone.trim().length === 10
+    const isNewCustomer = hasValidName && hasValidPhone && 
+                        !nameMatches.some(match => match.name.toLowerCase() === name.trim().toLowerCase()) &&
+                        !phoneMatches.some(match => match.phone === phone.trim())
+    
+    const currentCustomerData = {
+      name: name.trim(),
+      phone: phone.trim(),
+      email: email.trim(),
+      isNewCustomer
     }
-
-    if (!phone.trim()) {
-      toast({
-        title: "Error",
-        description: "Phone number is required",
-        variant: "destructive",
-      })
-      return
+    
+    // Only notify if data actually changed
+    const prevData = prevCustomerDataRef.current
+    if (JSON.stringify(prevData) !== JSON.stringify(currentCustomerData)) {
+      onCustomerDataChange?.(currentCustomerData)
+      prevCustomerDataRef.current = currentCustomerData
     }
-
-    // Validate phone number - exactly 10 digits
-    const cleanPhone = phone.replace(/\D/g, '')
-    if (cleanPhone.length !== 10) {
-      toast({
-        title: "Invalid Phone Number",
-        description: "Phone number must be exactly 10 digits",
-        variant: "destructive",
-      })
-      return
-    }
-
-    // Validate email format if provided
-    if (email.trim()) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(email.trim())) {
-        toast({
-          title: "Invalid Email",
-          description: "Please enter a valid email address",
-          variant: "destructive",
-        })
-        return
-      }
-    }
-
-    // Check for duplicate email if email is provided
-    if (email.trim()) {
-      try {
-        const isIndexedDb = isIndexedDbMode()
-        let existingCustomer = null
-
-        if (isIndexedDb) {
-          // Check in IndexedDB
-          const allCustomers = await db.customers.toArray()
-          existingCustomer = allCustomers.find(
-            c => c.email && c.email.toLowerCase() === email.trim().toLowerCase()
-          )
-        } else {
-          // Check in Supabase
-          const supabase = createClient()
-          const authType = localStorage.getItem("authType")
-          let userId: string | null = null
-
-          if (authType === "employee") {
-            const empSession = localStorage.getItem("employeeSession")
-            if (empSession) {
-              const session = JSON.parse(empSession)
-              const storeId = session.storeId
-              if (storeId) {
-                const { data: store } = await supabase
-                  .from('stores')
-                  .select('admin_user_id')
-                  .eq('id', storeId)
-                  .single()
-                if (store?.admin_user_id) {
-                  userId = store.admin_user_id
-                }
-              }
-            }
-          } else {
-            const { data: { user } } = await supabase.auth.getUser()
-            if (user) userId = user.id
-          }
-
-          if (userId) {
-            const { data } = await supabase
-              .from('customers')
-              .select('id, name, email')
-              .eq('user_id', userId)
-              .ilike('email', email.trim())
-              .limit(1)
-
-            if (data && data.length > 0) {
-              existingCustomer = data[0]
-            }
-          }
-        }
-
-        if (existingCustomer) {
-          toast({
-            title: "Duplicate Customer",
-            description: `A customer with email "${email.trim()}" already exists: ${existingCustomer.name}`,
-            variant: "destructive",
-          })
-          return
-        }
-      } catch (error) {
-        console.error('Error checking for duplicate email:', error)
-        // Continue with creation even if check fails
-      }
-    }
-
-    setIsLoading(true)
-    setShowPhoneDropdown(false)
-
-    try {
-      const customerData = {
-        id: crypto.randomUUID(),
-        name: name.trim(),
-        email: email.trim() || null,
-        phone: phone.trim() || null,
-        billing_address: null,
-        shipping_address: null,
-        notes: null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }
-
-      const isIndexedDb = isIndexedDbMode()
-      if (isIndexedDb) {
-        // IndexedDB mode - add to Dexie
-        await storageManager.addCustomer(customerData as any)
-        toast({
-          title: "Success",
-          description: `Customer "${customerData.name}" added successfully`,
-        })
-        onCustomerCreated({ id: customerData.id, name: customerData.name })
-        // Dispatch event to notify customer list to refresh
-        window.dispatchEvent(new CustomEvent('customer:created'))
-      } else {
-        // Supabase mode - use API
-        const supabase = createClient()
-        const authType = localStorage.getItem("authType")
-
-        let userId: string | null = null
-
-        // For employees, get admin_user_id from store
-        if (authType === "employee") {
-          const empSession = localStorage.getItem("employeeSession")
-          if (empSession) {
-            try {
-              const session = JSON.parse(empSession)
-              const storeId = session.storeId
-
-              if (storeId) {
-                // Get store to find admin_user_id
-                const { data: store } = await supabase
-                  .from('stores')
-                  .select('admin_user_id')
-                  .eq('id', storeId)
-                  .single()
-
-                if (store?.admin_user_id) {
-                  userId = store.admin_user_id
-                } else {
-                  throw new Error("Store not found or invalid")
-                }
-              }
-            } catch (e: any) {
-              throw new Error("Failed to get employee store: " + (e.message || "Unknown error"))
-            }
-          } else {
-            throw new Error("Employee session not found")
-          }
-        } else {
-          // For admin users
-          const { data: { user } } = await supabase.auth.getUser()
-          if (!user) {
-            throw new Error("Not authenticated")
-          }
-          userId = user.id
-        }
-
-        const response = await fetch('/api/customers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            name: customerData.name,
-            email: customerData.email,
-            phone: customerData.phone,
-            user_id: userId,
-          }),
-        })
-
-        if (!response.ok) {
-          const error = await response.json()
-          throw new Error(error.error || "Failed to create customer")
-        }
-
-        const { customer } = await response.json()
-
-        toast({
-          title: "Success",
-          description: `Customer "${customer.name}" added successfully`,
-        })
-        onCustomerCreated({ id: customer.id, name: customer.name })
-        // Dispatch event to notify customer list to refresh
-        window.dispatchEvent(new CustomEvent('customer:created'))
-      }
-
-      // Reset form
-      setName("")
-      setEmail("")
-      setPhone("")
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to create customer",
-        variant: "destructive",
-      })
-    } finally {
-      setIsLoading(false)
-    }
-  }
+  }, [name, phone, email, nameMatches, phoneMatches, onCustomerDataChange])
 
   return (
     <Card className="border-dashed">
       <CardHeader className="pb-2">
-        <CardTitle className="text-base">Add New Customer</CardTitle>
+        <CardTitle className="text-base">Customer & Invoice Details</CardTitle>
       </CardHeader>
       <CardContent className="p-4">
         <div className="space-y-3">
           <div className="space-y-2">
             <div className="space-y-1.5 relative">
               <Label htmlFor="quick-name" className="text-xs">
-                Name <span className="text-destructive">*</span>
+                Customer Name <span className="text-destructive">*</span>
               </Label>
               <div className="relative">
                 <Input
@@ -519,14 +324,8 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
                     // Delay to allow click on dropdown item
                     setTimeout(() => setShowNameDropdown(false), 200)
                   }}
-                  placeholder="Customer name"
+                  placeholder="Type to search customers..."
                   className="h-9 text-sm w-full"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && name.trim()) {
-                      e.preventDefault()
-                      handleSubmit(e as any)
-                    }
-                  }}
                 />
                 {showNameDropdown && nameMatches.length > 0 && (
                   <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-60 overflow-auto">
@@ -561,7 +360,6 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
                   ref={phoneInputRef}
                   id="quick-phone"
                   type="tel"
-                  required
                   value={phone}
                   onChange={(e) => handlePhoneChange(e.target.value)}
                   onFocus={() => {
@@ -609,20 +407,10 @@ export function InlineCustomerForm({ onCustomerCreated }: InlineCustomerFormProp
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="customer@example.com"
+                placeholder="Enter email address (optional)"
                 className="h-8 text-sm w-full"
               />
             </div>
-          </div>
-          <div className="flex justify-end pt-1">
-            <Button
-              type="button"
-              size="sm"
-              disabled={isLoading || !name.trim() || !phone.trim()}
-              onClick={handleSubmit}
-            >
-              {isLoading ? "Adding..." : "Add Customer"}
-            </Button>
           </div>
         </div>
       </CardContent>

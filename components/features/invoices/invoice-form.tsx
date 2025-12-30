@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -237,18 +237,17 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split("T")[0])
   const [dueDate, setDueDate] = useState("")
   const [customerId, setCustomerId] = useState("")
+  const [customerData, setCustomerData] = useState({ name: "", phone: "", email: "", isNewCustomer: false })
   const [isGstInvoice, setIsGstInvoice] = useState(true)
   const [isSameState, setIsSameState] = useState(true)
-  const [notes, setNotes] = useState("")
-  const [terms, setTerms] = useState("")
   const [productSearchTerm, setProductSearchTerm] = useState("")
   const [focusedField, setFocusedField] = useState<string | null>(null)
 
   const [lineItems, setLineItems] = useState<LineItem[]>([])
 
-  const addLineItem = () => {
-    setLineItems([
-      ...lineItems,
+  const addLineItem = useCallback(() => {
+    setLineItems(prev => [
+      ...prev,
       {
         id: crypto.randomUUID(),
         product_id: null,
@@ -260,7 +259,14 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
         hsn_code: "",
       },
     ])
-  }
+  }, [settings?.default_gst_rate])
+
+  // Add initial line item on mount
+  useEffect(() => {
+    if (lineItems.length === 0) {
+      addLineItem()
+    }
+  }, [lineItems.length]) // Remove addLineItem from dependencies
 
   const removeLineItem = (id: string) => {
     const itemToRemove = lineItems.find(item => item.id === id)
@@ -478,14 +484,131 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
 
   const totals = calculateTotals()
 
+  // Create customer function for auto-creation during invoice submission
+  const createCustomer = async (data: { name: string; phone: string; email: string }) => {
+    try {
+      const isIndexedDb = isIndexedDbMode()
+      let newCustomer: { id: string; name: string }
+
+      if (isIndexedDb) {
+        // Create customer in IndexedDB
+        const customerId = crypto.randomUUID()
+        const customerData = {
+          id: customerId,
+          name: data.name,
+          phone: data.phone,
+          email: data.email || null,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        
+        await db.customers.add(customerData)
+        newCustomer = { id: customerId, name: customerData.name }
+      } else {
+        // Create customer in Supabase
+        const supabase = createClient()
+        const authType = localStorage.getItem("authType")
+        let userId: string | null = null
+
+        if (authType === "employee") {
+          const empSession = localStorage.getItem("employeeSession")
+          if (empSession) {
+            const session = JSON.parse(empSession)
+            const storeId = session.storeId
+            if (storeId) {
+              const { data: store } = await supabase
+                .from('stores')
+                .select('admin_user_id')
+                .eq('id', storeId)
+                .single()
+              if (store?.admin_user_id) {
+                userId = store.admin_user_id
+              }
+            }
+          }
+        } else {
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) userId = user.id
+        }
+
+        if (!userId) {
+          throw new Error("User not authenticated")
+        }
+
+        const { data: createdCustomer, error } = await supabase
+          .from('customers')
+          .insert({
+            name: data.name,
+            phone: data.phone,
+            email: data.email || null,
+            user_id: userId,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .select()
+          .single()
+
+        if (error) throw error
+        if (!createdCustomer) throw new Error("Failed to create customer")
+
+        newCustomer = { id: createdCustomer.id, name: createdCustomer.name }
+      }
+
+      // Update local customers list
+      setLocalCustomers(prev => [newCustomer, ...prev])
+      return newCustomer
+    } catch (error) {
+      console.error("Error creating customer:", error)
+      throw error
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validate customer is selected
-    if (!customerId || customerId.trim() === "") {
+    // Validate customer (either existing selected or new customer data entered)
+    let finalCustomerId = customerId
+    
+    if (!finalCustomerId && customerData.isNewCustomer && customerData.name && customerData.phone) {
+      // Auto-create new customer
+      try {
+        const newCustomer = await createCustomer({
+          name: customerData.name,
+          phone: customerData.phone,
+          email: customerData.email
+        })
+        finalCustomerId = newCustomer.id
+        setCustomerId(finalCustomerId)
+        toast({
+          title: "Customer Created",
+          description: `New customer ${newCustomer.name} has been added`,
+        })
+      } catch (error) {
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to create customer",
+          variant: "destructive",
+        })
+        setIsLoading(false)
+        return
+      }
+    }
+    
+    if (!finalCustomerId) {
       toast({
         title: "Error",
-        description: "Please select a customer before creating the invoice",
+        description: "Please select an existing customer or enter new customer details",
+        variant: "destructive",
+      });
+      setIsLoading(false)
+      return;
+    }
+
+    // Validate line items exist
+    if (lineItems.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please add at least one item to the invoice",
         variant: "destructive",
       });
       return;
@@ -522,6 +645,22 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
       // Validate each line item
       for (let i = 0; i < lineItems.length; i++) {
         const item = lineItems[i];
+
+        // Skip empty line items (allow one empty item for flexibility)
+        if (!item.product_id && (!item.description || item.description.trim() === "") && item.quantity === 0 && item.unit_price === 0) {
+          continue;
+        }
+
+        // Validate that item has either a product or description
+        if (!item.product_id && (!item.description || item.description.trim() === "")) {
+          toast({
+            title: `Line Item ${i + 1} Error`,
+            description: "Please select a product or enter a description",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
 
         // Validate quantity
         const qtyValidation = validateItemQuantity(item.quantity);
@@ -592,10 +731,10 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
       }
 
       const invoiceId = crypto.randomUUID();
-      console.log('[InvoiceForm] Creating invoice with customer_id:', customerId);
+      console.log('[InvoiceForm] Creating invoice with customer_id:', finalCustomerId);
       const invoiceData = {
         id: invoiceId,
-        customer_id: customerId,
+        customer_id: finalCustomerId,
         invoice_number: invoiceNumber,
         invoice_date: invoiceDate,
         due_date: dueDate || undefined,
@@ -606,16 +745,18 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
         sgst_amount: t.sgst,
         igst_amount: t.igst,
         total_amount: t.total,
-        notes: notes || undefined,
-        terms: terms || undefined,
         created_at: new Date().toISOString(),
         store_id: storeId || undefined,
         employee_id: employeeId || undefined,
         created_by_employee_id: employeeId || undefined,
       };
 
-      // Calculate line totals and GST for each item
-      const items = lineItems.map((li) => {
+      // Calculate line totals and GST for each item (filter out empty items)
+      const validLineItems = lineItems.filter(item => 
+        item.product_id || (item.description && item.description.trim() !== "")
+      );
+      
+      const items = validLineItems.map((li) => {
         const calc = calculateLineItem({
           unitPrice: li.unit_price,
           discountPercent: li.discount_percent,
@@ -742,106 +883,64 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
             </Button>
           </div>
         )}
-        <div className="grid gap-2 xl:grid-cols-[280px_minmax(320px,1fr)_520px]">
-          {/* Left column: customer + invoice meta */}
-          <div className="space-y-2">
-            <InlineCustomerForm
-              onCustomerCreated={(newCustomer) => {
-                console.log('[InvoiceForm] Customer created:', newCustomer)
-                // Add customer to list first using callback form to ensure we have latest state
-                setLocalCustomers((prev) => {
-                  const nextList = [newCustomer, ...prev.filter((c) => c.id !== newCustomer.id)]
-                  console.log('[InvoiceForm] Updated customer list:', nextList.length)
-                  return nextList
-                })
-                // Use setTimeout to ensure the Select component has re-rendered with the new customer
-                setTimeout(() => {
-                  console.log('[InvoiceForm] Setting customer ID:', newCustomer.id)
-                  setCustomerId(newCustomer.id)
-                }, 50)
-                // Notify parent component
-                const nextList = [newCustomer, ...localCustomers.filter((c) => c.id !== newCustomer.id)]
-                onCustomersUpdate?.(nextList)
-              }}
-            />
+        <div className="relative">
+          {/* Invoice Number and Date - Top Right */}
+          <div className="absolute top-0 right-0 z-10 flex gap-3">
+            <div className="flex items-center gap-2 bg-background border rounded-md px-3 py-2 shadow-sm">
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground">Invoice #</span>
+                <Input
+                  value={invoiceNumber}
+                  onChange={(e) => setInvoiceNumber(e.target.value)}
+                  required
+                  className="h-7 text-xs font-semibold w-32 px-1"
+                />
+              </div>
+              <div className="flex flex-col">
+                <span className="text-xs text-muted-foreground">Date</span>
+                <Input
+                  type="date"
+                  value={invoiceDate}
+                  onChange={(e) => setInvoiceDate(e.target.value)}
+                  required
+                  className="h-7 text-xs w-28 px-1"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="grid gap-2 xl:grid-cols-[280px_minmax(320px,1fr)_520px] pt-16">
+            {/* Left column: customer only */}
+            <div className="space-y-2">
+              <InlineCustomerForm
+                onCustomerCreated={(newCustomer) => {
+                  console.log('[InvoiceForm] Customer created:', newCustomer)
+                  // Add customer to list first using callback form to ensure we have latest state
+                  setLocalCustomers((prev) => {
+                    const nextList = [newCustomer, ...prev.filter((c) => c.id !== newCustomer.id)]
+                    console.log('[InvoiceForm] Updated customer list:', nextList.length)
+                    return nextList
+                  })
+                  // Use setTimeout to ensure the Select component has re-rendered with the new customer
+                  setTimeout(() => {
+                    console.log('[InvoiceForm] Setting customer ID:', newCustomer.id)
+                    setCustomerId(newCustomer.id)
+                  }, 50)
+                  // Notify parent component
+                  const nextList = [newCustomer, ...localCustomers.filter((c) => c.id !== newCustomer.id)]
+                  onCustomersUpdate?.(nextList)
+                }}
+                onCustomerDataChange={(data) => {
+                  setCustomerData(data)
+                  // Clear customerId if user starts typing new customer details
+                  if (data.isNewCustomer) {
+                    setCustomerId("")
+                  }
+                }}
+              />
 
             <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Invoice Details</CardTitle>
-              </CardHeader>
               <CardContent className="space-y-2 p-4">
-                <div className="grid gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="invoice_number" className="text-xs">
-                      Invoice Number
-                    </Label>
-                    <Input
-                      id="invoice_number"
-                      value={invoiceNumber}
-                      onChange={(e) => setInvoiceNumber(e.target.value)}
-                      required
-                      className="h-9 text-sm"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="invoice_date" className="text-xs">
-                        Date
-                      </Label>
-                      <Input
-                        id="invoice_date"
-                        type="date"
-                        value={invoiceDate}
-                        onChange={(e) => setInvoiceDate(e.target.value)}
-                        required
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor="due_date" className="text-xs">
-                        Due
-                      </Label>
-                      <Input
-                        id="due_date"
-                        type="date"
-                        value={dueDate}
-                        onChange={(e) => setDueDate(e.target.value)}
-                        className="h-9 text-sm"
-                      />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="customer" className="text-xs">
-                      Customer
-                    </Label>
-                    <Select
-                      value={customerId}
-                      onValueChange={(value) => {
-                        setCustomerId(value)
-                        // Find the selected customer and populate inline form if needed
-                        const selectedCustomer = localCustomers.find(c => c.id === value)
-                        if (selectedCustomer) {
-                          // Dispatch event to populate inline form
-                          window.dispatchEvent(new CustomEvent('customer:selected', {
-                            detail: selectedCustomer
-                          }))
-                        }
-                      }}
-                    >
-                      <SelectTrigger className="h-9 text-sm">
-                        <SelectValue placeholder="Select customer" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {localCustomers.map((customer) => (
-                          <SelectItem key={customer.id} value={customer.id}>
-                            {customer.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
                 <div className="flex items-center justify-between rounded-md border px-3 py-2">
                   <div className="flex items-center gap-2 text-xs">
                     <Switch id="gst_invoice" checked={isGstInvoice} onCheckedChange={setIsGstInvoice} />
@@ -864,27 +963,15 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
             <Card>
               <CardContent className="space-y-2 p-4">
                 <div className="space-y-1.5">
-                  <Label htmlFor="notes" className="text-xs">
-                    Notes
+                  <Label htmlFor="due_date" className="text-xs">
+                    Due Date
                   </Label>
-                  <Textarea
-                    id="notes"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    rows={2}
-                    className="text-sm"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="terms" className="text-xs">
-                    Terms
-                  </Label>
-                  <Textarea
-                    id="terms"
-                    value={terms}
-                    onChange={(e) => setTerms(e.target.value)}
-                    rows={2}
-                    className="text-sm"
+                  <Input
+                    id="due_date"
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="h-9 text-sm"
                   />
                 </div>
               </CardContent>
@@ -1028,29 +1115,38 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                           return (
                             <TableRow key={item.id} className="h-12">
                               <TableCell className="px-2 py-1.5">
-                                <Select
-                                  value={item.product_id || ""}
-                                  onValueChange={(value) => {
-                                    updateLineItem(item.id, "product_id", value)
-                                    // Auto-add new line item if this is the last row and a product is selected
-                                    if (lineItems.length > 0 && lineItems[lineItems.length - 1].id === item.id && value) {
-                                      setTimeout(() => {
-                                        addLineItem()
-                                      }, 100)
-                                    }
-                                  }}
-                                >
-                                  <SelectTrigger className="h-8 text-xs px-2">
-                                    <SelectValue placeholder="Select Product" />
-                                  </SelectTrigger>
-                                  <SelectContent className="max-h-60">
-                                    {products.map((product) => (
-                                      <SelectItem key={product.id} value={product.id}>
-                                        {product.name}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
+                                {!item.product_id ? (
+                                  <Input
+                                    value={item.description || ""}
+                                    onChange={(e) => updateLineItem(item.id, "description", e.target.value)}
+                                    placeholder="Enter description"
+                                    className="h-8 text-xs px-2"
+                                  />
+                                ) : (
+                                  <Select
+                                    value={item.product_id || ""}
+                                    onValueChange={(value) => {
+                                      updateLineItem(item.id, "product_id", value)
+                                      // Auto-add new line item if this is the last row and a product is selected
+                                      if (lineItems.length > 0 && lineItems[lineItems.length - 1].id === item.id && value) {
+                                        setTimeout(() => {
+                                          addLineItem()
+                                        }, 100)
+                                      }
+                                    }}
+                                  >
+                                    <SelectTrigger className="h-8 text-xs px-2">
+                                      <SelectValue placeholder="Select Product" />
+                                    </SelectTrigger>
+                                    <SelectContent className="max-h-60">
+                                      {products.map((product) => (
+                                        <SelectItem key={product.id} value={product.id}>
+                                          {product.name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                )}
                               </TableCell>
                               {(() => {
                                 const fieldId = `${item.id}-qty`
@@ -1263,6 +1359,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                 Cancel
               </Button>
             </div>
+          </div>
           </div>
         </div>
       </form>
