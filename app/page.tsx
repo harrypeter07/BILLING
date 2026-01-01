@@ -63,9 +63,6 @@ export default function LandingPage() {
                     <Button asChild variant="ghost">
                       <Link href="/auth/login">Admin/Public Login</Link>
                     </Button>
-                    <Button asChild>
-                      <Link href="/auth/signup">Admin/Public Sign Up</Link>
-                    </Button>
                   </>
                 )}
               </>
@@ -84,9 +81,6 @@ export default function LandingPage() {
           automatically.
         </p>
         <div className="flex flex-wrap items-center justify-center gap-4">
-          <Button asChild size="lg">
-            <Link href="/auth/signup">Admin/Public Sign Up</Link>
-          </Button>
           <Button asChild size="lg" variant="outline">
             <Link href="/auth/login">Admin/Public Login</Link>
           </Button>
@@ -164,7 +158,7 @@ export default function LandingPage() {
             Join hundreds of small businesses using Billing Solutions
           </p>
           <Button asChild size="lg">
-            <Link href="/auth/signup">Admin/Public Sign Up</Link>
+            <Link href="/auth/login">Admin/Public Login</Link>
           </Button>
         </div>
       </section>

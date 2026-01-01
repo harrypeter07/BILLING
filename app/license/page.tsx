@@ -203,10 +203,11 @@ export default function LicensePage() {
         setSuccess(true);
         setError(null);
         
-        // Show success message and reload
+        // Show success message and redirect
         setTimeout(() => {
-          console.log('[LicensePage] Reloading page to show activation form...');
-          window.location.reload();
+          console.log('[LicensePage] Redirecting to show activation form...');
+          router.push("/license");
+          router.refresh();
         }, 1500);
       } else {
         console.error('[LicensePage] Failed to clear license:', result.error);

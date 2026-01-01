@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, RefreshCw, WifiOff, Wifi } from "lucide-react"
+import { Bell, RefreshCw, WifiOff, Wifi, Clock, AlertTriangle } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
@@ -20,6 +20,10 @@ import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { clearOfflineSession } from "@/lib/utils/offline-auth"
+import { useSessionCountdown } from "@/lib/hooks/use-session-countdown"
+import { cleanupServiceWorkers, checkServiceWorkerStatus } from "@/lib/utils/service-worker-cleanup"
+import { fixServiceWorkersAndReload } from "@/lib/utils/fix-service-workers"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface HeaderProps {
   title?: string
@@ -37,6 +41,10 @@ export function Header({ title }: HeaderProps) {
   const { role, isAdmin, isEmployee, isPublic, isLoading: roleLoading } = useUserRole();
   const { toast } = useToast();
   const [isOnline, setIsOnline] = useState(true)
+  const [swCount, setSwCount] = useState(0)
+  const [isCleaningSW, setIsCleaningSW] = useState(false)
+  const [isFixingSW, setIsFixingSW] = useState(false)
+  const sessionCountdown = useSessionCountdown()
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -88,6 +96,36 @@ export function Header({ title }: HeaderProps) {
     fetchUser()
   }, [])
 
+  // Check service worker status on mount and periodically
+  useEffect(() => {
+    const checkSW = async () => {
+      try {
+        const status = await checkServiceWorkerStatus()
+        setSwCount(status.count)
+        
+        // Also check for redundant workers
+        if ("serviceWorker" in navigator) {
+          const registrations = await navigator.serviceWorker.getRegistrations()
+          const redundantCount = registrations.filter(reg => {
+            const worker = reg.active || reg.installing || reg.waiting
+            return worker && worker.state === "redundant"
+          }).length
+          
+          // If there are redundant workers, show the fix button
+          if (redundantCount > 0 && status.count === 0) {
+            setSwCount(redundantCount) // Show count even if they're redundant
+          }
+        }
+      } catch (err) {
+        console.error("[Header] Error checking SW status:", err)
+      }
+    }
+    checkSW()
+    // Check periodically
+    const interval = setInterval(checkSW, 3000)
+    return () => clearInterval(interval)
+  }, [])
+
   useEffect(() => {
     setHasMounted(true);
     setIsOnline(typeof navigator !== "undefined" ? navigator.onLine : true)
@@ -136,6 +174,10 @@ export function Header({ title }: HeaderProps) {
     await supabase.auth.signOut()
     clearOfflineSession()
 
+    // Clear IndexedDB session
+    const { clearAuthSession } = await import("@/lib/utils/auth-session")
+    await clearAuthSession()
+
     // Redirect to login
     router.push("/auth/login")
     router.refresh()
@@ -162,6 +204,62 @@ export function Header({ title }: HeaderProps) {
     console.log("[Header] Manual refresh triggered")
     router.refresh()
     setTimeout(() => setIsRefreshing(false), 800)
+  }
+
+  const handleCleanupServiceWorkers = async () => {
+    setIsCleaningSW(true)
+    try {
+      const result = await cleanupServiceWorkers()
+      if (result.success) {
+        toast({
+          title: "Service Workers Cleaned",
+          description: `Successfully unregistered ${result.unregistered} service worker(s). The page will reload.`,
+        })
+        // Reload page after cleanup
+        setTimeout(() => {
+          window.location.reload()
+        }, 1000)
+      } else {
+        toast({
+          title: "Cleanup Completed with Warnings",
+          description: `Unregistered ${result.unregistered} service worker(s). ${result.errors.length > 0 ? result.errors[0] : ""}`,
+          variant: "default",
+        })
+        // Still reload to apply changes
+        setTimeout(() => {
+          window.location.reload()
+        }, 1000)
+      }
+      // Update count
+      const status = await checkServiceWorkerStatus()
+      setSwCount(status.count)
+    } catch (error) {
+      toast({
+        title: "Cleanup Failed",
+        description: error instanceof Error ? error.message : "Failed to cleanup service workers",
+        variant: "destructive",
+      })
+    } finally {
+      setIsCleaningSW(false)
+    }
+  }
+
+  const handleFixServiceWorkers = async () => {
+    setIsFixingSW(true)
+    try {
+      toast({
+        title: "Fixing Service Workers",
+        description: "Cleaning up all service workers and caches...",
+      })
+      await fixServiceWorkersAndReload()
+    } catch (error) {
+      toast({
+        title: "Fix Failed",
+        description: error instanceof Error ? error.message : "Failed to fix service workers",
+        variant: "destructive",
+      })
+      setIsFixingSW(false)
+    }
   }
 
   return (
@@ -197,6 +295,24 @@ export function Header({ title }: HeaderProps) {
             className="text-xs font-semibold bg-primary/10"
           >
             🏪 {storeName}
+          </Badge>
+        )}
+
+        {/* Session Countdown Timer - Only show if authenticated and not expired */}
+        {!isPublic && sessionCountdown.hasSession && !sessionCountdown.isExpired && sessionCountdown.timeLeft > 0 && (
+          <Badge
+            variant={sessionCountdown.isExpiringSoon ? "destructive" : "outline"}
+            className="flex items-center gap-1.5 text-xs font-semibold min-w-[80px] justify-center"
+            title={`Session expires in ${sessionCountdown.timeLeftFormatted}`}
+          >
+            {sessionCountdown.isExpiringSoon ? (
+              <AlertTriangle className="h-3 w-3 animate-pulse" />
+            ) : (
+              <Clock className="h-3 w-3" />
+            )}
+            <span className={sessionCountdown.isExpiringSoon ? "font-bold" : ""}>
+              {sessionCountdown.timeLeftFormatted}
+            </span>
           </Badge>
         )}
 
@@ -244,6 +360,34 @@ export function Header({ title }: HeaderProps) {
           </Button>
         )}
 
+        {/* Service Worker Fix Button - Always visible for easy access */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-transparent text-destructive hover:text-destructive hover:bg-destructive/10"
+              onClick={handleFixServiceWorkers}
+              disabled={isFixingSW || isCleaningSW}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${(isFixingSW || isCleaningSW) ? "animate-spin" : ""}`} />
+              {isFixingSW ? "Fixing..." : isCleaningSW ? "Cleaning..." : swCount > 0 ? `Fix SW${swCount > 1 ? ` (${swCount})` : ""}` : "Fix SW"}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" className="max-w-xs">
+            <p className="font-semibold mb-1">Fix Service Worker Issues</p>
+            <p className="text-xs mb-1">
+              This will completely clean up all service workers and caches, then reload the page.
+            </p>
+            <p className="text-xs text-muted-foreground mb-1">
+              Safe: Only affects this app. Won't touch your passwords, logins, or other websites.
+            </p>
+            <p className="text-xs font-semibold text-primary">
+              Click to fix redundant/error service workers
+            </p>
+          </TooltipContent>
+        </Tooltip>
+
         <SyncStatus />
 
         {/* Notifications */}
@@ -278,6 +422,14 @@ export function Header({ title }: HeaderProps) {
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => router.push("/settings/profile")}>Profile Settings</DropdownMenuItem>
             <DropdownMenuItem onClick={() => router.push("/settings/business")}>Business Settings</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem 
+              onClick={handleFixServiceWorkers} 
+              disabled={isFixingSW || isCleaningSW}
+              className="text-orange-600 dark:text-orange-400"
+            >
+              {isFixingSW ? "Fixing Service Workers..." : "Fix Service Workers"}
+            </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={handleLogout} className="text-destructive">
               Logout

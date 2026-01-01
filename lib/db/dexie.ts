@@ -184,6 +184,17 @@ export interface License {
   updated_at: string
 }
 
+export interface AuthSession {
+  id: string
+  userId: string
+  email: string
+  role: string
+  storeId?: string | null
+  issuedAt: number // timestamp
+  expiresAt: number // timestamp
+  createdAt: string
+}
+
 // Dexie database class
 class BillingDatabase extends Dexie {
   products!: EntityTable<Product, "id">
@@ -199,6 +210,7 @@ class BillingDatabase extends Dexie {
   sales_header!: EntityTable<SalesHeader, "id">
   sales_items!: EntityTable<SalesItem, "id">
   license!: EntityTable<License, "id">
+  auth_session!: EntityTable<AuthSession, "id">
 
   constructor() {
     super("BillingDatabase")
@@ -243,6 +255,24 @@ class BillingDatabase extends Dexie {
       sales_header: "id, invoice_number, customer_id, sale_date, status",
       sales_items: "id, sale_id, product_id",
       license: "++id, licenseKey, macAddress, status, updated_at",
+    })
+
+    // Version 4: Add auth_session table for offline authentication
+    this.version(4).stores({
+      products: "id, user_id, name, is_synced, deleted",
+      customers: "id, user_id, name, is_synced, deleted",
+      invoices: "id, user_id, customer_id, invoice_number, invoice_date, is_synced, deleted",
+      invoice_items: "id, invoice_id, product_id",
+      sync_queue: "++id, entity_type, entity_id, created_at",
+      settings: "++id",
+      users: "id, email, role",
+      inventory: "id, product_id",
+      employees: "id, employee_id, is_active",
+      attendance: "id, employee_id, date",
+      sales_header: "id, invoice_number, customer_id, sale_date, status",
+      sales_items: "id, sale_id, product_id",
+      license: "++id, licenseKey, macAddress, status, updated_at",
+      auth_session: "id, userId, expiresAt",
     })
   }
 }

@@ -43,6 +43,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { isIndexedDbMode } from "@/lib/utils/db-mode";
+import { useInvalidateQueries } from "@/lib/hooks/use-cached-data";
 
 interface Product {
 	id: string;
@@ -78,6 +79,7 @@ export function ProductsTable({
 		useState<string>("all");
 	const router = useRouter();
 	const { toast } = useToast();
+	const { invalidateProducts } = useInvalidateQueries();
 
 	// Extract unique categories
 	const categories = useMemo(() => {
@@ -159,6 +161,9 @@ export function ProductsTable({
 				if (error) throw error;
 			}
 
+			// Invalidate cache for instant UI update
+			await invalidateProducts();
+			
 			setProducts(products.filter((p) => p.id !== id));
 			toast({
 				title: "Success",

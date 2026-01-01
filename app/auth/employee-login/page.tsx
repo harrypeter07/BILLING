@@ -37,7 +37,7 @@ export default function EmployeeLoginPage() {
             const session = JSON.parse(employeeSession)
             if (session.employeeId && session.storeId) {
               // Already logged in, redirect to invoice creation
-              window.location.href = "/invoices/new"
+              router.push("/invoices/new")
               return
             }
           } catch (e) {
@@ -169,10 +169,21 @@ export default function EmployeeLoginPage() {
       localStorage.setItem("currentStoreId", store.id)
       localStorage.setItem("authType", "employee")
 
+      // Save session to IndexedDB for offline access
+      const { saveAuthSession } = await import("@/lib/utils/auth-session")
+      await saveAuthSession({
+        userId: employee.id,
+        email: employee.email || employee.employee_id,
+        role: "employee",
+        storeId: store.id,
+      })
+      console.log("[EmployeeLogin] Session saved to IndexedDB")
+
       toast.success("Logged in as Employee")
-      // Use window.location to prevent React re-renders and infinite loops
+      // Redirect to invoice creation
       setTimeout(() => {
-        window.location.href = "/invoices/new"
+        router.push("/invoices/new")
+        router.refresh()
       }, 100)
     } catch (error: any) {
       setError(error.message || "Login failed")

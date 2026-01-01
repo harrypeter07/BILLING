@@ -19,8 +19,21 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
   const [checking, setChecking] = useState(true);
   const [isValid, setIsValid] = useState(false);
   const hasCheckedRef = useRef(false);
+  const lastPathnameRef = useRef<string | null>(null);
+  const renderCountRef = useRef(0);
+  const hasLoggedRef = useRef(false);
   
-  console.log('[LicenseGuard] Rendered - pathname:', pathname);
+  // Only log on pathname change (not on every render)
+  if (pathname !== lastPathnameRef.current) {
+    if (process.env.NODE_ENV === 'development' && !hasLoggedRef.current) {
+      console.log('[LicenseGuard] Pathname changed to:', pathname);
+      hasLoggedRef.current = true;
+    }
+    lastPathnameRef.current = pathname || null;
+    renderCountRef.current = 0; // Reset render count on pathname change
+  }
+  
+  renderCountRef.current += 1;
 
   useEffect(() => {
     // Skip check on license page, admin license-seed page, and auth pages
@@ -40,11 +53,17 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
       pathname?.startsWith("/auth/");
     
     if (skipLicenseCheck) {
-      console.log('[LicenseGuard] On exempt page or localhost, skipping license check:', pathname);
-      setChecking(false);
-      setIsValid(true); // Allow page to render
-      // Reset check ref when on exempt pages to avoid stale state
-      hasCheckedRef.current = false;
+      // Only set state if it's different to prevent unnecessary re-renders
+      if (checking || !isValid) {
+        if (process.env.NODE_ENV === 'development' && renderCountRef.current <= 1) {
+          console.log('[LicenseGuard] On exempt page or localhost, skipping license check:', pathname);
+        }
+        setChecking(false);
+        setIsValid(true); // Allow page to render
+        // Reset check ref when on exempt pages to avoid stale state
+        hasCheckedRef.current = false;
+        hasLoggedRef.current = false; // Reset log flag
+      }
       return;
     }
 
@@ -52,9 +71,14 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
     if (hasCheckedRef.current && licenseCache && 
         (Date.now() - licenseCache.timestamp) < CACHE_DURATION && 
         licenseCache.valid) {
-      console.log('[LicenseGuard] Using cached license validation');
-      setChecking(false);
-      setIsValid(true);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[LicenseGuard] Using cached license validation');
+      }
+      // Only update state if needed to prevent re-renders
+      if (checking || !isValid) {
+        setChecking(false);
+        setIsValid(true);
+      }
       return;
     }
 
@@ -203,11 +227,13 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
     return () => {
       isMounted = false;
     };
-  }, [router, pathname]);
+    // Only depend on pathname - router is stable, checking/isValid would cause loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
 
   // Show loading state while checking
   if (checking) {
-    console.log('[LicenseGuard] Rendering loading state');
+    // Don't log loading state - it's expected during checks
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-transparent">
         <div className="flex flex-col items-center gap-6 p-8 text-center">
@@ -225,10 +251,10 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
 
   // Only render children if license is valid
   if (!isValid) {
-    console.log('[LicenseGuard] License invalid, not rendering children');
+    // Don't log - this is expected behavior
     return null;
   }
 
-  console.log('[LicenseGuard] Rendering children');
+  // Don't log every render - only log important state changes
   return <>{children}</>;
 }
