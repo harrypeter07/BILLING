@@ -123,11 +123,17 @@ export function WhatsAppShareButton({
             description: "Invoice PDF and message shared via Web Share API. If WhatsApp is installed, it should open automatically.",
             duration: 5000,
           })
-        } else if (result.method === 'download-and-link') {
+        } else if (result.method === 'clipboard-and-link') {
           toast({
             title: "PDF Copied to Clipboard!",
             description: "WhatsApp is opening. Press Ctrl+V (or Cmd+V) to paste the PDF, then send!",
             duration: 6000,
+          })
+        } else if (result.method === 'download-and-link') {
+          toast({
+            title: "PDF Downloaded",
+            description: "WhatsApp is opening. Please attach the downloaded PDF manually.",
+            duration: 5000,
           })
         } else {
           toast({

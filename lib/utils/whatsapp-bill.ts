@@ -61,10 +61,10 @@ Thank you for your business! 🙏`
 /**
  * Share invoice on WhatsApp with PDF (if available)
  * 
- * IMPORTANT LIMITATIONS:
- * - WhatsApp Web API (wa.me/?text=) does NOT support file attachments
- * - We use Web Share API when available (works on mobile/desktop with WhatsApp installed)
- * - Otherwise, we download PDF and open WhatsApp with message (user must attach manually)
+ * Flow:
+ * 1. Try Web Share API first (best experience - direct file sharing)
+ * 2. If not available, copy PDF to clipboard and open WhatsApp
+ * 3. User can paste (Ctrl+V) the PDF in WhatsApp
  * 
  * @returns Object with success status and method used
  */
@@ -72,7 +72,7 @@ export async function shareOnWhatsApp(
   message: string, 
   pdfBlob?: Blob, 
   pdfFileName?: string
-): Promise<{ success: boolean; method: 'web-share' | 'download-and-link' | 'link-only'; error?: string }> {
+): Promise<{ success: boolean; method: 'web-share' | 'clipboard-and-link' | 'download-and-link' | 'link-only'; error?: string }> {
   const encodedMessage = encodeURIComponent(message)
   const fileName = pdfFileName || 'invoice.pdf'
 
@@ -101,23 +101,25 @@ export async function shareOnWhatsApp(
     }
   }
 
-  // Method 2: Copy PDF to clipboard and open WhatsApp with message
+  // Method 2: Copy PDF to clipboard and open WhatsApp automatically
   // This allows user to paste (Ctrl+V) the PDF directly in WhatsApp
   if (pdfBlob) {
+    let clipboardSuccess = false
+    
     try {
       // Try to copy PDF to clipboard using ClipboardItem API
-      if ('ClipboardItem' in window) {
+      if ('ClipboardItem' in window && 'clipboard' in navigator && 'write' in navigator.clipboard) {
         const clipboardItem = new ClipboardItem({
           'application/pdf': pdfBlob,
         })
         await navigator.clipboard.write([clipboardItem])
         console.log('[WhatsAppShare] PDF copied to clipboard successfully')
+        clipboardSuccess = true
       } else {
-        // Fallback for browsers that don't support ClipboardItem
         throw new Error('ClipboardItem not supported')
       }
     } catch (clipboardError) {
-      console.warn('[WhatsAppShare] Failed to copy PDF to clipboard, downloading instead:', clipboardError)
+      console.warn('[WhatsAppShare] Failed to copy PDF to clipboard:', clipboardError)
       // Fallback: Download PDF if clipboard copy fails
       const pdfUrl = URL.createObjectURL(pdfBlob)
       const downloadLink = document.createElement('a')
@@ -135,15 +137,27 @@ export async function shareOnWhatsApp(
         URL.revokeObjectURL(pdfUrl)
       }, 100)
     }
+    
+    // Open WhatsApp with message (automatically redirect)
+    // Small delay to ensure clipboard is ready
+    setTimeout(() => {
+      const whatsappUrl = `https://wa.me/?text=${encodedMessage}`
+      window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
+    }, clipboardSuccess ? 100 : 200)
+    
+    return { 
+      success: true, 
+      method: clipboardSuccess ? 'clipboard-and-link' : 'download-and-link'
+    }
   }
   
-  // Open WhatsApp with message
+  // No PDF - just open WhatsApp with message
   const whatsappUrl = `https://wa.me/?text=${encodedMessage}`
   window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
   
   return { 
     success: true, 
-    method: pdfBlob ? 'download-and-link' : 'link-only' 
+    method: 'link-only' 
   }
 }
 

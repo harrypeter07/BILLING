@@ -1324,12 +1324,19 @@ export function InvoiceForm({
 						"Invoice saved and shared via Web Share API. If WhatsApp is installed, it should open automatically with the PDF attached.",
 					duration: 5000,
 				});
-			} else if (shareResult.method === "download-and-link") {
+			} else if (shareResult.method === "clipboard-and-link") {
 				toast({
 					title: "Invoice Created & PDF Copied!",
 					description:
 						"Invoice saved and WhatsApp opened. PDF is copied to clipboard - Press Ctrl+V (or Cmd+V) to paste and send!",
 					duration: 6000,
+				});
+			} else if (shareResult.method === "download-and-link") {
+				toast({
+					title: "Invoice Created & PDF Downloaded",
+					description:
+						"Invoice saved and WhatsApp opened. Please attach the downloaded PDF manually.",
+					duration: 5000,
 				});
 			} else {
 				toast({
