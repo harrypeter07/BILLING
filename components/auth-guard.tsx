@@ -21,7 +21,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
   const [isAuthorized, setIsAuthorized] = useState(false)
 
   // Public routes that don't require authentication
-  const publicRoutes = ["/auth/login", "/auth/signup", "/auth/employee-login", "/auth/customer-login", "/license", "/"]
+  const publicRoutes = ["/auth/login", "/auth/signup", "/auth/employee-login", "/auth/customer-login", "/auth/session-expired", "/license", "/"]
   const isPublicRoute = publicRoutes.includes(pathname || "")
 
   useEffect(() => {
@@ -60,9 +60,20 @@ export function AuthGuard({ children }: AuthGuardProps) {
                 localStorage.removeItem("employeeSession")
                 localStorage.removeItem("offlineAdminSession")
               }
+              // Auto-logout from Supabase only if online
+              if (typeof window !== "undefined" && navigator.onLine) {
+                try {
+                  const supabase = createClient()
+                  await supabase.auth.signOut()
+                  console.log("[AuthGuard] Supabase logout successful (employee session expired)")
+                } catch (error) {
+                  console.error("[AuthGuard] Supabase logout failed:", error)
+                }
+              }
+              
               await clearAuthSession()
-              if (pathname !== "/auth/login") {
-                router.push("/auth/login")
+              if (pathname !== "/auth/session-expired" && pathname !== "/auth/login") {
+                router.push("/auth/session-expired")
               }
               setIsChecking(false)
               setIsAuthorized(false)
@@ -90,9 +101,17 @@ export function AuthGuard({ children }: AuthGuardProps) {
                     localStorage.removeItem("employeeSession")
                     localStorage.removeItem("offlineAdminSession")
                   }
+                  // Auto-logout from Supabase
+                  try {
+                    const supabase = createClient()
+                    await supabase.auth.signOut()
+                  } catch (error) {
+                    console.log("[AuthGuard] Supabase logout queued")
+                  }
+                  
                   await clearAuthSession()
-                  if (pathname !== "/auth/login") {
-                    router.push("/auth/login")
+                  if (pathname !== "/auth/session-expired" && pathname !== "/auth/login") {
+                    router.push("/auth/session-expired")
                   }
                   setIsChecking(false)
                   setIsAuthorized(false)
@@ -108,18 +127,34 @@ export function AuthGuard({ children }: AuthGuardProps) {
             }
           }
 
-          console.log("[AuthGuard] No valid session found, redirecting to login")
+          console.log("[AuthGuard] No valid session found, redirecting to session expired page")
+          
+          // Auto-logout from Supabase only if online
+          if (typeof window !== "undefined" && navigator.onLine) {
+            try {
+              const supabase = createClient()
+              await supabase.auth.signOut()
+              console.log("[AuthGuard] Supabase logout successful")
+            } catch (error) {
+              console.error("[AuthGuard] Supabase logout failed:", error)
+              // Continue anyway - local sessions will be cleared
+            }
+          } else {
+            console.log("[AuthGuard] Offline - Supabase logout will be attempted when online")
+          }
+          
           await clearAuthSession()
           // Also clear localStorage auth data
           if (typeof window !== "undefined") {
             localStorage.removeItem("authType")
             localStorage.removeItem("employeeSession")
             localStorage.removeItem("offlineAdminSession")
+            localStorage.removeItem("currentStoreId")
           }
           
-          // Only redirect if not already on login page
-          if (pathname !== "/auth/login") {
-            router.push("/auth/login")
+          // Redirect to session expired page instead of login
+          if (pathname !== "/auth/session-expired" && pathname !== "/auth/login") {
+            router.push("/auth/session-expired")
           }
           setIsChecking(false)
           setIsAuthorized(false)
@@ -147,10 +182,20 @@ export function AuthGuard({ children }: AuthGuardProps) {
         }
       } catch (error) {
         console.error("[AuthGuard] Error checking auth:", error)
-        // On error, only redirect if not already on login page
+        // On error, redirect to session expired page
+        // Auto-logout from Supabase only if online
+        if (typeof window !== "undefined" && navigator.onLine) {
+          try {
+            const supabase = createClient()
+            await supabase.auth.signOut()
+            console.log("[AuthGuard] Supabase logout successful (error case)")
+          } catch (error) {
+            console.error("[AuthGuard] Supabase logout failed:", error)
+          }
+        }
         await clearAuthSession()
-        if (pathname !== "/auth/login") {
-          router.push("/auth/login")
+        if (pathname !== "/auth/session-expired" && pathname !== "/auth/login") {
+          router.push("/auth/session-expired")
         }
         setIsAuthorized(false)
       } finally {

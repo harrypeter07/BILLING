@@ -82,7 +82,7 @@ export async function fixServiceWorkers(): Promise<{
     return {
       success: false,
       unregistered,
-      cachesCleared,
+      cachesCleared: 0,
       errors: [errorMsg],
     }
   }
@@ -92,13 +92,62 @@ export async function fixServiceWorkers(): Promise<{
  * Fix and reload - does everything and reloads the page
  */
 export async function fixServiceWorkersAndReload(): Promise<void> {
+  console.log("[SW Fix] Starting comprehensive service worker cleanup...")
+  
   const result = await fixServiceWorkers()
   console.log("[SW Fix] Cleanup result:", result)
   
-  // Wait a moment for cleanup to complete
+  // Wait for all service workers to be fully unregistered
+  let attempts = 0
+  const maxAttempts = 10
+  while (attempts < maxAttempts) {
+    try {
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      const currentOrigin = window.location.origin
+      const appRegistrations = registrations.filter(reg => 
+        reg.scope.startsWith(currentOrigin)
+      )
+      
+      if (appRegistrations.length === 0) {
+        console.log("[SW Fix] All service workers unregistered")
+        break
+      }
+      
+      console.log(`[SW Fix] Waiting for ${appRegistrations.length} service worker(s) to unregister... (attempt ${attempts + 1}/${maxAttempts})`)
+      await new Promise(resolve => setTimeout(resolve, 300))
+      attempts++
+    } catch (err) {
+      console.error("[SW Fix] Error checking registrations:", err)
+      break
+    }
+  }
+  
+  // Clear all caches one more time to be sure
+  try {
+    if ("caches" in window) {
+      const cacheNames = await caches.keys()
+      for (const cacheName of cacheNames) {
+        try {
+          await caches.delete(cacheName)
+          console.log("[SW Fix] Final cache deletion:", cacheName)
+        } catch (err) {
+          // Ignore errors on final pass
+        }
+      }
+    }
+  } catch (err) {
+    // Ignore errors
+  }
+  
+  // Set a flag to prevent immediate re-registration
+  sessionStorage.setItem("sw_cleanup_done", Date.now().toString())
+  
+  // Wait a bit more to ensure everything is cleaned up
   await new Promise(resolve => setTimeout(resolve, 500))
   
-  // Reload the page
-  window.location.reload()
+  console.log("[SW Fix] Cleanup complete, reloading page...")
+  
+  // Force a hard reload to bypass cache
+  window.location.href = window.location.href.split('#')[0] + '?sw_cleanup=' + Date.now()
 }
 

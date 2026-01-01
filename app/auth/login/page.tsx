@@ -47,6 +47,46 @@ export default function LoginPage() {
       try {
         const isExcel = false
         
+        // First, check if IndexedDB session exists and is valid
+        const { getAuthSession, isSessionExpired } = await import("@/lib/utils/auth-session")
+        const indexedDbSession = await getAuthSession()
+        
+        // If IndexedDB session is expired or missing, but Supabase session exists,
+        // we need to logout from Supabase first
+        if (!indexedDbSession || isSessionExpired(indexedDbSession)) {
+          // Check if Supabase thinks user is logged in
+          const supabase = createClient()
+          try {
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+            // Supabase session exists but IndexedDB session expired
+            // Auto-logout from Supabase to prevent "already logged in" message (only if online)
+            if (typeof window !== "undefined" && navigator.onLine) {
+              console.log("[Login] IndexedDB session expired but Supabase session exists, logging out from Supabase")
+              try {
+                await supabase.auth.signOut()
+                console.log("[Login] Supabase logout successful")
+              } catch (error) {
+                console.error("[Login] Supabase logout failed:", error)
+              }
+            } else {
+              console.log("[Login] Offline - Cannot logout from Supabase, will clear local sessions only")
+            }
+              // Clear all local storage
+              localStorage.removeItem("authType")
+              localStorage.removeItem("employeeSession")
+              localStorage.removeItem("offlineAdminSession")
+              localStorage.removeItem("currentStoreId")
+              // Don't redirect, let user login fresh
+              setCheckingAuth(false)
+              return
+            }
+          } catch (error) {
+            // Supabase unavailable, continue with normal flow
+            console.log("[Login] Supabase unavailable, continuing")
+          }
+        }
+        
         // Check for employee session first
         const authType = localStorage.getItem("authType")
         if (authType === "employee") {
@@ -54,17 +94,24 @@ export default function LoginPage() {
           if (employeeSession) {
             try {
               const session = JSON.parse(employeeSession)
-              setCurrentUser({ 
-                email: session.employeeName || session.employeeId, 
-                name: session.employeeName 
-              })
-              setCurrentRole("employee")
-              
-              console.log("[Login] Employee session found, redirecting to /dashboard")
-              router.push("/dashboard")
-              router.refresh()
-              setCheckingAuth(false)
-              return
+              // Verify IndexedDB session is still valid
+              if (indexedDbSession && !isSessionExpired(indexedDbSession)) {
+                setCurrentUser({ 
+                  email: session.employeeName || session.employeeId, 
+                  name: session.employeeName 
+                })
+                setCurrentRole("employee")
+                
+                console.log("[Login] Employee session found, redirecting to /dashboard")
+                router.push("/dashboard")
+                router.refresh()
+                setCheckingAuth(false)
+                return
+              } else {
+                // Session expired, clear employee session
+                localStorage.removeItem("employeeSession")
+                localStorage.removeItem("authType")
+              }
             } catch (e) {
               // Invalid session
               console.error("[Login] Invalid employee session:", e)
@@ -80,7 +127,7 @@ export default function LoginPage() {
         } catch (error) {
           console.warn("[Login] Supabase unavailable, checking offline session", error)
           const offlineSession = getOfflineSession()
-          if (offlineSession) {
+          if (offlineSession && indexedDbSession && !isSessionExpired(indexedDbSession)) {
             setCurrentUser({ email: offlineSession.email, name: offlineSession.email })
             setCurrentRole(offlineSession.role)
             router.push("/dashboard")
@@ -92,7 +139,8 @@ export default function LoginPage() {
         }
         const { data: { user } } = userResponse
         
-        if (user) {
+        // Only auto-redirect if IndexedDB session is also valid
+        if (user && indexedDbSession && !isSessionExpired(indexedDbSession)) {
           const { data: profile } = await supabase
             .from("user_profiles")
             .select("role")

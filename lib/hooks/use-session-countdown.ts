@@ -18,7 +18,7 @@ const WARNING_THRESHOLD_MS = 30000 // 30 seconds before expiry
 const CHECK_INTERVAL_MS = 1000 // Check every second
 
 // Public routes that don't need session countdown
-const PUBLIC_ROUTES = ["/auth/login", "/auth/signup", "/auth/employee-login", "/auth/customer-login", "/license", "/"]
+const PUBLIC_ROUTES = ["/auth/login", "/auth/signup", "/auth/employee-login", "/auth/customer-login", "/auth/session-expired", "/license", "/"]
 
 export function useSessionCountdown(): SessionCountdown {
   const [timeLeft, setTimeLeft] = useState<number>(0)
@@ -123,7 +123,7 @@ export function useSessionCountdown(): SessionCountdown {
           variant: "destructive",
         })
         
-        router.push("/auth/login")
+        router.push("/auth/session-expired")
         return
       }
 
