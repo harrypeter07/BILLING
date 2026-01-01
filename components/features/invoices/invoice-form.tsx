@@ -235,7 +235,6 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
     }
   }, [storeId, employeeId, settings])
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split("T")[0])
-  const [dueDate, setDueDate] = useState("")
   const [customerId, setCustomerId] = useState("")
   const [customerData, setCustomerData] = useState({ name: "", phone: "", email: "", isNewCustomer: false })
   const [isGstInvoice, setIsGstInvoice] = useState(true)
@@ -261,12 +260,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
     ])
   }, [settings?.default_gst_rate])
 
-  // Add initial line item on mount
-  useEffect(() => {
-    if (lineItems.length === 0) {
-      addLineItem()
-    }
-  }, [lineItems.length]) // Remove addLineItem from dependencies
+  // Don't add initial line item - start with empty list
 
   const removeLineItem = (id: string) => {
     const itemToRemove = lineItems.find(item => item.id === id)
@@ -737,7 +731,6 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
         customer_id: finalCustomerId,
         invoice_number: invoiceNumber,
         invoice_date: invoiceDate,
-        due_date: dueDate || undefined,
         status: "draft",
         is_gst_invoice: isGstInvoice,
         subtotal: t.subtotal,
@@ -867,7 +860,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
           </Button>
         </div>
       )}
-      <form onSubmit={handleSubmit} className={`space-y-2 ${isFullscreen ? 'p-4' : ''}`}>
+      <form onSubmit={handleSubmit} className={`space-y-2 ${isFullscreen ? 'p-4' : 'p-2'}`}>
         {!isFullscreen && (
           <div className="flex justify-end mb-2">
             <Button
@@ -886,30 +879,30 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
         <div className="relative">
           {/* Invoice Number and Date - Top Right */}
           <div className="absolute top-0 right-0 z-10 flex gap-3">
-            <div className="flex items-center gap-2 bg-background border rounded-md px-3 py-2 shadow-sm">
+              <div className="flex items-center gap-2 bg-background border rounded-md px-2 py-1.5 shadow-sm">
               <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground">Invoice #</span>
+                <span className="text-[10px] text-muted-foreground">Invoice #</span>
                 <Input
                   value={invoiceNumber}
                   onChange={(e) => setInvoiceNumber(e.target.value)}
                   required
-                  className="h-7 text-xs font-semibold w-32 px-1"
+                  className="h-7 text-xs font-semibold w-28 px-1"
                 />
               </div>
               <div className="flex flex-col">
-                <span className="text-xs text-muted-foreground">Date</span>
+                <span className="text-[10px] text-muted-foreground">Date</span>
                 <Input
                   type="date"
                   value={invoiceDate}
                   onChange={(e) => setInvoiceDate(e.target.value)}
                   required
-                  className="h-7 text-xs w-28 px-1"
+                  className="h-7 text-xs w-24 px-1"
                 />
               </div>
             </div>
           </div>
 
-          <div className="grid gap-2 xl:grid-cols-[280px_minmax(320px,1fr)_520px] pt-16">
+          <div className="grid gap-2 xl:grid-cols-[280px_minmax(320px,1fr)_520px] pt-12">
             {/* Left column: customer only */}
             <div className="space-y-2">
               <InlineCustomerForm
@@ -940,7 +933,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
               />
 
             <Card>
-              <CardContent className="space-y-2 p-4">
+              <CardContent className="space-y-2 p-3">
                 <div className="flex items-center justify-between rounded-md border px-3 py-2">
                   <div className="flex items-center gap-2 text-xs">
                     <Switch id="gst_invoice" checked={isGstInvoice} onCheckedChange={setIsGstInvoice} />
@@ -959,33 +952,16 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                 </div>
               </CardContent>
             </Card>
-
-            <Card>
-              <CardContent className="space-y-2 p-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="due_date" className="text-xs">
-                    Due Date
-                  </Label>
-                  <Input
-                    id="due_date"
-                    type="date"
-                    value={dueDate}
-                    onChange={(e) => setDueDate(e.target.value)}
-                    className="h-9 text-sm"
-                  />
-                </div>
-              </CardContent>
-            </Card>
           </div>
 
           {/* Center column: product browser */}
           <div className="space-y-3">
             <Card className="h-full">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base">Select Products</CardTitle>
+              <CardHeader className="pb-2 pt-3 px-3">
+                <CardTitle className="text-sm">Select Products</CardTitle>
                 <p className="text-xs text-muted-foreground">Search or tap to add items instantly</p>
               </CardHeader>
-              <CardContent className="space-y-2 p-4">
+              <CardContent className="space-y-2 p-3">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
@@ -1090,9 +1066,25 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                 <CardTitle className="text-sm">Invoice Items</CardTitle>
               </CardHeader>
               <CardContent className="space-y-1 p-2">
-                <div className="rounded-md border">
-                  <div className="max-h-[380px] overflow-y-auto">
-                    <Table className="text-xs">
+                {lineItems.length === 0 && (
+                  <div className="text-center py-6 space-y-2">
+                    <p className="text-xs text-muted-foreground">No items added</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addLineItem}
+                      className="text-xs h-7"
+                    >
+                      <Plus className="h-3 w-3 mr-1" />
+                      Add Item
+                    </Button>
+                  </div>
+                )}
+                {lineItems.length > 0 && (
+                  <div className="rounded-md border">
+                    <div className="max-h-[380px] overflow-y-auto">
+                      <Table className="text-xs">
                       <TableHeader className="bg-muted/30 sticky top-0 z-10">
                         <TableRow className="h-9">
                           <TableHead className="w-[120px] px-2 py-2 text-xs font-semibold">Product</TableHead>
@@ -1313,12 +1305,13 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                     </Table>
                   </div>
                 </div>
+                )}
 
               </CardContent>
             </Card>
 
             <Card>
-              <CardContent className="space-y-1.5 p-3 text-sm">
+              <CardContent className="space-y-1.5 p-3 text-xs">
                 <div className="flex justify-between">
                   <span>Subtotal</span>
                   <span className="font-medium">₹{totals.subtotal.toFixed(2)}</span>
@@ -1344,7 +1337,7 @@ export function InvoiceForm({ customers, products: initialProducts, settings, st
                     )}
                   </>
                 )}
-                <div className="flex justify-between border-t pt-2 text-base font-semibold">
+                <div className="flex justify-between border-t pt-2 text-sm font-semibold">
                   <span>Total</span>
                   <span>₹{totals.total.toFixed(2)}</span>
                 </div>

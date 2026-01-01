@@ -36,6 +36,7 @@ import { MoreHorizontal, Eye, Pencil, Trash2, Search } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { isIndexedDbMode } from "@/lib/utils/db-mode";
 import { useToast } from "@/hooks/use-toast";
+import { useInvalidateQueries } from "@/lib/hooks/use-cached-data";
 
 interface Invoice {
 	id: string;
@@ -65,6 +66,7 @@ export function InvoicesTable({
 	const [statusFilter, setStatusFilter] = useState<string>("all");
 	const router = useRouter();
 	const { toast } = useToast();
+	const { invalidateInvoices } = useInvalidateQueries();
 
 	const filteredInvoices = invoices.filter((invoice) => {
 		const matchesSearch =
@@ -96,6 +98,9 @@ export function InvoicesTable({
 				if (error) throw error;
 			}
 
+			// Invalidate cache for instant UI update
+			await invalidateInvoices();
+			
 			setInvoices(invoices.filter((inv) => inv.id !== id));
 			toast({
 				title: "Success",

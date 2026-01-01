@@ -36,16 +36,30 @@ export default function StorePage() {
   }, [currentStore])
 
   const generateStoreCode = (name: string): string => {
+    // Remove special characters and convert to uppercase
     const cleaned = name.toUpperCase().replace(/[^A-Z0-9]/g, "")
+    
+    // If we have at least 4 characters, take first 4
     if (cleaned.length >= 4) return cleaned.slice(0, 4)
+    
+    // If less than 4, pad with X
     return cleaned.padEnd(4, "X")
+  }
+
+  const getStoreCodeDisplay = (): string => {
+    if (currentStore?.store_code) return currentStore.store_code
+    if (formData.name) return generateStoreCode(formData.name)
+    return "XXXX"
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     try {
-      const storeCode = currentStore?.store_code || generateStoreCode(formData.name)
+      // Update store code if store name changed
+      const storeCode = currentStore?.store_code && currentStore.name === formData.name 
+        ? currentStore.store_code 
+        : generateStoreCode(formData.name)
       
       // Prepare store data
       const storeData: Store = {
@@ -53,9 +67,9 @@ export default function StorePage() {
         name: formData.name,
         store_code: storeCode,
         admin_user_id: currentStore?.admin_user_id || "", // Will be set when syncing to Supabase
-        address: formData.address || null,
-        gstin: formData.gstin || null,
-        phone: formData.phone || null,
+        address: formData.address || undefined,
+        gstin: formData.gstin || undefined,
+        phone: formData.phone || undefined,
         created_at: currentStore?.created_at || new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }
@@ -151,6 +165,13 @@ export default function StorePage() {
           {currentStore && (
             <div className="mb-4 p-3 bg-muted rounded-md">
               <p className="text-sm font-medium">Store Code: {currentStore.store_code}</p>
+              <p className="text-xs text-muted-foreground">Store code cannot be changed after creation</p>
+            </div>
+          )}
+          {!currentStore && formData.name && (
+            <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950 rounded-md">
+              <p className="text-sm font-medium">Preview Store Code: {getStoreCodeDisplay()}</p>
+              <p className="text-xs text-muted-foreground">This code will be generated when you create the store</p>
             </div>
           )}
           <form onSubmit={handleSubmit} className="space-y-4">

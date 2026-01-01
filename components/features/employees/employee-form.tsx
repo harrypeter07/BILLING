@@ -17,6 +17,7 @@ import { useStore } from "@/lib/utils/store-context"
 import { db } from "@/lib/dexie-client"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
+import { useInvalidateQueries } from "@/lib/hooks/use-cached-data"
 
 interface Employee {
   id?: string
@@ -42,6 +43,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
   const { currentStore } = useStore()
   const [isLoading, setIsLoading] = useState(false)
   const isExcel = isIndexedDbMode() // Use isIndexedDbMode() instead of checking for 'excel'
+  const { invalidateEmployees } = useInvalidateQueries()
 
   const [formData, setFormData] = useState({
     name: employee?.name || "",
@@ -250,6 +252,9 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
               description: `Employee created with ID: ${newEmployeeId}. Password: ${retryEmployeeData.password}`
             })
 
+            // Invalidate cache for instant UI update
+            await invalidateEmployees()
+
             // Refresh the employees list
             if (typeof window !== 'undefined') {
               window.dispatchEvent(new CustomEvent('employees:refresh'))
@@ -297,6 +302,9 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
           ? "Employee updated successfully"
           : `Employee created with ID: ${employeeId}. Password: ${employeeData.password}`
       })
+
+      // Invalidate cache for instant UI update
+      await invalidateEmployees()
 
       // Refresh the employees list
       if (typeof window !== 'undefined') {

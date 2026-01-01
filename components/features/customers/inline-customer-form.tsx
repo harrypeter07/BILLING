@@ -298,119 +298,117 @@ export function InlineCustomerForm({ onCustomerCreated, onCustomerDataChange }: 
 
   return (
     <Card className="border-dashed">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base">Customer & Invoice Details</CardTitle>
+      <CardHeader className="pb-2 pt-3 px-3">
+        <CardTitle className="text-sm">Customer & Invoice Details</CardTitle>
       </CardHeader>
-      <CardContent className="p-4">
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <div className="space-y-1.5 relative">
-              <Label htmlFor="quick-name" className="text-xs">
-                Customer Name <span className="text-destructive">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  ref={nameInputRef}
-                  id="quick-name"
-                  value={name}
-                  onChange={(e) => handleNameChange(e.target.value)}
-                  onFocus={() => {
-                    // Show dropdown if there are matches when focusing
-                    if (nameMatches.length > 0 && name.trim().length >= 2) {
-                      setShowNameDropdown(true)
-                    }
-                  }}
-                  onBlur={() => {
-                    // Delay to allow click on dropdown item
-                    setTimeout(() => setShowNameDropdown(false), 200)
-                  }}
-                  placeholder="Type to search customers..."
-                  className="h-9 text-sm w-full"
-                />
-                {showNameDropdown && nameMatches.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-60 overflow-auto">
-                    {nameMatches.map((customer) => (
-                      <div
-                        key={customer.id}
-                        onMouseDown={(e) => {
-                          // Use onMouseDown to prevent blur from firing first
-                          e.preventDefault()
-                          handleSelectCustomer(customer)
-                        }}
-                        className="px-3 py-2 cursor-pointer hover:bg-accent border-b last:border-b-0 transition-colors"
-                      >
-                        <div className="flex flex-col">
-                          <span className="font-medium text-sm">{customer.name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {customer.phone} {customer.email && `• ${customer.email}`}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="space-y-1.5 relative">
-              <Label htmlFor="quick-phone" className="text-xs">
-                Phone Number <span className="text-destructive">*</span>
-              </Label>
-              <div className="relative">
-                <Input
-                  ref={phoneInputRef}
-                  id="quick-phone"
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => handlePhoneChange(e.target.value)}
-                  onFocus={() => {
-                    // Show dropdown if there are matches when focusing
-                    if (phoneMatches.length > 0 && phone.trim().length > 0) {
-                      setShowPhoneDropdown(true)
-                    }
-                  }}
-                  onBlur={() => {
-                    // Delay to allow click on dropdown item
-                    setTimeout(() => setShowPhoneDropdown(false), 200)
-                  }}
-                  placeholder="9876543210 (10 digits)"
-                  maxLength={10}
-                  className="h-9 text-sm w-full"
-                />
-                {showPhoneDropdown && phoneMatches.length > 0 && (
-                  <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-60 overflow-auto">
-                    {phoneMatches.map((customer) => (
-                      <div
-                        key={customer.id}
-                        onMouseDown={(e) => {
-                          // Use onMouseDown to prevent blur from firing first
-                          e.preventDefault()
-                          handleSelectCustomer(customer)
-                        }}
-                        className="px-3 py-2 cursor-pointer hover:bg-accent border-b last:border-b-0 transition-colors"
-                      >
-                        <div className="flex flex-col">
-                          <span className="font-medium text-sm">{customer.name}</span>
-                          <span className="text-xs text-muted-foreground">
-                            {customer.phone} {customer.email && `• ${customer.email}`}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="quick-email" className="text-xs">Email</Label>
+      <CardContent className="p-3">
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1 relative">
+            <Label htmlFor="quick-name" className="text-xs">
+              Customer Name <span className="text-destructive">*</span>
+            </Label>
+            <div className="relative">
               <Input
-                id="quick-email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter email address (optional)"
-                className="h-8 text-sm w-full"
+                ref={nameInputRef}
+                id="quick-name"
+                value={name}
+                onChange={(e) => handleNameChange(e.target.value)}
+                onFocus={() => {
+                  // Show dropdown if there are matches when focusing
+                  if (nameMatches.length > 0 && name.trim().length >= 2) {
+                    setShowNameDropdown(true)
+                  }
+                }}
+                onBlur={() => {
+                  // Delay to allow click on dropdown item
+                  setTimeout(() => setShowNameDropdown(false), 200)
+                }}
+                placeholder="Type to search customers..."
+                className="h-8 text-xs"
               />
+              {showNameDropdown && nameMatches.length > 0 && (
+                <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-60 overflow-auto">
+                  {nameMatches.map((customer) => (
+                    <div
+                      key={customer.id}
+                      onMouseDown={(e) => {
+                        // Use onMouseDown to prevent blur from firing first
+                        e.preventDefault()
+                        handleSelectCustomer(customer)
+                      }}
+                      className="px-3 py-2 cursor-pointer hover:bg-accent border-b last:border-b-0 transition-colors"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-medium text-sm">{customer.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {customer.phone} {customer.email && `• ${customer.email}`}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
+          </div>
+          <div className="space-y-1 relative">
+            <Label htmlFor="quick-phone" className="text-xs">
+              Phone Number <span className="text-destructive">*</span>
+            </Label>
+            <div className="relative">
+              <Input
+                ref={phoneInputRef}
+                id="quick-phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => handlePhoneChange(e.target.value)}
+                onFocus={() => {
+                  // Show dropdown if there are matches when focusing
+                  if (phoneMatches.length > 0 && phone.trim().length > 0) {
+                    setShowPhoneDropdown(true)
+                  }
+                }}
+                onBlur={() => {
+                  // Delay to allow click on dropdown item
+                  setTimeout(() => setShowPhoneDropdown(false), 200)
+                }}
+                placeholder="9876543210 (10 digits)"
+                maxLength={10}
+                className="h-8 text-xs"
+              />
+              {showPhoneDropdown && phoneMatches.length > 0 && (
+                <div className="absolute z-50 w-full mt-1 bg-popover border rounded-md shadow-md max-h-60 overflow-auto">
+                  {phoneMatches.map((customer) => (
+                    <div
+                      key={customer.id}
+                      onMouseDown={(e) => {
+                        // Use onMouseDown to prevent blur from firing first
+                        e.preventDefault()
+                        handleSelectCustomer(customer)
+                      }}
+                      className="px-3 py-2 cursor-pointer hover:bg-accent border-b last:border-b-0 transition-colors"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-medium text-sm">{customer.name}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {customer.phone} {customer.email && `• ${customer.email}`}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="quick-email" className="text-xs">Email</Label>
+            <Input
+              id="quick-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Enter email address (optional)"
+              className="h-8 text-xs"
+            />
           </div>
         </div>
       </CardContent>

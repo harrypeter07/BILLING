@@ -77,7 +77,7 @@ export default function EmployeesPage() {
         await supabase.from("employees").delete().eq("id", id)
       }
       
-      invalidateEmployees() // Invalidate cache to refetch
+      await invalidateEmployees() // Invalidate cache to refetch
       toast({
         title: "Success",
         description: "Employee deleted",
