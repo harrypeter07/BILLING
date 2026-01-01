@@ -62,8 +62,8 @@ Thank you for your business! 🙏`
  * Share invoice on WhatsApp with PDF (if available)
  * 
  * Flow:
- * 1. Try Web Share API first (best experience - direct file sharing)
- * 2. If not available, copy PDF to clipboard and open WhatsApp
+ * 1. Copy PDF to clipboard (if available)
+ * 2. Open WhatsApp directly with message and link
  * 3. User can paste (Ctrl+V) the PDF in WhatsApp
  * 
  * @returns Object with success status and method used
@@ -72,37 +72,11 @@ export async function shareOnWhatsApp(
   message: string, 
   pdfBlob?: Blob, 
   pdfFileName?: string
-): Promise<{ success: boolean; method: 'web-share' | 'clipboard-and-link' | 'download-and-link' | 'link-only'; error?: string }> {
+): Promise<{ success: boolean; method: 'clipboard-and-link' | 'download-and-link' | 'link-only'; error?: string }> {
   const encodedMessage = encodeURIComponent(message)
   const fileName = pdfFileName || 'invoice.pdf'
 
-  // Method 1: Try Web Share API first (BEST - works on mobile/desktop with WhatsApp installed)
-  // This allows sharing files directly to WhatsApp if WhatsApp is installed
-  if (pdfBlob && 'share' in navigator && navigator.canShare) {
-    try {
-      const file = new File([pdfBlob], fileName, { type: 'application/pdf' })
-      
-      // Check if we can share this file
-      if (navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          title: `Invoice ${fileName}`,
-          text: message,
-          files: [file],
-        })
-        
-        return { success: true, method: 'web-share' }
-      }
-    } catch (shareError: any) {
-      // User cancelled or share failed, fall through to alternative method
-      if (shareError.name !== 'AbortError') {
-        console.warn('[WhatsAppShare] Web Share API failed:', shareError)
-      }
-      // Continue to fallback method
-    }
-  }
-
-  // Method 2: Copy PDF to clipboard and open WhatsApp automatically
-  // This allows user to paste (Ctrl+V) the PDF directly in WhatsApp
+  // Copy PDF to clipboard first (if available)
   if (pdfBlob) {
     let clipboardSuccess = false
     
@@ -138,7 +112,7 @@ export async function shareOnWhatsApp(
       }, 100)
     }
     
-    // Open WhatsApp with message (automatically redirect)
+    // Open WhatsApp directly with message (which includes the link)
     // Small delay to ensure clipboard is ready
     setTimeout(() => {
       const whatsappUrl = `https://wa.me/?text=${encodedMessage}`
@@ -151,7 +125,7 @@ export async function shareOnWhatsApp(
     }
   }
   
-  // No PDF - just open WhatsApp with message
+  // No PDF - just open WhatsApp directly with message and link
   const whatsappUrl = `https://wa.me/?text=${encodedMessage}`
   window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
   

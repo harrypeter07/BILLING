@@ -1317,14 +1317,7 @@ export function InvoiceForm({
 			);
 
 			// Show appropriate feedback based on sharing method
-			if (shareResult.method === "web-share") {
-				toast({
-					title: "Invoice Created & Shared",
-					description:
-						"Invoice saved and shared via Web Share API. If WhatsApp is installed, it should open automatically with the PDF attached.",
-					duration: 5000,
-				});
-			} else if (shareResult.method === "clipboard-and-link") {
+			if (shareResult.method === "clipboard-and-link") {
 				toast({
 					title: "Invoice Created & PDF Copied!",
 					description:

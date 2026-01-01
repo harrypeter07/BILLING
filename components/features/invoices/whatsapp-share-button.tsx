@@ -117,13 +117,7 @@ export function WhatsAppShareButton({
         const result = await shareOnWhatsApp(message, pdfBlob, `Invoice-${invoice.invoice_number}.pdf`)
         
         // Show appropriate feedback based on sharing method
-        if (result.method === 'web-share') {
-          toast({
-            title: "Shared Successfully",
-            description: "Invoice PDF and message shared via Web Share API. If WhatsApp is installed, it should open automatically.",
-            duration: 5000,
-          })
-        } else if (result.method === 'clipboard-and-link') {
+        if (result.method === 'clipboard-and-link') {
           toast({
             title: "PDF Copied to Clipboard!",
             description: "WhatsApp is opening. Press Ctrl+V (or Cmd+V) to paste the PDF, then send!",
