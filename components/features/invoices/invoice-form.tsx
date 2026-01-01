@@ -24,7 +24,14 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { Plus, Trash2, Search, Maximize2, X, MessageCircle } from "lucide-react";
+import {
+	Plus,
+	Trash2,
+	Search,
+	Maximize2,
+	X,
+	MessageCircle,
+} from "lucide-react";
 import { useFullscreen } from "@/lib/utils/fullscreen-context";
 import { useToast } from "@/hooks/use-toast";
 import { calculateLineItem, roundToTwo } from "@/lib/utils/gst-calculator";
@@ -43,7 +50,10 @@ import {
 import { db } from "@/lib/dexie-client";
 import { useInvalidateQueries } from "@/lib/hooks/use-cached-data";
 import { generateMiniInvoicePDF } from "@/lib/utils/mini-invoice-pdf";
-import { generateWhatsAppBillMessage, shareOnWhatsApp } from "@/lib/utils/whatsapp-bill";
+import {
+	generateWhatsAppBillMessage,
+	shareOnWhatsApp,
+} from "@/lib/utils/whatsapp-bill";
 import {
 	ResizablePanelGroup,
 	ResizablePanel,
@@ -254,7 +264,7 @@ export function InvoiceForm({
 	const { toast } = useToast();
 	const { isFullscreen, setIsFullscreen } = useFullscreen();
 	const { invalidateInvoices, invalidateProducts } = useInvalidateQueries();
-	const [isLoading, setIsLoading] = useState(false)
+	const [isLoading, setIsLoading] = useState(false);
 	const [isSharing, setIsSharing] = useState(false);
 	const [invoiceNumber, setInvoiceNumber] = useState("");
 	const [localCustomers, setLocalCustomers] = useState<Customer[]>(customers);
@@ -274,6 +284,60 @@ export function InvoiceForm({
 	useEffect(() => {
 		setProducts(initialProducts);
 	}, [initialProducts]);
+
+	// Fetch store name for WhatsApp sharing
+	useEffect(() => {
+		const fetchStoreName = async () => {
+			if (!storeId) {
+				// Try to get from localStorage
+				const currentStoreId = localStorage.getItem("currentStoreId");
+				if (currentStoreId) {
+					const isIndexedDb = isIndexedDbMode();
+					if (isIndexedDb) {
+						const store = await db.stores.get(currentStoreId);
+						if (store?.name) {
+							setStoreName(store.name);
+						}
+					} else {
+						const supabase = createClient();
+						const { data: store } = await supabase
+							.from("stores")
+							.select("name")
+							.eq("id", currentStoreId)
+							.single();
+						if (store?.name) {
+							setStoreName(store.name);
+						}
+					}
+				}
+				return;
+			}
+
+			try {
+				const isIndexedDb = isIndexedDbMode();
+				if (isIndexedDb) {
+					const store = await db.stores.get(storeId);
+					if (store?.name) {
+						setStoreName(store.name);
+					}
+				} else {
+					const supabase = createClient();
+					const { data: store } = await supabase
+						.from("stores")
+						.select("name")
+						.eq("id", storeId)
+						.single();
+					if (store?.name) {
+						setStoreName(store.name);
+					}
+				}
+			} catch (err) {
+				console.warn("[InvoiceForm] Failed to fetch store name:", err);
+			}
+		};
+
+		fetchStoreName();
+	}, [storeId]);
 
 	useEffect(() => {
 		// Generate invoice number on mount if we have store/employee
@@ -990,6 +1054,307 @@ export function InvoiceForm({
 				variant: "destructive",
 			});
 		} finally {
+			setIsLoading(false);
+		}
+	};
+
+	// Handle Save and Share on WhatsApp
+	const handleSaveAndShare = async (e: React.FormEvent) => {
+		e.preventDefault();
+
+		if (!navigator.onLine) {
+			toast({
+				title: "Offline",
+				description: "Internet required to share invoice on WhatsApp",
+				variant: "destructive",
+			});
+			return;
+		}
+
+		// First, validate and save invoice (same as handleSubmit)
+		let finalCustomerId = customerId;
+
+		if (
+			!finalCustomerId &&
+			customerData.isNewCustomer &&
+			customerData.name &&
+			customerData.phone
+		) {
+			try {
+				const newCustomer = await createCustomer({
+					name: customerData.name,
+					phone: customerData.phone,
+					email: customerData.email,
+				});
+				finalCustomerId = newCustomer.id;
+				setCustomerId(finalCustomerId);
+			} catch (error) {
+				toast({
+					title: "Error",
+					description:
+						error instanceof Error
+							? error.message
+							: "Failed to create customer",
+					variant: "destructive",
+				});
+				setIsSharing(false);
+				return;
+			}
+		}
+
+		if (!finalCustomerId) {
+			toast({
+				title: "Error",
+				description:
+					"Please select an existing customer or enter new customer details",
+				variant: "destructive",
+			});
+			setIsSharing(false);
+			return;
+		}
+
+		if (lineItems.length === 0) {
+			toast({
+				title: "Error",
+				description: "Please add at least one item to the invoice",
+				variant: "destructive",
+			});
+			setIsSharing(false);
+			return;
+		}
+
+		setIsSharing(true);
+		setIsLoading(true);
+
+		try {
+			const t = calculateTotals();
+
+			// Validate invoice total
+			const totalValidation = validateInvoiceAmount(t.total);
+			if (!totalValidation.isValid) {
+				toast({
+					title: "Invoice Amount Exceeds Limit",
+					description: totalValidation.error,
+					variant: "destructive",
+				});
+				setIsSharing(false);
+				setIsLoading(false);
+				return;
+			}
+
+			const invoiceId = crypto.randomUUID();
+			const invoiceData = {
+				id: invoiceId,
+				customer_id: finalCustomerId,
+				invoice_number: invoiceNumber,
+				invoice_date: invoiceDate,
+				status: "draft",
+				is_gst_invoice: isGstInvoice,
+				subtotal: t.subtotal,
+				cgst_amount: t.cgst,
+				sgst_amount: t.sgst,
+				igst_amount: t.igst,
+				total_amount: t.total,
+				created_at: new Date().toISOString(),
+				store_id: storeId || undefined,
+				employee_id: employeeId || undefined,
+				created_by_employee_id: employeeId || undefined,
+			};
+
+			const validLineItems = lineItems.filter(
+				(item) =>
+					item.product_id ||
+					(item.description && item.description.trim() !== "")
+			);
+
+			const items = validLineItems.map((li) => {
+				const calc = calculateLineItem({
+					unitPrice: li.unit_price,
+					discountPercent: li.discount_percent,
+					gstRate: li.gst_rate,
+					quantity: li.quantity,
+				});
+				return {
+					id: li.id,
+					invoice_id: invoiceId,
+					product_id: li.product_id || null,
+					description: li.description,
+					quantity: li.quantity,
+					unit_price: li.unit_price,
+					discount_percent: li.discount_percent,
+					gst_rate: li.gst_rate,
+					hsn_code: li.hsn_code || null,
+					line_total: calc.taxableAmount + calc.gstAmount,
+					gst_amount: calc.gstAmount,
+					created_at: new Date().toISOString(),
+				};
+			});
+
+			// Save invoice
+			const isIndexedDb = isIndexedDbMode();
+			if (isIndexedDb) {
+				await storageManager.addInvoice(invoiceData, items);
+				await updateProductStock(
+					items,
+					isIndexedDb,
+					undefined,
+					undefined,
+					initialProducts
+				);
+				await invalidateInvoices();
+				await invalidateProducts();
+			} else {
+				const supabase = createClient();
+				const {
+					data: { user },
+				} = await supabase.auth.getUser();
+				if (!user) {
+					toast({
+						title: "Error",
+						description: "Not authenticated",
+						variant: "destructive",
+					});
+					setIsSharing(false);
+					setIsLoading(false);
+					return;
+				}
+
+				const { data: newInvoice, error: invoiceError } = await supabase
+					.from("invoices")
+					.insert({ ...invoiceData, user_id: user.id })
+					.select()
+					.single();
+
+				if (invoiceError) throw invoiceError;
+
+				const itemsWithInvoiceId = items.map((item) => ({
+					...item,
+					invoice_id: newInvoice.id,
+				}));
+
+				const { error: itemsError } = await supabase
+					.from("invoice_items")
+					.insert(itemsWithInvoiceId);
+				if (itemsError) throw itemsError;
+
+				await updateProductStock(
+					items,
+					isIndexedDb,
+					supabase,
+					user.id,
+					initialProducts
+				);
+				await invalidateInvoices();
+				await invalidateProducts();
+			}
+
+			// Get customer data for PDF
+			const selectedCustomer = localCustomers.find(
+				(c) => c.id === finalCustomerId
+			);
+
+			// Generate mini invoice PDF
+			const pdfData = {
+				invoiceNumber: invoiceNumber,
+				invoiceDate: invoiceDate,
+				customerName: selectedCustomer?.name || customerData.name || "",
+				customerEmail: customerData.email || "",
+				customerPhone: customerData.phone || "",
+				customerGSTIN: "",
+				businessName: storeName || "Business",
+				businessGSTIN: "",
+				businessAddress: "",
+				businessPhone: "",
+				items: items.map((item) => {
+					const calc = calculateLineItem({
+						unitPrice: item.unit_price,
+						discountPercent: item.discount_percent,
+						gstRate: item.gst_rate,
+						quantity: item.quantity,
+					});
+					return {
+						description: item.description,
+						quantity: item.quantity,
+						unitPrice: item.unit_price,
+						discountPercent: item.discount_percent,
+						gstRate: item.gst_rate,
+						lineTotal: calc.taxableAmount + calc.gstAmount,
+						gstAmount: calc.gstAmount,
+					};
+				}),
+				subtotal: t.subtotal,
+				cgstAmount: t.cgst,
+				sgstAmount: t.sgst,
+				igstAmount: t.igst,
+				totalAmount: t.total,
+				isGstInvoice: isGstInvoice,
+			};
+
+			const pdfBlob = await generateMiniInvoicePDF(pdfData);
+
+			// Generate WhatsApp message
+			const invoiceLink = `${
+				typeof window !== "undefined" ? window.location.origin : ""
+			}/i/${invoiceId}`;
+			const whatsappMessage = generateWhatsAppBillMessage({
+				storeName: storeName || "Business",
+				invoiceNumber: invoiceNumber,
+				invoiceDate: invoiceDate,
+				items: items.map((item) => ({
+					name: item.description,
+					quantity: item.quantity,
+					unitPrice: item.unit_price,
+				})),
+				totalAmount: t.total,
+				invoiceLink: invoiceLink,
+			});
+
+			// Share on WhatsApp with PDF
+			const shareResult = await shareOnWhatsApp(
+				whatsappMessage,
+				pdfBlob,
+				`Invoice-${invoiceNumber}.pdf`
+			);
+
+			// Show appropriate feedback based on sharing method
+			if (shareResult.method === "web-share") {
+				toast({
+					title: "Invoice Created & Shared",
+					description:
+						"Invoice saved and shared via Web Share API. If WhatsApp is installed, it should open automatically with the PDF attached.",
+					duration: 5000,
+				});
+			} else if (shareResult.method === "download-and-link") {
+				toast({
+					title: "Invoice Created & PDF Copied!",
+					description:
+						"Invoice saved and WhatsApp opened. PDF is copied to clipboard - Press Ctrl+V (or Cmd+V) to paste and send!",
+					duration: 6000,
+				});
+			} else {
+				toast({
+					title: "Invoice Created & Shared",
+					description:
+						"Invoice saved and WhatsApp opened with your invoice message.",
+					duration: 5000,
+				});
+			}
+
+			// Navigate to invoices page
+			router.push("/invoices");
+			router.refresh();
+		} catch (error) {
+			console.error("[InvoiceForm] Error saving and sharing invoice:", error);
+			toast({
+				title: "Error",
+				description:
+					error instanceof Error
+						? error.message
+						: "Failed to save and share invoice",
+				variant: "destructive",
+			});
+		} finally {
+			setIsSharing(false);
 			setIsLoading(false);
 		}
 	};
@@ -1751,14 +2116,16 @@ export function InvoiceForm({
 									</Card>
 
 									<div className="flex flex-col gap-2">
-										<Button 
+										<Button
 											type="button"
 											onClick={handleSaveAndShare}
 											disabled={isLoading || isSharing || !navigator.onLine}
 											className="gap-2"
 										>
 											<MessageCircle className="h-4 w-4" />
-											{isSharing ? "Saving & Sharing..." : "Save & Share on WhatsApp"}
+											{isSharing
+												? "Saving & Sharing..."
+												: "Save & Share on WhatsApp"}
 										</Button>
 										<Button type="submit" disabled={isLoading || isSharing}>
 											{isLoading ? "Creating..." : "Create Invoice"}

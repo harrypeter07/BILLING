@@ -1,60 +1,55 @@
 import { notFound } from "next/navigation"
-import { createClient } from "@/lib/supabase/server"
 import PublicInvoiceView from "./public-invoice-view"
 
-export async function generateMetadata({ params }: { params: { invoiceId: string } }) {
+export async function generateMetadata({ params }: { params: Promise<{ invoiceId: string }> | { invoiceId: string } }) {
+  const resolvedParams = await Promise.resolve(params)
   return {
-    title: `Invoice ${params.invoiceId}`,
+    title: `Invoice ${resolvedParams.invoiceId}`,
     description: "View invoice details",
   }
 }
 
-export default async function PublicInvoicePage({ params }: { params: { invoiceId: string } }) {
-  const invoiceId = params.invoiceId
+export default async function PublicInvoicePage({ params }: { params: Promise<{ invoiceId: string }> | { invoiceId: string } }) {
+  const resolvedParams = await Promise.resolve(params)
+  const invoiceId = resolvedParams.invoiceId
+
+  if (!invoiceId) {
+    notFound()
+  }
 
   try {
-    // Public invoice access - only works with Supabase (IndexedDB is local-only)
-    const supabase = createClient()
+    // Fetch invoice data from public API route (bypasses RLS)
+    // Use relative URL for server-side fetch (works in both dev and production)
+    const apiUrl = process.env.NEXT_PUBLIC_BASE_URL 
+      ? `${process.env.NEXT_PUBLIC_BASE_URL}/api/public/invoice/${invoiceId}`
+      : process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}/api/public/invoice/${invoiceId}`
+      : `http://localhost:${process.env.PORT || 3000}/api/public/invoice/${invoiceId}`
+    
+    const response = await fetch(apiUrl, {
+      cache: "no-store", // Always fetch fresh data
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
 
-    const { data: invoice, error: invoiceError } = await supabase
-      .from("invoices")
-      .select("*")
-      .eq("id", invoiceId)
-      .single()
-
-    if (invoiceError || !invoice) {
+    if (!response.ok) {
+      console.error("[PublicInvoice] API error:", response.status)
       notFound()
     }
 
-    const customer = invoice.customer_id
-      ? await supabase
-          .from("customers")
-          .select("*")
-          .eq("id", invoice.customer_id)
-          .single()
-          .then(({ data }) => data)
-      : null
+    const data = await response.json()
 
-    const { data: items } = await supabase
-      .from("invoice_items")
-      .select("*")
-      .eq("invoice_id", invoiceId)
-
-    const store = invoice.store_id
-      ? await supabase
-          .from("stores")
-          .select("*")
-          .eq("id", invoice.store_id)
-          .single()
-          .then(({ data }) => data)
-      : null
+    if (!data.invoice) {
+      notFound()
+    }
 
     return (
       <PublicInvoiceView
-        invoice={invoice}
-        customer={customer}
-        items={items || []}
-        store={store}
+        invoice={data.invoice}
+        customer={data.customer}
+        items={data.items || []}
+        store={data.store}
       />
     )
   } catch (error) {
@@ -62,4 +57,3 @@ export default async function PublicInvoicePage({ params }: { params: { invoiceI
     notFound()
   }
 }
-

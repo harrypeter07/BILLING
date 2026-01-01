@@ -114,18 +114,37 @@ export function WhatsAppShareButton({
         }
 
         const pdfBlob = await generateMiniInvoicePDF(pdfData)
-        shareOnWhatsApp(message, pdfBlob, `Invoice-${invoice.invoice_number}.pdf`)
+        const result = await shareOnWhatsApp(message, pdfBlob, `Invoice-${invoice.invoice_number}.pdf`)
+        
+        // Show appropriate feedback based on sharing method
+        if (result.method === 'web-share') {
+          toast({
+            title: "Shared Successfully",
+            description: "Invoice PDF and message shared via Web Share API. If WhatsApp is installed, it should open automatically.",
+            duration: 5000,
+          })
+        } else if (result.method === 'download-and-link') {
+          toast({
+            title: "PDF Copied to Clipboard!",
+            description: "WhatsApp is opening. Press Ctrl+V (or Cmd+V) to paste the PDF, then send!",
+            duration: 6000,
+          })
+        } else {
+          toast({
+            title: "Opening WhatsApp",
+            description: "WhatsApp is opening with your invoice message.",
+            duration: 3000,
+          })
+        }
       } catch (pdfError) {
         console.warn("[WhatsAppShare] PDF generation failed, sharing text only:", pdfError)
-        shareOnWhatsApp(message)
+        await shareOnWhatsApp(message)
+        toast({
+          title: "Opening WhatsApp",
+          description: "WhatsApp is opening with your invoice message.",
+          duration: 3000,
+        })
       }
-
-      // Show success feedback
-      toast({
-        title: "Opening WhatsApp",
-        description: "WhatsApp is opening with your invoice. PDF has been downloaded - please attach it manually.",
-        duration: 5000,
-      })
     } catch (error) {
       console.error("[WhatsAppShare] Error:", error)
       toast({

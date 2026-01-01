@@ -22,7 +22,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   // Public routes that don't require authentication
   const publicRoutes = ["/auth/login", "/auth/signup", "/auth/employee-login", "/auth/customer-login", "/auth/session-expired", "/license", "/"]
-  const isPublicRoute = publicRoutes.includes(pathname || "")
+  const isPublicRoute = publicRoutes.includes(pathname || "") || (pathname?.startsWith("/i/") ?? false)
 
   useEffect(() => {
     const checkAuth = async () => {

@@ -50,7 +50,8 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
       pathname?.includes("/license") || 
       pathname === "/admin/license-seed" ||
       pathname?.startsWith("/admin/license-seed") ||
-      pathname?.startsWith("/auth/");
+      pathname?.startsWith("/auth/") ||
+      pathname?.startsWith("/i/"); // Public invoice viewing routes
     
     if (skipLicenseCheck) {
       // Only set state if it's different to prevent unnecessary re-renders
