@@ -24,7 +24,7 @@ import {
 	TableHeader,
 	TableRow,
 } from "@/components/ui/table";
-import { Plus, Trash2, Search, Maximize2, X } from "lucide-react";
+import { Plus, Trash2, Search, Maximize2, X, MessageCircle } from "lucide-react";
 import { useFullscreen } from "@/lib/utils/fullscreen-context";
 import { useToast } from "@/hooks/use-toast";
 import { calculateLineItem, roundToTwo } from "@/lib/utils/gst-calculator";
@@ -252,7 +252,8 @@ export function InvoiceForm({
 	const { toast } = useToast();
 	const { isFullscreen, setIsFullscreen } = useFullscreen();
 	const { invalidateInvoices, invalidateProducts } = useInvalidateQueries();
-	const [isLoading, setIsLoading] = useState(false);
+	const [isLoading, setIsLoading] = useState(false)
+	const [isSharing, setIsSharing] = useState(false);
 	const [invoiceNumber, setInvoiceNumber] = useState("");
 	const [localCustomers, setLocalCustomers] = useState<Customer[]>(customers);
 	const [products, setProducts] = useState<Product[]>(initialProducts);
@@ -1747,14 +1748,23 @@ export function InvoiceForm({
 									</Card>
 
 									<div className="flex flex-col gap-2">
-										<Button type="submit" disabled={isLoading}>
+										<Button 
+											type="button"
+											onClick={handleSaveAndShare}
+											disabled={isLoading || isSharing || !navigator.onLine}
+											className="gap-2"
+										>
+											<MessageCircle className="h-4 w-4" />
+											{isSharing ? "Saving & Sharing..." : "Save & Share on WhatsApp"}
+										</Button>
+										<Button type="submit" disabled={isLoading || isSharing}>
 											{isLoading ? "Creating..." : "Create Invoice"}
 										</Button>
 										<Button
 											type="button"
 											variant="outline"
 											onClick={() => router.back()}
-											disabled={isLoading}
+											disabled={isLoading || isSharing}
 										>
 											Cancel
 										</Button>

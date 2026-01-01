@@ -10,8 +10,12 @@ import Link from "next/link"
 import { ArrowLeft, Printer } from "lucide-react"
 import { InvoiceActions } from "@/components/features/invoices/invoice-actions"
 import { InvoicePrint } from "@/components/features/invoices/invoice-print"
+import { WhatsAppShareButton } from "@/components/features/invoices/whatsapp-share-button"
 import { useToast } from "@/hooks/use-toast"
 import { useInvoice } from "@/lib/hooks/use-cached-data"
+import { createClient } from "@/lib/supabase/client"
+import { db } from "@/lib/dexie-client"
+import { isIndexedDbMode } from "@/lib/utils/db-mode"
 
 export default function InvoiceDetailPageClient() {
   const params = useParams()
@@ -20,11 +24,68 @@ export default function InvoiceDetailPageClient() {
   const invoiceId = params.id as string
   const { data: invoiceData, isLoading: loading, error } = useInvoice(invoiceId)
   const [settings, setSettings] = useState<any>(null)
+  const [storeName, setStoreName] = useState<string>("Business")
 
   // Extract invoice, items, and customer from the hook data
   const invoice = invoiceData
   const items = invoiceData?.invoice_items || []
   const customer = invoiceData?.customers
+
+  // Fetch store name for WhatsApp sharing
+  useEffect(() => {
+    const fetchStoreName = async () => {
+      if (!invoice?.store_id) {
+        // Try to get from localStorage or use default
+        const currentStoreId = localStorage.getItem("currentStoreId")
+        if (currentStoreId) {
+          const isIndexedDb = isIndexedDbMode()
+          if (isIndexedDb) {
+            const store = await db.stores.get(currentStoreId)
+            if (store?.name) {
+              setStoreName(store.name)
+            }
+          } else {
+            const supabase = createClient()
+            const { data: store } = await supabase
+              .from("stores")
+              .select("name")
+              .eq("id", currentStoreId)
+              .single()
+            if (store?.name) {
+              setStoreName(store.name)
+            }
+          }
+        }
+        return
+      }
+
+      try {
+        const isIndexedDb = isIndexedDbMode()
+        if (isIndexedDb) {
+          const store = await db.stores.get(invoice.store_id)
+          if (store?.name) {
+            setStoreName(store.name)
+          }
+        } else {
+          const supabase = createClient()
+          const { data: store } = await supabase
+            .from("stores")
+            .select("name")
+            .eq("id", invoice.store_id)
+            .single()
+          if (store?.name) {
+            setStoreName(store.name)
+          }
+        }
+      } catch (err) {
+        console.warn("[InvoiceDetail] Failed to fetch store name:", err)
+      }
+    }
+
+    if (invoice) {
+      fetchStoreName()
+    }
+  }, [invoice])
 
   useEffect(() => {
     if (error) {
@@ -97,6 +158,21 @@ export default function InvoiceDetailPageClient() {
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
           <Badge className={statusColors[invoice.status]}>{invoice.status.toUpperCase()}</Badge>
+          <WhatsAppShareButton
+            invoice={{
+              id: invoice.id,
+              invoice_number: invoice.invoice_number,
+              invoice_date: invoice.invoice_date,
+              total_amount: invoice.total_amount,
+            }}
+            items={items.map((item: any) => ({
+              description: item.description,
+              quantity: item.quantity,
+              unit_price: item.unit_price,
+            }))}
+            storeName={storeName}
+            invoiceLink={`${typeof window !== 'undefined' ? window.location.origin : ''}/i/${invoice.id}`}
+          />
           <InvoicePrint
             invoiceId={invoiceId}
             invoiceNumber={invoice.invoice_number}
