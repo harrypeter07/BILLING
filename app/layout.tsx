@@ -6,6 +6,8 @@ import { Toaster } from "@/components/ui/toaster"
 import { Toaster as SonnerToaster } from "sonner"
 import { SyncStatus } from "@/components/sync-status"
 import { LicenseGuard } from "@/components/license-guard"
+import { AuthGuard } from "@/components/auth-guard"
+import { ServiceWorkerRegister } from "@/components/service-worker-register"
 import { QueryProvider } from "@/lib/providers/query-provider"
 import "./globals.css"
 
@@ -81,12 +83,15 @@ export default function RootLayout({
         className="font-sans antialiased"
         suppressHydrationWarning
       >
+        <ServiceWorkerRegister />
         <QueryProvider>
           <LicenseGuard>
-            {children}
-            <div className="fixed bottom-3 right-3 rounded-md border bg-background/80 px-3 py-2 shadow">
-              <SyncStatus />
-            </div>
+            <AuthGuard>
+              {children}
+              <div className="fixed bottom-3 right-3 rounded-md border bg-background/80 px-3 py-2 shadow">
+                <SyncStatus />
+              </div>
+            </AuthGuard>
           </LicenseGuard>
           <Toaster />
           <SonnerToaster />

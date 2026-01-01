@@ -136,6 +136,10 @@ export function Header({ title }: HeaderProps) {
     await supabase.auth.signOut()
     clearOfflineSession()
 
+    // Clear IndexedDB session
+    const { clearAuthSession } = await import("@/lib/utils/auth-session")
+    await clearAuthSession()
+
     // Redirect to login
     router.push("/auth/login")
     router.refresh()

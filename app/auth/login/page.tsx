@@ -271,6 +271,18 @@ export default function LoginPage() {
           console.log("[Login] Public user detected, redirecting to /dashboard")
           router.push("/dashboard")
         }
+        // Save session to IndexedDB for offline access
+        if (user) {
+          const { saveAuthSession } = await import("@/lib/utils/auth-session")
+          await saveAuthSession({
+            userId: user.id,
+            email: user.email || email,
+            role: userRole,
+            storeId: resolvedStoreId,
+          })
+          console.log("[Login] Session saved to IndexedDB")
+        }
+
         if (offlineEnabled) {
           await persistOfflineCredential(email, password, { role: userRole, storeId: resolvedStoreId })
           saveOfflineSession({
@@ -306,9 +318,14 @@ export default function LoginPage() {
       await supabase.auth.signOut()
     }
     
+    // Clear IndexedDB session
+    const { clearAuthSession } = await import("@/lib/utils/auth-session")
+    await clearAuthSession()
+    
     clearOfflineSession()
     setCurrentUser(null)
     setCurrentRole(null)
+    router.push("/auth/login")
     router.refresh()
   }
 
