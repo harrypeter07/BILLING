@@ -35,15 +35,21 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
       },
     })
 
-    // Fetch invoice
+    // Fetch invoice - use maybeSingle() to handle cases where invoice doesn't exist
     const { data: invoice, error: invoiceError } = await supabase
       .from("invoices")
       .select("*")
       .eq("id", invoiceId)
-      .single()
+      .maybeSingle()
 
-    if (invoiceError || !invoice) {
-      console.error("[PublicInvoice] Invoice not found:", invoiceError?.message)
+    if (invoiceError) {
+      console.error("[PublicInvoice] Error fetching invoice:", invoiceError)
+      console.error("[PublicInvoice] Invoice ID:", invoiceId)
+      notFound()
+    }
+
+    if (!invoice) {
+      console.error("[PublicInvoice] Invoice not found for ID:", invoiceId)
       notFound()
     }
 
