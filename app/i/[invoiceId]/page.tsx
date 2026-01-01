@@ -60,7 +60,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
             .from("customers")
             .select("*")
             .eq("id", invoice.customer_id)
-            .single()
+            .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
       supabase
         .from("invoice_items")
@@ -71,7 +71,7 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
             .from("stores")
             .select("*")
             .eq("id", invoice.store_id)
-            .single()
+            .maybeSingle()
         : Promise.resolve({ data: null, error: null }),
     ])
 
