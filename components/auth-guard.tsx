@@ -33,11 +33,81 @@ export function AuthGuard({ children }: AuthGuardProps) {
         return
       }
 
+      // Prevent redirect if already on login page
+      if (pathname === "/auth/login") {
+        setIsChecking(false)
+        setIsAuthorized(false)
+        return
+      }
+
       try {
         // Check IndexedDB session first (works offline)
         const session = await getAuthSession()
 
         if (!session || isSessionExpired(session)) {
+          // Check if user has employee session (localStorage-based)
+          const authType = typeof window !== "undefined" ? localStorage.getItem("authType") : null
+          const employeeSession = typeof window !== "undefined" ? localStorage.getItem("employeeSession") : null
+          
+          if (authType === "employee" && employeeSession) {
+            // Employee session exists, but check if IndexedDB session is expired
+            // If IndexedDB session exists but expired, employee session should also be considered expired
+            if (session && isSessionExpired(session)) {
+              // IndexedDB session expired, clear employee session too
+              console.log("[AuthGuard] Session expired, clearing employee session")
+              if (typeof window !== "undefined") {
+                localStorage.removeItem("authType")
+                localStorage.removeItem("employeeSession")
+                localStorage.removeItem("offlineAdminSession")
+              }
+              await clearAuthSession()
+              if (pathname !== "/auth/login") {
+                router.push("/auth/login")
+              }
+              setIsChecking(false)
+              setIsAuthorized(false)
+              return
+            }
+            // Employee session exists and IndexedDB session is valid, allow through
+            console.log("[AuthGuard] Employee session found, allowing access")
+            setIsAuthorized(true)
+            setIsChecking(false)
+            return
+          }
+
+          // Check for offline admin session
+          const offlineAdminSession = typeof window !== "undefined" ? localStorage.getItem("offlineAdminSession") : null
+          if (offlineAdminSession) {
+            try {
+              const parsed = JSON.parse(offlineAdminSession)
+              if (parsed.email && parsed.role) {
+                // Still check IndexedDB session expiry
+                if (session && isSessionExpired(session)) {
+                  // Session expired, clear everything
+                  console.log("[AuthGuard] Session expired, clearing offline admin session")
+                  if (typeof window !== "undefined") {
+                    localStorage.removeItem("authType")
+                    localStorage.removeItem("employeeSession")
+                    localStorage.removeItem("offlineAdminSession")
+                  }
+                  await clearAuthSession()
+                  if (pathname !== "/auth/login") {
+                    router.push("/auth/login")
+                  }
+                  setIsChecking(false)
+                  setIsAuthorized(false)
+                  return
+                }
+                console.log("[AuthGuard] Offline admin session found, allowing access")
+                setIsAuthorized(true)
+                setIsChecking(false)
+                return
+              }
+            } catch (e) {
+              // Invalid offline session, continue to redirect
+            }
+          }
+
           console.log("[AuthGuard] No valid session found, redirecting to login")
           await clearAuthSession()
           // Also clear localStorage auth data
@@ -46,7 +116,11 @@ export function AuthGuard({ children }: AuthGuardProps) {
             localStorage.removeItem("employeeSession")
             localStorage.removeItem("offlineAdminSession")
           }
-          router.push("/auth/login")
+          
+          // Only redirect if not already on login page
+          if (pathname !== "/auth/login") {
+            router.push("/auth/login")
+          }
           setIsChecking(false)
           setIsAuthorized(false)
           return
@@ -73,9 +147,11 @@ export function AuthGuard({ children }: AuthGuardProps) {
         }
       } catch (error) {
         console.error("[AuthGuard] Error checking auth:", error)
-        // On error, redirect to login
+        // On error, only redirect if not already on login page
         await clearAuthSession()
-        router.push("/auth/login")
+        if (pathname !== "/auth/login") {
+          router.push("/auth/login")
+        }
         setIsAuthorized(false)
       } finally {
         setIsChecking(false)
@@ -83,6 +159,15 @@ export function AuthGuard({ children }: AuthGuardProps) {
     }
 
     checkAuth()
+
+    // Set up periodic check every 5 seconds to catch session expiry
+    const interval = setInterval(() => {
+      if (!isPublicRoute && pathname !== "/auth/login") {
+        checkAuth()
+      }
+    }, 5000) // Check every 5 seconds
+
+    return () => clearInterval(interval)
   }, [pathname, router, isPublicRoute])
 
   // Show loading state while checking

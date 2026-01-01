@@ -298,12 +298,12 @@ export function InlineCustomerForm({ onCustomerCreated, onCustomerDataChange }: 
 
   return (
     <Card className="border-dashed">
-      <CardHeader className="pb-2 pt-3 px-3">
+      <CardHeader className="pb-1.5 pt-2 px-2">
         <CardTitle className="text-sm">Customer & Invoice Details</CardTitle>
       </CardHeader>
-      <CardContent className="p-3">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="space-y-1 relative">
+      <CardContent className="p-2">
+        <div className="grid grid-cols-3 gap-2">
+          <div className="space-y-0.5 relative">
             <Label htmlFor="quick-name" className="text-xs">
               Customer Name <span className="text-destructive">*</span>
             </Label>
@@ -350,7 +350,7 @@ export function InlineCustomerForm({ onCustomerCreated, onCustomerDataChange }: 
               )}
             </div>
           </div>
-          <div className="space-y-1 relative">
+          <div className="space-y-0.5 relative">
             <Label htmlFor="quick-phone" className="text-xs">
               Phone Number <span className="text-destructive">*</span>
             </Label>
@@ -399,7 +399,7 @@ export function InlineCustomerForm({ onCustomerCreated, onCustomerDataChange }: 
               )}
             </div>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-0.5">
             <Label htmlFor="quick-email" className="text-xs">Email</Label>
             <Input
               id="quick-email"
