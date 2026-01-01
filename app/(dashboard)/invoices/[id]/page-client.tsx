@@ -7,11 +7,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import Link from "next/link"
-import { ArrowLeft, Printer } from "lucide-react"
+import { ArrowLeft, Printer, Copy, Check } from "lucide-react"
 import { InvoiceActions } from "@/components/features/invoices/invoice-actions"
 import { InvoicePrint } from "@/components/features/invoices/invoice-print"
 import { WhatsAppShareButton } from "@/components/features/invoices/whatsapp-share-button"
 import { useToast } from "@/hooks/use-toast"
+import { generateMiniInvoicePDF } from "@/lib/utils/mini-invoice-pdf"
 import { useInvoice } from "@/lib/hooks/use-cached-data"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
@@ -25,6 +26,7 @@ export default function InvoiceDetailPageClient() {
   const { data: invoiceData, isLoading: loading, error } = useInvoice(invoiceId)
   const [settings, setSettings] = useState<any>(null)
   const [storeName, setStoreName] = useState<string>("Business")
+  const [isTestingCopy, setIsTestingCopy] = useState(false)
 
   // Extract invoice, items, and customer from the hook data
   const invoice = invoiceData
@@ -141,6 +143,117 @@ export default function InvoiceDetailPageClient() {
     cancelled: "bg-red-100 text-red-800",
   }
 
+  // Test PDF copy functionality
+  const handleTestPDFCopy = async () => {
+    if (!invoice || !items || items.length === 0) {
+      toast({
+        title: "Error",
+        description: "Invoice data not available",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsTestingCopy(true)
+
+    try {
+      // Prepare PDF data (similar to WhatsApp share)
+      const pdfData = {
+        invoiceNumber: invoice.invoice_number,
+        invoiceDate: invoice.invoice_date,
+        customerName: customer?.name || "",
+        customerEmail: customer?.email || "",
+        customerPhone: customer?.phone || "",
+        customerGSTIN: customer?.gstin || "",
+        businessName: storeName || "Business",
+        businessGSTIN: settings?.business_gstin || "",
+        businessAddress: settings?.business_address || "",
+        businessPhone: settings?.business_phone || "",
+        items: items.map((item: any) => {
+          const lineTotal = (item.quantity || 0) * (item.unit_price || 0)
+          const gstAmount = invoice.is_gst_invoice
+            ? (lineTotal * (item.gst_rate || 0)) / 100
+            : 0
+          return {
+            description: item.description,
+            quantity: item.quantity,
+            unitPrice: item.unit_price,
+            discountPercent: item.discount_percent || 0,
+            gstRate: item.gst_rate || 0,
+            lineTotal: lineTotal + gstAmount,
+            gstAmount: gstAmount,
+          }
+        }),
+        subtotal: invoice.subtotal || 0,
+        cgstAmount: invoice.cgst_amount || 0,
+        sgstAmount: invoice.sgst_amount || 0,
+        igstAmount: invoice.igst_amount || 0,
+        totalAmount: invoice.total_amount || 0,
+        isGstInvoice: invoice.is_gst_invoice || false,
+      }
+
+      // Generate PDF
+      const pdfBlob = await generateMiniInvoicePDF(pdfData)
+      const fileName = `Invoice-${invoice.invoice_number}.pdf`
+
+      // Try to copy to clipboard
+      let clipboardSuccess = false
+      try {
+        if ('ClipboardItem' in window && 'clipboard' in navigator && 'write' in navigator.clipboard) {
+          const clipboardItem = new ClipboardItem({
+            'application/pdf': pdfBlob,
+          })
+          await navigator.clipboard.write([clipboardItem])
+          console.log('[TestPDFCopy] PDF copied to clipboard successfully')
+          clipboardSuccess = true
+        } else {
+          throw new Error('ClipboardItem not supported')
+        }
+      } catch (clipboardError) {
+        console.warn('[TestPDFCopy] Failed to copy PDF to clipboard:', clipboardError)
+      }
+
+      // Always download as well
+      const pdfUrl = URL.createObjectURL(pdfBlob)
+      const downloadLink = document.createElement('a')
+      downloadLink.href = pdfUrl
+      downloadLink.download = fileName
+      downloadLink.style.display = 'none'
+      document.body.appendChild(downloadLink)
+      downloadLink.click()
+
+      // Clean up
+      setTimeout(() => {
+        document.body.removeChild(downloadLink)
+        URL.revokeObjectURL(pdfUrl)
+      }, 100)
+
+      // Show success message
+      if (clipboardSuccess) {
+        toast({
+          title: "✅ PDF Copied Successfully!",
+          description: `PDF has been copied to clipboard and downloaded. You can paste it (Ctrl+V) anywhere.`,
+          duration: 6000,
+        })
+      } else {
+        toast({
+          title: "PDF Downloaded",
+          description: `PDF has been downloaded. Clipboard copy is not supported in this browser.`,
+          duration: 5000,
+        })
+      }
+    } catch (error) {
+      console.error("[TestPDFCopy] Error:", error)
+      toast({
+        title: "Error",
+        description: "Failed to generate or copy PDF. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setIsTestingCopy(false)
+    }
+  }
+
   return (
     <div className="mx-auto max-w-5xl space-y-4 md:space-y-6 p-4 md:p-6">
       {/* Header */}
@@ -158,6 +271,26 @@ export default function InvoiceDetailPageClient() {
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
           <Badge className={statusColors[invoice.status]}>{invoice.status.toUpperCase()}</Badge>
+          <Button
+            onClick={handleTestPDFCopy}
+            disabled={isTestingCopy}
+            variant="outline"
+            size="sm"
+            className="gap-2"
+            title="Test PDF copy to clipboard"
+          >
+            {isTestingCopy ? (
+              <>
+                <Check className="h-4 w-4" />
+                <span className="hidden sm:inline">Testing...</span>
+              </>
+            ) : (
+              <>
+                <Copy className="h-4 w-4" />
+                <span className="hidden sm:inline">Test PDF Copy</span>
+              </>
+            )}
+          </Button>
           <WhatsAppShareButton
             invoice={{
               id: invoice.id,
