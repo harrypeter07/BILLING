@@ -297,11 +297,11 @@ export function InlineCustomerForm({ onCustomerCreated, onCustomerDataChange }: 
   }, [name, phone, email, nameMatches, phoneMatches, onCustomerDataChange])
 
   return (
-    <Card className="border-dashed">
-      <CardHeader className="pb-1.5 pt-2 px-2">
+    <Card className="border-dashed ">
+      <CardHeader className="pb-0.5 pt-0 px-4">
         <CardTitle className="text-sm">Customer & Invoice Details</CardTitle>
       </CardHeader>
-      <CardContent className="p-2">
+      <CardContent className="p-2 mt-[-2vh]">
         <div className="grid grid-cols-3 gap-2">
           <div className="space-y-0.5 relative">
             <Label htmlFor="quick-name" className="text-xs">
