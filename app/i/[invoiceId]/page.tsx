@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation"
+import { createClient } from "@supabase/supabase-js"
 import PublicInvoiceView from "./public-invoice-view"
 
 export async function generateMetadata({ params }: { params: Promise<{ invoiceId: string }> | { invoiceId: string } }) {
@@ -18,38 +19,62 @@ export default async function PublicInvoicePage({ params }: { params: Promise<{ 
   }
 
   try {
-    // Fetch invoice data from public API route (bypasses RLS)
-    // Use relative URL for server-side fetch (works in both dev and production)
-    const apiUrl = process.env.NEXT_PUBLIC_BASE_URL 
-      ? `${process.env.NEXT_PUBLIC_BASE_URL}/api/public/invoice/${invoiceId}`
-      : process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}/api/public/invoice/${invoiceId}`
-      : `http://localhost:${process.env.PORT || 3000}/api/public/invoice/${invoiceId}`
-    
-    const response = await fetch(apiUrl, {
-      cache: "no-store", // Always fetch fresh data
-      headers: {
-        'Content-Type': 'application/json',
+    // Use service role client to bypass RLS (directly in server component)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error("[PublicInvoice] Missing Supabase configuration")
+      notFound()
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
       },
     })
 
-    if (!response.ok) {
-      console.error("[PublicInvoice] API error:", response.status)
+    // Fetch invoice
+    const { data: invoice, error: invoiceError } = await supabase
+      .from("invoices")
+      .select("*")
+      .eq("id", invoiceId)
+      .single()
+
+    if (invoiceError || !invoice) {
+      console.error("[PublicInvoice] Invoice not found:", invoiceError?.message)
       notFound()
     }
 
-    const data = await response.json()
-
-    if (!data.invoice) {
-      notFound()
-    }
+    // Fetch related data
+    const [customerResult, itemsResult, storeResult] = await Promise.all([
+      invoice.customer_id
+        ? supabase
+            .from("customers")
+            .select("*")
+            .eq("id", invoice.customer_id)
+            .single()
+        : Promise.resolve({ data: null, error: null }),
+      supabase
+        .from("invoice_items")
+        .select("*")
+        .eq("invoice_id", invoiceId),
+      invoice.store_id
+        ? supabase
+            .from("stores")
+            .select("*")
+            .eq("id", invoice.store_id)
+            .single()
+        : Promise.resolve({ data: null, error: null }),
+    ])
 
     return (
       <PublicInvoiceView
-        invoice={data.invoice}
-        customer={data.customer}
-        items={data.items || []}
-        store={data.store}
+        invoice={invoice}
+        customer={customerResult.data}
+        items={itemsResult.data || []}
+        store={storeResult.data}
       />
     )
   } catch (error) {
