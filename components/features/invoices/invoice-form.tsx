@@ -42,6 +42,8 @@ import {
 } from "@/components/ui/tooltip";
 import { db } from "@/lib/dexie-client";
 import { useInvalidateQueries } from "@/lib/hooks/use-cached-data";
+import { generateMiniInvoicePDF } from "@/lib/utils/mini-invoice-pdf";
+import { generateWhatsAppBillMessage, shareOnWhatsApp } from "@/lib/utils/whatsapp-bill";
 import {
 	ResizablePanelGroup,
 	ResizablePanel,
@@ -257,6 +259,7 @@ export function InvoiceForm({
 	const [invoiceNumber, setInvoiceNumber] = useState("");
 	const [localCustomers, setLocalCustomers] = useState<Customer[]>(customers);
 	const [products, setProducts] = useState<Product[]>(initialProducts);
+	const [storeName, setStoreName] = useState<string>("Business");
 
 	// Merge prop customers with local additions without removing new ones
 	useEffect(() => {
