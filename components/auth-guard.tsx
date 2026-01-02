@@ -22,7 +22,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
   // Public routes that don't require authentication
   const publicRoutes = ["/auth/login", "/auth/signup", "/auth/employee-login", "/auth/customer-login", "/auth/session-expired", "/license", "/"]
-  const isPublicRoute = publicRoutes.includes(pathname || "")
+  const isPublicRoute = publicRoutes.includes(pathname || "") || (pathname?.startsWith("/i/") ?? false)
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -44,7 +44,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
         // Check IndexedDB session first (works offline)
         const session = await getAuthSession()
 
-        if (!session || isSessionExpired(session)) {
+        if (!session || await isSessionExpired(session)) {
           // Check if user has employee session (localStorage-based)
           const authType = typeof window !== "undefined" ? localStorage.getItem("authType") : null
           const employeeSession = typeof window !== "undefined" ? localStorage.getItem("employeeSession") : null
@@ -52,7 +52,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
           if (authType === "employee" && employeeSession) {
             // Employee session exists, but check if IndexedDB session is expired
             // If IndexedDB session exists but expired, employee session should also be considered expired
-            if (session && isSessionExpired(session)) {
+            if (session && await isSessionExpired(session)) {
               // IndexedDB session expired, clear employee session too
               console.log("[AuthGuard] Session expired, clearing employee session")
               if (typeof window !== "undefined") {
@@ -93,7 +93,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
               const parsed = JSON.parse(offlineAdminSession)
               if (parsed.email && parsed.role) {
                 // Still check IndexedDB session expiry
-                if (session && isSessionExpired(session)) {
+                if (session && await isSessionExpired(session)) {
                   // Session expired, clear everything
                   console.log("[AuthGuard] Session expired, clearing offline admin session")
                   if (typeof window !== "undefined") {
@@ -205,12 +205,13 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
     checkAuth()
 
-    // Set up periodic check every 5 seconds to catch session expiry
+    // Set up periodic check every 30 seconds to catch session expiry
+    // Reduced frequency to minimize API calls - we use client time for expiry checks
     const interval = setInterval(() => {
       if (!isPublicRoute && pathname !== "/auth/login") {
         checkAuth()
       }
-    }, 5000) // Check every 5 seconds
+    }, 30000) // Check every 30 seconds (reduced from 5 seconds to minimize API calls)
 
     return () => clearInterval(interval)
   }, [pathname, router, isPublicRoute])

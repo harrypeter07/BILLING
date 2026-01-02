@@ -83,8 +83,19 @@ export async function updateSession(request: NextRequest) {
     // Settings routes - require authentication but can be accessed by both admin and employees
     const isSettingsRoute = request.nextUrl.pathname.startsWith("/settings")
 
+    // Public routes - allow without authentication
+    const isPublicInvoiceRoute = request.nextUrl.pathname.startsWith("/i/")
+    const isPublicAPI = request.nextUrl.pathname.startsWith("/api/public/")
+    const isLicenseRoute = request.nextUrl.pathname === "/license"
+    const isRootRoute = request.nextUrl.pathname === "/"
+    
     // License seed route - allow without authentication (separate from app environment)
     if (isLicenseSeedRoute) {
+      return supabaseResponse
+    }
+
+    // Public invoice viewing route - allow without authentication
+    if (isPublicInvoiceRoute || isPublicAPI || isLicenseRoute || isRootRoute) {
       return supabaseResponse
     }
 

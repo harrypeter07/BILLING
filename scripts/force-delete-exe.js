@@ -37,9 +37,8 @@ if (os.platform() === 'win32') {
 // Method 3: Try taskkill on any process using the file, then delete
 if (os.platform() === 'win32') {
   try {
-    // Find processes using the file (using handle.exe if available, or just try to kill all electron processes)
+    // Find processes using the file
     execSync('taskkill /F /IM "Billing Solutions.exe" 2>nul', { stdio: 'ignore' });
-    execSync('taskkill /F /IM electron.exe 2>nul', { stdio: 'ignore' });
     
     // Wait a bit
     const { execSync: execSyncSync } = require('child_process');

@@ -6,16 +6,6 @@
  */
 
 export async function getMacAddress(): Promise<string> {
-  // Check if we're in Electron environment
-  if (typeof window !== "undefined" && (window as any).electron) {
-    try {
-      const mac = await (window as any).electron.getMacAddress();
-      if (mac) return mac;
-    } catch (error) {
-      console.error("Error getting MAC address from Electron:", error);
-    }
-  }
-
   // Browser environment - generate device fingerprint with timeout
   try {
     const fingerprint = await Promise.race([
@@ -83,7 +73,7 @@ function generateSimpleFingerprint(): string {
 
 /**
  * Generate a device fingerprint for browser environments
- * This will be replaced with actual MAC address in Electron
+ * Generates a device fingerprint for browser environments
  */
 async function generateDeviceFingerprint(): Promise<string> {
   const components: string[] = [];

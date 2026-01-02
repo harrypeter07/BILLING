@@ -96,17 +96,17 @@ export default function LoginPage() {
               const session = JSON.parse(employeeSession)
               // Verify IndexedDB session is still valid
               if (indexedDbSession && !isSessionExpired(indexedDbSession)) {
-                setCurrentUser({ 
-                  email: session.employeeName || session.employeeId, 
-                  name: session.employeeName 
-                })
-                setCurrentRole("employee")
-                
-                console.log("[Login] Employee session found, redirecting to /dashboard")
-                router.push("/dashboard")
-                router.refresh()
-                setCheckingAuth(false)
-                return
+              setCurrentUser({ 
+                email: session.employeeName || session.employeeId, 
+                name: session.employeeName 
+              })
+              setCurrentRole("employee")
+              
+              console.log("[Login] Employee session found, redirecting to /dashboard")
+              router.push("/dashboard")
+              router.refresh()
+              setCheckingAuth(false)
+              return
               } else {
                 // Session expired, clear employee session
                 localStorage.removeItem("employeeSession")

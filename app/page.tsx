@@ -7,16 +7,10 @@ import { useEffect, useState } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { useRouter } from "next/navigation"
 
-// Check if we're in Electron environment
-const isElectron = typeof window !== "undefined" && (window as any).electronAPI;
-
 export default function LandingPage() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
-
-  // REMOVED: Electron redirect to dashboard
-  // Now Electron goes through license check first, then shows home page
 
   useEffect(() => {
     const checkAuth = async () => {

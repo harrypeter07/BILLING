@@ -10,12 +10,6 @@ export function ServiceWorkerRegister() {
   useEffect(() => {
     if (typeof window === "undefined") return
 
-    // Only register in browser, not in Electron
-    if (typeof window !== "undefined" && (window as any).electronAPI) {
-      console.log("[SW] Skipping service worker registration in Electron")
-      return
-    }
-
     if ("serviceWorker" in navigator) {
       // Check if we just did a cleanup - wait a bit before re-registering
       const cleanupTime = sessionStorage.getItem("sw_cleanup_done")
