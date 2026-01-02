@@ -66,6 +66,7 @@ A comprehensive offline-first Progressive Web App (PWA) for small businesses to 
 ## 🛠️ Technology Stack
 
 ### Frontend
+
 - **Framework**: Next.js 16 (App Router)
 - **UI Library**: React 19
 - **Styling**: Tailwind CSS 4
@@ -74,16 +75,19 @@ A comprehensive offline-first Progressive Web App (PWA) for small businesses to 
 - **Forms**: React Hook Form + Zod validation
 
 ### Backend & Database
+
 - **Primary Database**: IndexedDB (Dexie.js) - Client-side
 - **Cloud Database**: Supabase (PostgreSQL)
 - **Authentication**: Supabase Auth + Custom offline auth
 - **File Storage**: Supabase Storage
 
 ### PDF Generation
+
 - **Library**: jsPDF + jsPDF-AutoTable
 - **Format**: Mini invoice PDFs for WhatsApp sharing
 
 ### Other Libraries
+
 - **Excel**: xlsx (for Excel mode)
 - **Cryptography**: crypto-js (HMAC signatures)
 - **Charts**: Recharts
@@ -122,6 +126,7 @@ User Opens App
 ### 2. Authentication Flow
 
 #### Admin/User Login
+
 ```
 User Enters Credentials
     │
@@ -147,6 +152,7 @@ User Enters Credentials
 ```
 
 #### Employee Login
+
 ```
 Employee Enters Credentials
     │
@@ -206,6 +212,7 @@ User Creates Invoice
 ### 4. PDF Sharing Flow
 
 #### Share PDF Button (Generic Share)
+
 ```
 User Clicks "Share PDF"
     │
@@ -236,6 +243,7 @@ User Clicks "Share PDF"
 ```
 
 #### WhatsApp Share Button
+
 ```
 User Clicks "Share on WhatsApp"
     │
@@ -355,24 +363,26 @@ The application implements multiple layers of security to prevent session tamper
 #### 4. Security Features
 
 ✅ **Prevents**:
+
 - Modifying `expiresAt` timestamp in IndexedDB
 - Changing system time to extend sessions
 - Tampering with session data (userId, email, role)
 - Replay attacks (signature changes on each validation)
 
 ✅ **Detects**:
+
 - Invalid signatures → Auto-logout
 - Time manipulation → Warning logged
 - Suspicious validation patterns → Alert
 
 #### 5. Vulnerabilities Fixed
 
-| Vulnerability | Previous State | Fixed State |
-|--------------|----------------|-------------|
-| IndexedDB Tampering | ❌ No protection | ✅ HMAC signatures |
-| Time Manipulation | ❌ Client time only | ✅ Server time validation |
-| Session Replay | ❌ No detection | ✅ Signature validation |
-| Data Integrity | ❌ No checks | ✅ Cryptographic verification |
+| Vulnerability       | Previous State      | Fixed State                   |
+| ------------------- | ------------------- | ----------------------------- |
+| IndexedDB Tampering | ❌ No protection    | ✅ HMAC signatures            |
+| Time Manipulation   | ❌ Client time only | ✅ Server time validation     |
+| Session Replay      | ❌ No detection     | ✅ Signature validation       |
+| Data Integrity      | ❌ No checks        | ✅ Cryptographic verification |
 
 ---
 
@@ -381,6 +391,7 @@ The application implements multiple layers of security to prevent session tamper
 ### PDF Generation
 
 #### Files Involved:
+
 - `lib/utils/mini-invoice-pdf.ts` - Mini invoice PDF (WhatsApp format)
 - `lib/utils/pdf-generator.ts` - Full invoice PDF
 - `lib/utils/pdf-invoice-generator.ts` - Alternative PDF generator
@@ -388,12 +399,14 @@ The application implements multiple layers of security to prevent session tamper
 #### PDF Generation Flow:
 
 1. **Data Collection**:
+
    - Invoice header (number, date, customer)
    - Invoice items (description, quantity, price, GST)
    - Totals (subtotal, CGST, SGST, IGST, total)
    - Business information (name, GSTIN, address)
 
 2. **PDF Creation**:
+
    - Uses jsPDF library
    - AutoTable plugin for item tables
    - Custom styling (colors, fonts, layout)
@@ -409,6 +422,7 @@ The application implements multiple layers of security to prevent session tamper
 **Location**: `app/(dashboard)/invoices/[id]/page-client.tsx`
 
 **Flow**:
+
 1. Fetches invoice data from IndexedDB (no Supabase dependency)
 2. Generates PDF using `generateMiniInvoicePDF()`
 3. Creates File object from PDF Blob
@@ -416,6 +430,7 @@ The application implements multiple layers of security to prevent session tamper
 5. User selects sharing app (Email, WhatsApp, etc.)
 
 **Features**:
+
 - ✅ Works offline (uses IndexedDB only)
 - ✅ No Supabase dependency
 - ✅ Generic share (works with any app)
@@ -426,6 +441,7 @@ The application implements multiple layers of security to prevent session tamper
 **Location**: `components/features/invoices/whatsapp-share-button.tsx`
 
 **Flow**:
+
 1. Checks internet connection (required)
 2. Generates formatted WhatsApp message
 3. Generates mini invoice PDF
@@ -434,6 +450,7 @@ The application implements multiple layers of security to prevent session tamper
 6. User manually attaches downloaded PDF
 
 **Message Format**:
+
 ```
 📋 *Invoice Receipt*
 
@@ -459,6 +476,7 @@ Thank you for your business! 🙏
 ```
 
 **Features**:
+
 - ✅ Formatted message with emojis
 - ✅ Auto-downloads PDF
 - ✅ Opens WhatsApp Web directly
@@ -469,6 +487,7 @@ Thank you for your business! 🙏
 **Location**: `components/features/invoices/invoice-form.tsx`
 
 **Flow**:
+
 1. User fills invoice form
 2. Clicks "Save & Share on WhatsApp"
 3. Saves invoice to IndexedDB
@@ -483,11 +502,13 @@ Thank you for your business! 🙏
 ### Session Storage
 
 #### IndexedDB (Primary)
+
 - **Table**: `auth_session`
 - **Structure**: See `lib/db/dexie.ts` - `AuthSession` interface
 - **Security**: HMAC signatures prevent tampering
 
 #### localStorage (Secondary)
+
 - `employeeSession` - Employee login data
 - `offlineAdminSession` - Offline admin session
 - `authType` - "employee" or "admin"
@@ -498,6 +519,7 @@ Thank you for your business! 🙏
 **Component**: `components/auth-guard.tsx`
 
 **Checks**:
+
 1. IndexedDB session exists and valid
 2. Signature verification
 3. Expiry check (server time)
@@ -516,11 +538,13 @@ Thank you for your business! 🙏
 ### Logout Implementation
 
 **Files**:
+
 - `app/auth/login/page.tsx` - Login page logout
 - `components/layout/sidebar.tsx` - Sidebar logout button
 - `components/layout/header.tsx` - Header logout menu
 
 **Process**:
+
 1. Clear IndexedDB session (`clearAuthSession()`)
 2. Clear localStorage (employeeSession, offlineAdminSession, etc.)
 3. Supabase signOut (if online)
@@ -535,6 +559,7 @@ Thank you for your business! 🙏
 **Database Name**: `BillingDatabase`
 
 **Tables**:
+
 - `products` - Product catalog
 - `customers` - Customer information
 - `invoices` - Invoice headers
@@ -557,6 +582,7 @@ Thank you for your business! 🙏
 **Tables**: See `types/database.types.ts`
 
 **Sync Strategy**:
+
 - Offline-first: All writes go to IndexedDB first
 - Background sync: Sync queue processes changes
 - Conflict resolution: Last-write-wins
@@ -616,6 +642,7 @@ billing-solutions/
 ## ✨ Key Features
 
 ### 1. Invoice Management
+
 - Create GST/non-GST invoices
 - Multiple tax calculations (CGST, SGST, IGST)
 - Discount support
@@ -623,30 +650,35 @@ billing-solutions/
 - Share via WhatsApp
 
 ### 2. Product Management
+
 - Product catalog with categories
 - Stock tracking
 - HSN code support
 - GST rates per product
 
 ### 3. Customer Management
+
 - Customer database
 - GSTIN tracking
 - Contact information
 - Purchase history
 
 ### 4. Employee Management
+
 - Employee login system
 - Store-based access
 - Attendance tracking
 - Role-based permissions
 
 ### 5. Reports & Analytics
+
 - Sales reports
 - Inventory reports
 - Tax reports
 - Dashboard analytics
 
 ### 6. Offline Support
+
 - Full offline functionality
 - Background sync
 - Service worker caching
@@ -659,18 +691,21 @@ billing-solutions/
 ### Implemented Security Measures
 
 1. **Session Security**
+
    - ✅ HMAC-SHA256 signatures
    - ✅ Server time validation
    - ✅ Signature verification on every read
    - ✅ Auto-logout on tampering detection
 
 2. **License Protection**
+
    - ✅ Device-bound licensing
    - ✅ MAC address binding
    - ✅ Expiry validation
    - ✅ Revocation support
 
 3. **Data Integrity**
+
    - ✅ Cryptographic signatures
    - ✅ Validation on read/write
    - ✅ Anomaly detection
@@ -778,6 +813,7 @@ NEXT_PUBLIC_SESSION_DURATION_MS=86400000
 ### Database Mode
 
 The app supports two modes:
+
 - **IndexedDB Mode**: Fully offline, no Supabase
 - **Supabase Mode**: Online sync with Supabase
 
@@ -812,6 +848,7 @@ Proprietary - All rights reserved
 ## 🆘 Support
 
 For issues or questions:
+
 - Create an issue in the repository
 - Contact the development team
 
@@ -819,4 +856,3 @@ For issues or questions:
 
 **Last Updated**: 2024
 **Version**: 0.1.0
-

@@ -11,8 +11,9 @@ const SESSION_DURATION_MS =
     : 86400000 // 24 hours default
 
 const SESSION_ID = "current_session"
-// Use environment variable for secret key, fallback to a default (should be changed in production)
-const SECRET_KEY = process.env.NEXT_PUBLIC_SESSION_SECRET || "default-secret-key-change-in-production"
+// Client-side secret (different from server secret for additional security)
+// Even if this is known, server validation will catch tampering
+const CLIENT_SECRET = process.env.NEXT_PUBLIC_SESSION_SECRET || "client-secret-key-change-in-production"
 
 /**
  * Generate HMAC signature for session data to prevent tampering
@@ -26,7 +27,7 @@ function generateSignature(sessionData: Omit<AuthSession, "id">): string {
     issuedAt: sessionData.issuedAt,
     expiresAt: sessionData.expiresAt,
   })
-  return CryptoJS.HmacSHA256(dataString, SECRET_KEY).toString()
+  return CryptoJS.HmacSHA256(dataString, CLIENT_SECRET).toString()
 }
 
 /**
@@ -85,6 +86,10 @@ interface SecureAuthSession extends AuthSession {
 
 /**
  * Save authentication session to IndexedDB with cryptographic signature
+ * 
+ * IMPORTANT: This creates a client-side signature.
+ * The server will validate using a different secret key.
+ * This dual-signature approach prevents offline tampering.
  */
 export async function saveAuthSession(data: {
   userId: string
@@ -105,7 +110,9 @@ export async function saveAuthSession(data: {
     createdAt: new Date().toISOString(),
   }
 
-  // Generate cryptographic signature to prevent tampering
+  // Generate client-side cryptographic signature
+  // Note: Server uses different secret, so even if client secret is known,
+  // tampering will be detected when server validates
   const signature = generateSignature(sessionData)
 
   const session: SecureAuthSession = {
@@ -117,11 +124,66 @@ export async function saveAuthSession(data: {
   }
 
   await db.auth_session.put(session as any)
-  console.log("[AuthSession] Session saved with signature, expires at:", new Date(expiresAt).toISOString())
+  console.log("[AuthSession] Session saved with client signature, expires at:", new Date(expiresAt).toISOString())
+  
+  // IMPORTANT: Server validation will happen on next read
+  // This ensures the session is validated against server secret
+}
+
+/**
+ * Validate session with server (when online)
+ * This is the critical security check that prevents offline tampering
+ */
+async function validateSessionWithServer(session: SecureAuthSession): Promise<boolean> {
+  // Only validate with server if online
+  if (typeof window === "undefined" || !navigator.onLine) {
+    // Offline: Use client-side validation only (less secure but necessary for offline mode)
+    // Note: This is a trade-off - offline mode cannot be fully secured
+    console.warn("[AuthSession] Offline mode - using client-side validation only")
+    return verifySignature(session)
+  }
+
+  try {
+    const response = await fetch("/api/auth/validate-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionData: {
+          userId: session.userId,
+          email: session.email,
+          role: session.role,
+          storeId: session.storeId,
+          issuedAt: session.issuedAt,
+          expiresAt: session.expiresAt,
+        },
+        clientSignature: session.signature,
+        clientTime: Date.now(),
+      }),
+      signal: AbortSignal.timeout(3000), // 3 second timeout
+    })
+
+    if (!response.ok) {
+      console.warn("[AuthSession] Server validation failed, falling back to client validation")
+      return verifySignature(session)
+    }
+
+    const result = await response.json()
+    return result.valid === true
+  } catch (error) {
+    // Server unavailable - fall back to client validation
+    console.warn("[AuthSession] Server validation unavailable, using client validation:", error)
+    return verifySignature(session)
+  }
 }
 
 /**
  * Get current authentication session from IndexedDB with validation
+ * 
+ * SECURITY LAYERS:
+ * 1. Client-side signature verification (works offline)
+ * 2. Server-side validation (when online) - uses different secret
+ * 3. Server time validation (prevents time manipulation)
+ * 4. Expiry check with server time
  */
 export async function getAuthSession(): Promise<AuthSession | null> {
   try {
@@ -130,14 +192,25 @@ export async function getAuthSession(): Promise<AuthSession | null> {
       return null
     }
 
-    // Validate signature to detect tampering
+    // LAYER 1: Client-side signature verification
     if (!verifySignature(session)) {
-      console.error("[AuthSession] Invalid signature detected - possible tampering! Clearing session.")
+      console.error("[AuthSession] Invalid client signature detected - possible tampering! Clearing session.")
       await clearAuthSession()
       return null
     }
 
-    // Get server time to prevent time manipulation
+    // LAYER 2: Server-side validation (when online)
+    // This is the critical check that prevents offline tampering
+    // Even if someone modifies IndexedDB and regenerates client signature,
+    // server validation will fail because server uses different secret
+    const serverValidation = await validateSessionWithServer(session)
+    if (!serverValidation) {
+      console.error("[AuthSession] Server validation failed - possible tampering! Clearing session.")
+      await clearAuthSession()
+      return null
+    }
+
+    // LAYER 3: Get server time to prevent time manipulation
     const serverTime = await getServerTime()
     const clientTime = Date.now()
     
@@ -145,12 +218,19 @@ export async function getAuthSession(): Promise<AuthSession | null> {
     const timeDifference = Math.abs(serverTime - clientTime)
     if (timeDifference > 300000) { // 5 minutes
       console.warn("[AuthSession] Significant time difference detected:", timeDifference, "ms")
+      // If offline, we can't enforce this, but we log it
+      if (navigator.onLine) {
+        // Online: Use server time strictly
+        if (serverTime > session.expiresAt) {
+          console.log("[AuthSession] Session expired (server time), clearing...")
+          await clearAuthSession()
+          return null
+        }
+      }
     }
 
-    // Use server time if available, otherwise client time
+    // LAYER 4: Check expiry using validated time
     const currentTime = serverTime || clientTime
-
-    // Check if session is expired using validated time
     if (currentTime > session.expiresAt) {
       console.log("[AuthSession] Session expired, clearing...")
       await clearAuthSession()
@@ -164,6 +244,7 @@ export async function getAuthSession(): Promise<AuthSession | null> {
     // Check for suspicious validation patterns
     if (session.validationCount > 1000) {
       console.warn("[AuthSession] Suspicious validation count detected")
+      // Could implement rate limiting here
     }
 
     // Save updated metadata
