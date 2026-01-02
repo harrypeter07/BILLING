@@ -58,7 +58,7 @@ Thank you for your business! 🙏`
   return message
 }
 
-import { copyPDFToClipboard, downloadPDF, checkClipboardSupport } from './clipboard-pdf'
+import { copyPDFToClipboard, downloadPDF, checkClipboardSupportSync } from './clipboard-pdf'
 
 /**
  * Share invoice on WhatsApp with PDF (if available)
@@ -145,6 +145,6 @@ export async function shareOnWhatsApp(
  * Check if clipboard copy is supported (with comprehensive detection)
  */
 export function isClipboardCopySupported(): boolean {
-  const support = checkClipboardSupport()
+  const support = checkClipboardSupportSync()
   return support.supportsPDFClipboard
 }

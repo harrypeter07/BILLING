@@ -28,6 +28,9 @@ export default function InvoiceDetailPageClient() {
   const [settings, setSettings] = useState<any>(null)
   const [storeName, setStoreName] = useState<string>("Business")
   const [isTestingCopy, setIsTestingCopy] = useState(false)
+  
+  // Request clipboard permission in advance
+  const clipboardPermission = useClipboardPermission(true)
 
   // Extract invoice, items, and customer from the hook data
   const invoice = invoiceData
@@ -197,10 +200,8 @@ export default function InvoiceDetailPageClient() {
       const pdfBlob = await generateMiniInvoicePDF(pdfData)
       const fileName = `Invoice-${invoice.invoice_number}.pdf`
 
-      // Log clipboard support for debugging
-      const support = logClipboardSupport()
-
       // Try to copy to clipboard with comprehensive error handling
+      // This will automatically request permission if needed
       const clipboardResult = await copyPDFToClipboard(pdfBlob)
 
       // Always download as well (as backup)

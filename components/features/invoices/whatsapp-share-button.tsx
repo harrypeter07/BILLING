@@ -32,6 +32,9 @@ export function WhatsAppShareButton({
   const { toast } = useToast()
   const [isOnline, setIsOnline] = useState(true)
   const [isSharing, setIsSharing] = useState(false)
+  
+  // Request clipboard permission in advance
+  const clipboardPermission = useClipboardPermission(true)
 
   useEffect(() => {
     // Check initial online status

@@ -8,9 +8,11 @@ interface ClipboardSupportInfo {
   hasNavigatorClipboard: boolean
   hasClipboardWrite: boolean
   hasClipboardItem: boolean
+  hasPermissionsAPI: boolean
   browserName: string
   userAgent: string
   supportsPDFClipboard: boolean
+  permissionStatus?: PermissionState
 }
 
 /**
@@ -29,9 +31,29 @@ function detectBrowser(): string {
 }
 
 /**
+ * Check clipboard permission status using Permissions API
+ */
+async function checkClipboardPermission(): Promise<PermissionState | undefined> {
+  if (typeof window === 'undefined' || !('permissions' in navigator)) {
+    return undefined
+  }
+
+  try {
+    // Query clipboard-write permission
+    const result = await navigator.permissions.query({ name: 'clipboard-write' as PermissionName })
+    return result.state
+  } catch (error) {
+    // Some browsers don't support clipboard-write permission query
+    // This is okay - clipboard.write usually works without explicit permission in secure contexts
+    console.log('[ClipboardPDF] Permissions API query not supported or failed:', error)
+    return undefined
+  }
+}
+
+/**
  * Check clipboard support comprehensively
  */
-export function checkClipboardSupport(): ClipboardSupportInfo {
+export async function checkClipboardSupport(): Promise<ClipboardSupportInfo> {
   // Only run on client side
   if (typeof window === 'undefined') {
     return {
@@ -39,6 +61,7 @@ export function checkClipboardSupport(): ClipboardSupportInfo {
       hasNavigatorClipboard: false,
       hasClipboardWrite: false,
       hasClipboardItem: false,
+      hasPermissionsAPI: false,
       browserName: 'Unknown (SSR)',
       userAgent: 'N/A',
       supportsPDFClipboard: false,
@@ -49,8 +72,12 @@ export function checkClipboardSupport(): ClipboardSupportInfo {
   const hasNavigatorClipboard = 'clipboard' in navigator
   const hasClipboardWrite = hasNavigatorClipboard && 'write' in navigator.clipboard
   const hasClipboardItem = 'ClipboardItem' in window
+  const hasPermissionsAPI = 'permissions' in navigator
   const browserName = detectBrowser()
   const userAgent = navigator.userAgent
+
+  // Check permission status
+  const permissionStatus = await checkClipboardPermission()
 
   // PDF clipboard support requires:
   // 1. Secure context (HTTPS or localhost)
@@ -67,6 +94,51 @@ export function checkClipboardSupport(): ClipboardSupportInfo {
     hasNavigatorClipboard,
     hasClipboardWrite,
     hasClipboardItem,
+    hasPermissionsAPI,
+    browserName,
+    userAgent,
+    supportsPDFClipboard,
+    permissionStatus,
+  }
+}
+
+/**
+ * Synchronous version for quick checks (without permission status)
+ */
+export function checkClipboardSupportSync(): Omit<ClipboardSupportInfo, 'permissionStatus'> {
+  if (typeof window === 'undefined') {
+    return {
+      isSecureContext: false,
+      hasNavigatorClipboard: false,
+      hasClipboardWrite: false,
+      hasClipboardItem: false,
+      hasPermissionsAPI: false,
+      browserName: 'Unknown (SSR)',
+      userAgent: 'N/A',
+      supportsPDFClipboard: false,
+    }
+  }
+
+  const isSecureContext = window.isSecureContext || false
+  const hasNavigatorClipboard = 'clipboard' in navigator
+  const hasClipboardWrite = hasNavigatorClipboard && 'write' in navigator.clipboard
+  const hasClipboardItem = 'ClipboardItem' in window
+  const hasPermissionsAPI = 'permissions' in navigator
+  const browserName = detectBrowser()
+  const userAgent = navigator.userAgent
+
+  const supportsPDFClipboard =
+    isSecureContext &&
+    hasNavigatorClipboard &&
+    hasClipboardWrite &&
+    hasClipboardItem
+
+  return {
+    isSecureContext,
+    hasNavigatorClipboard,
+    hasClipboardWrite,
+    hasClipboardItem,
+    hasPermissionsAPI,
     browserName,
     userAgent,
     supportsPDFClipboard,
@@ -74,10 +146,51 @@ export function checkClipboardSupport(): ClipboardSupportInfo {
 }
 
 /**
+ * Request clipboard permission in advance
+ * This function attempts to request permission before actual clipboard operations
+ */
+export async function requestClipboardPermission(): Promise<{ granted: boolean; error?: string }> {
+  if (typeof window === 'undefined') {
+    return { granted: false, error: 'Client-side only operation' }
+  }
+
+  try {
+    // Check if Permissions API is available
+    if (!('permissions' in navigator)) {
+      // Permissions API not available - clipboard.write usually works without explicit permission
+      console.log('[ClipboardPDF] Permissions API not available, but clipboard.write may still work')
+      return { granted: true } // Assume granted if we can't check
+    }
+
+    // Query current permission status
+    const result = await navigator.permissions.query({ name: 'clipboard-write' as PermissionName })
+    
+    console.log('[ClipboardPDF] Clipboard permission status:', result.state)
+    
+    if (result.state === 'granted') {
+      return { granted: true }
+    } else if (result.state === 'prompt') {
+      // Permission is prompt - we'll request it when user clicks
+      // Note: clipboard.write() itself will trigger the permission prompt
+      return { granted: true } // We'll get the prompt on actual write
+    } else if (result.state === 'denied') {
+      return { granted: false, error: 'Clipboard permission denied. Please enable it in browser settings.' }
+    }
+
+    return { granted: true }
+  } catch (error: any) {
+    // Some browsers don't support clipboard-write permission query
+    // This is okay - clipboard.write usually works without explicit permission
+    console.log('[ClipboardPDF] Permission check failed (may still work):', error?.message)
+    return { granted: true } // Assume granted if we can't check
+  }
+}
+
+/**
  * Log clipboard support information for debugging
  */
-export function logClipboardSupport(): ClipboardSupportInfo {
-  const support = checkClipboardSupport()
+export async function logClipboardSupport(): Promise<ClipboardSupportInfo> {
+  const support = await checkClipboardSupport()
   
   console.group('[ClipboardPDF] Feature Detection')
   console.log('Browser:', support.browserName)
@@ -86,6 +199,12 @@ export function logClipboardSupport(): ClipboardSupportInfo {
   console.log('navigator.clipboard exists:', support.hasNavigatorClipboard ? '✅' : '❌')
   console.log('navigator.clipboard.write exists:', support.hasClipboardWrite ? '✅' : '❌')
   console.log('ClipboardItem exists:', support.hasClipboardItem ? '✅' : '❌')
+  console.log('Permissions API available:', support.hasPermissionsAPI ? '✅' : '❌')
+  if (support.permissionStatus) {
+    console.log('Permission Status:', support.permissionStatus)
+  } else {
+    console.log('Permission Status: Not available or not queryable')
+  }
   console.log('PDF Clipboard Supported:', support.supportsPDFClipboard ? '✅' : '❌')
   console.groupEnd()
 
@@ -123,7 +242,17 @@ export async function copyPDFToClipboard(
   }
 
   // Log support information
-  const support = logClipboardSupport()
+  const support = await logClipboardSupport()
+
+  // Request permission in advance
+  const permissionResult = await requestClipboardPermission()
+  if (!permissionResult.granted) {
+    console.warn('[ClipboardPDF] Permission not granted:', permissionResult.error)
+    return {
+      success: false,
+      error: permissionResult.error || 'Clipboard permission not granted',
+    }
+  }
 
   // Check if clipboard is supported
   if (!support.supportsPDFClipboard) {
