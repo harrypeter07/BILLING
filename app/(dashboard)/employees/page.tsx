@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType, isIndexedDbMode } from "@/lib/utils/db-mode"
@@ -279,7 +280,18 @@ export default function EmployeesPage() {
                             )}
                           </TableCell>
                           <TableCell className="capitalize">{emp.role}</TableCell>
-                          <TableCell>₹{emp.salary?.toLocaleString() || "N/A"}</TableCell>
+                          <TableCell>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="truncate block max-w-[130px] cursor-help">
+                                  ₹{emp.salary?.toLocaleString() || "N/A"}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Salary: ₹{emp.salary?.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || "N/A"}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TableCell>
                           <TableCell>{emp.joining_date ? new Date(emp.joining_date).toLocaleDateString() : "N/A"}</TableCell>
                           <TableCell>
                             <Badge variant={emp.is_active ? "default" : "secondary"}>

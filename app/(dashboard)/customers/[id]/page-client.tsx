@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { Pencil, Mail, Phone, MapPin, FileText, Receipt } from "lucide-react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -187,7 +188,16 @@ export default function CustomerDetailPageClient() {
             <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{totalRevenue.toLocaleString("en-IN")}</div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="text-2xl font-bold truncate cursor-help">
+                  ₹{totalRevenue.toLocaleString("en-IN")}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Total Revenue: ₹{totalRevenue.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+              </TooltipContent>
+            </Tooltip>
           </CardContent>
         </Card>
 

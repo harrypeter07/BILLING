@@ -13,6 +13,7 @@ import { db } from "@/lib/dexie-client"
 import { useToast } from "@/hooks/use-toast"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { useEmployee } from "@/lib/hooks/use-cached-data"
 
 interface Employee {
@@ -194,7 +195,18 @@ export default function EmployeeDetailPageClient() {
                       <TableCell>
                         {inv.created_at ? new Date(inv.created_at).toLocaleDateString() : "N/A"}
                       </TableCell>
-                      <TableCell>₹{inv.total_amount?.toFixed(2) || "0.00"}</TableCell>
+                      <TableCell>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="truncate block max-w-[130px] cursor-help">
+                              ₹{inv.total_amount?.toFixed(2) || "0.00"}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Amount: ₹{inv.total_amount?.toFixed(2) || "0.00"}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

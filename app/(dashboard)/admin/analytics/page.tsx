@@ -670,8 +670,30 @@ export default function AdminAnalyticsPage() {
                           </div>
                         </TableCell>
                         <TableCell>{customer.totalInvoices}</TableCell>
-                        <TableCell className="font-semibold">₹{customer.totalSpent.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</TableCell>
-                        <TableCell>₹{customer.averageOrderValue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="font-semibold">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="truncate block max-w-[130px] cursor-help">
+                                ₹{customer.totalSpent.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Total Spent: ₹{customer.totalSpent.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                        <TableCell>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="truncate block max-w-[130px] cursor-help">
+                                ₹{customer.averageOrderValue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Average Order Value: ₹{customer.averageOrderValue.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
                         <TableCell>
                           {customer.lastInvoiceDate ? new Date(customer.lastInvoiceDate).toLocaleDateString("en-IN") : "N/A"}
                         </TableCell>
@@ -742,7 +764,18 @@ export default function AdminAnalyticsPage() {
                             {invoice.customer_email && <div className="text-sm text-muted-foreground">{invoice.customer_email}</div>}
                           </div>
                         </TableCell>
-                        <TableCell className="font-semibold">₹{invoice.total_amount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="font-semibold">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="truncate block max-w-[130px] cursor-help">
+                                ₹{invoice.total_amount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Amount: ₹{invoice.total_amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
                         <TableCell>
                           <Badge
                             variant={
@@ -793,7 +826,18 @@ export default function AdminAnalyticsPage() {
                       <TableRow key={index}>
                         <TableCell className="font-medium">{product.name}</TableCell>
                         <TableCell>{product.quantity}</TableCell>
-                        <TableCell className="font-semibold">₹{product.revenue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</TableCell>
+                        <TableCell className="font-semibold">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="truncate block max-w-[130px] cursor-help">
+                                ₹{product.revenue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Total Revenue: ₹{product.revenue.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
