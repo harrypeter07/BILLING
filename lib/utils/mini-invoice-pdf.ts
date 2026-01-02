@@ -181,8 +181,14 @@ export async function generateMiniInvoicePDF(data: InvoiceData): Promise<Blob> {
   doc.text("Thank you for your business!", pageWidth / 2, yPosition + 4, { align: "center" })
   doc.text("Visit us again!", pageWidth / 2, yPosition + 6, { align: "center" })
 
-  // Convert to blob
+  // Convert to blob and ensure correct MIME type
   const pdfBlob = doc.output('blob')
+  
+  // Ensure the blob has the correct MIME type (jsPDF should set this, but we normalize it)
+  if (pdfBlob.type !== 'application/pdf') {
+    return new Blob([pdfBlob], { type: 'application/pdf' })
+  }
+  
   return pdfBlob
 }
 

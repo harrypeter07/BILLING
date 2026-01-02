@@ -13,6 +13,7 @@ import { InvoicePrint } from "@/components/features/invoices/invoice-print"
 import { WhatsAppShareButton } from "@/components/features/invoices/whatsapp-share-button"
 import { useToast } from "@/hooks/use-toast"
 import { generateMiniInvoicePDF } from "@/lib/utils/mini-invoice-pdf"
+import { copyPDFToClipboard, downloadPDF, logClipboardSupport } from "@/lib/utils/clipboard-pdf"
 import { useInvoice } from "@/lib/hooks/use-cached-data"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
@@ -196,50 +197,30 @@ export default function InvoiceDetailPageClient() {
       const pdfBlob = await generateMiniInvoicePDF(pdfData)
       const fileName = `Invoice-${invoice.invoice_number}.pdf`
 
-      // Try to copy to clipboard
-      let clipboardSuccess = false
-      try {
-        if ('ClipboardItem' in window && 'clipboard' in navigator && 'write' in navigator.clipboard) {
-          const clipboardItem = new ClipboardItem({
-            'application/pdf': pdfBlob,
-          })
-          await navigator.clipboard.write([clipboardItem])
-          console.log('[TestPDFCopy] PDF copied to clipboard successfully')
-          clipboardSuccess = true
-        } else {
-          throw new Error('ClipboardItem not supported')
-        }
-      } catch (clipboardError) {
-        console.warn('[TestPDFCopy] Failed to copy PDF to clipboard:', clipboardError)
-      }
+      // Log clipboard support for debugging
+      const support = logClipboardSupport()
 
-      // Always download as well
-      const pdfUrl = URL.createObjectURL(pdfBlob)
-      const downloadLink = document.createElement('a')
-      downloadLink.href = pdfUrl
-      downloadLink.download = fileName
-      downloadLink.style.display = 'none'
-      document.body.appendChild(downloadLink)
-      downloadLink.click()
+      // Try to copy to clipboard with comprehensive error handling
+      const clipboardResult = await copyPDFToClipboard(pdfBlob)
 
-      // Clean up
-      setTimeout(() => {
-        document.body.removeChild(downloadLink)
-        URL.revokeObjectURL(pdfUrl)
-      }, 100)
+      // Always download as well (as backup)
+      downloadPDF(pdfBlob, fileName)
 
-      // Show success message
-      if (clipboardSuccess) {
+      // Show appropriate success/error message
+      if (clipboardResult.success) {
         toast({
           title: "✅ PDF Copied Successfully!",
           description: `PDF has been copied to clipboard and downloaded. You can paste it (Ctrl+V) anywhere.`,
           duration: 6000,
         })
       } else {
+        // Show detailed error message
+        const errorDetails = clipboardResult.error || 'Unknown error'
         toast({
           title: "PDF Downloaded",
-          description: `PDF has been downloaded. Clipboard copy is not supported in this browser.`,
-          duration: 5000,
+          description: `PDF downloaded. Clipboard copy failed: ${errorDetails}. Check console for details.`,
+          duration: 7000,
+          variant: "default",
         })
       }
     } catch (error) {
