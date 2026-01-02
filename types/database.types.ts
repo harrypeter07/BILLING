@@ -12,6 +12,7 @@ export interface Database {
           business_name: string | null
           business_gstin: string | null
           business_phone: string | null
+          business_email: string | null
           business_address: string | null
           logo_url: string | null
           theme_preference: string
@@ -25,6 +26,7 @@ export interface Database {
           business_name?: string | null
           business_gstin?: string | null
           business_phone?: string | null
+          business_email?: string | null
           business_address?: string | null
           logo_url?: string | null
           theme_preference?: string
@@ -38,6 +40,7 @@ export interface Database {
           business_name?: string | null
           business_gstin?: string | null
           business_phone?: string | null
+          business_email?: string | null
           business_address?: string | null
           logo_url?: string | null
           theme_preference?: string

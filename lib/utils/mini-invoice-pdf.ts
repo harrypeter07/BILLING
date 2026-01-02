@@ -4,7 +4,13 @@
  */
 import type { InvoiceData } from "./pdf-generator"
 
-export async function generateMiniInvoicePDF(data: InvoiceData): Promise<Blob> {
+export interface MiniInvoiceData extends InvoiceData {
+  businessEmail?: string
+  logoUrl?: string
+  servedBy?: string // Employee or admin name who generated the invoice
+}
+
+export async function generateMiniInvoicePDF(data: MiniInvoiceData): Promise<Blob> {
   // Dynamically import for client-side Next.js compatibility
   const [{ default: jsPDF }, autoTableModule] = await Promise.all([
     import("jspdf"),
@@ -55,6 +61,58 @@ export async function generateMiniInvoicePDF(data: InvoiceData): Promise<Blob> {
   doc.text("INVOICE", pageWidth / 2, 9, { align: "center" })
   
   yPosition = 17
+
+  // Logo in center (if available)
+  if (data.logoUrl) {
+    try {
+      const img = new Image()
+      img.crossOrigin = 'anonymous'
+      img.src = data.logoUrl
+      
+      await new Promise((resolve, reject) => {
+        img.onload = () => {
+          try {
+            // Logo size: 20mm x 20mm in center
+            const logoSize = 20
+            const logoX = (pageWidth - logoSize) / 2
+            const logoY = yPosition
+            
+            // Calculate aspect ratio
+            const aspectRatio = img.width / img.height
+            let logoWidth = logoSize
+            let logoHeight = logoSize / aspectRatio
+            
+            if (logoHeight > logoSize) {
+              logoHeight = logoSize
+              logoWidth = logoSize * aspectRatio
+            }
+            
+            doc.addImage(
+              img,
+              'PNG',
+              logoX,
+              logoY,
+              logoWidth,
+              logoHeight
+            )
+            yPosition += logoHeight + 3
+            resolve(true)
+          } catch (error) {
+            console.warn("[MiniPDF] Error adding logo:", error)
+            resolve(false)
+          }
+        }
+        img.onerror = () => {
+          console.warn("[MiniPDF] Failed to load logo image")
+          resolve(false)
+        }
+        // Timeout after 3 seconds
+        setTimeout(() => resolve(false), 3000)
+      })
+    } catch (error) {
+      console.warn("[MiniPDF] Logo loading error:", error)
+    }
+  }
 
   // Business Name - colorful accent with border
   doc.setFillColor(...primaryColor)
@@ -198,8 +256,17 @@ export async function generateMiniInvoicePDF(data: InvoiceData): Promise<Blob> {
   doc.text("TOTAL:", 4, yPosition + 2)
   doc.text(`₹${data.totalAmount.toFixed(2)}`, pageWidth - 4, yPosition + 2, { align: "right" })
 
+  // Served By Section (before footer)
+  yPosition = pageHeight - 18
+  if (data.servedBy) {
+    doc.setTextColor(...textColor)
+    doc.setFontSize(6.5)
+    doc.setFont(undefined, 'normal')
+    doc.text(`Served by: ${data.servedBy}`, pageWidth / 2, yPosition, { align: "center" })
+    yPosition += 4
+  }
+
   // Footer - elegant thank you message
-  yPosition = pageHeight - 10
   doc.setFillColor(...lightBg)
   doc.setDrawColor(...borderColor)
   doc.setLineWidth(0.2)

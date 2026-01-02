@@ -82,7 +82,7 @@ async function getServerTime(): Promise<number> {
 				return serverTimeCache.time + age;
 			}
 		}
-		
+
 		// Cache expired or doesn't exist - fetch once, then use client time
 		// We only need server time occasionally to detect time manipulation
 		try {
@@ -111,7 +111,7 @@ async function getServerTime(): Promise<number> {
 		// Use client time (we have clock when online)
 		return Date.now();
 	}
-	
+
 	// Offline: Use client time
 	return Date.now();
 }
@@ -428,11 +428,11 @@ async function validateSessionWithServer(
 						await db.auth_session.put(session as any);
 						console.log("[AuthSession] Server signature updated");
 					}
-					
+
 					// Also validate offline signature for integrity
 					return validateServerSignatureOffline(session);
 				}
-				
+
 				// Server validation failed - clear cache
 				serverValidationCache = null;
 				return false;
@@ -540,7 +540,7 @@ export async function getAuthSession(): Promise<AuthSession | null> {
 		// Server time is only fetched occasionally to detect time manipulation
 		// This reduces API calls significantly
 		const clientTime = Date.now();
-		
+
 		// Only check server time occasionally (every 30 seconds) when online
 		// This reduces API calls while still detecting time manipulation
 		let currentTime = clientTime;
@@ -548,7 +548,7 @@ export async function getAuthSession(): Promise<AuthSession | null> {
 			// Check server time only if cache is old (reduces API calls)
 			const serverTime = await getServerTime();
 			const timeDifference = Math.abs(serverTime - clientTime);
-			
+
 			// Check for significant time manipulation (> 5 minutes difference)
 			if (timeDifference > 300000) {
 				// 5 minutes

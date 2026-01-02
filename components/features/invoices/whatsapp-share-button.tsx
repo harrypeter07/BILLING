@@ -6,6 +6,8 @@ import { MessageCircle, WifiOff } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { generateWhatsAppBillMessage, shareOnWhatsApp, type MiniBillData } from "@/lib/utils/whatsapp-bill"
 import { generateMiniInvoicePDF } from "@/lib/utils/mini-invoice-pdf"
+import { getServedByName } from "@/lib/utils/get-served-by"
+import { createClient } from "@/lib/supabase/client"
 
 interface WhatsAppShareButtonProps {
   invoice: {
@@ -13,14 +15,40 @@ interface WhatsAppShareButtonProps {
     invoice_number: string
     invoice_date: string
     total_amount: number
+    created_by_employee_id?: string
+    employee_id?: string
+    user_id?: string
+    is_gst_invoice?: boolean
+    subtotal?: number
+    cgst_amount?: number
+    sgst_amount?: number
+    igst_amount?: number
   }
   items: Array<{
     description: string
     quantity: number
     unit_price: number
+    discount_percent?: number
+    gst_rate?: number
+    line_total?: number
+    gst_amount?: number
   }>
   storeName: string
   invoiceLink: string
+  customer?: {
+    name?: string
+    email?: string
+    phone?: string
+    gstin?: string
+  }
+  profile?: {
+    business_name?: string
+    business_gstin?: string
+    business_address?: string
+    business_phone?: string
+    business_email?: string
+    logo_url?: string
+  }
 }
 
 export function WhatsAppShareButton({
@@ -28,6 +56,8 @@ export function WhatsAppShareButton({
   items,
   storeName,
   invoiceLink,
+  customer,
+  profile,
 }: WhatsAppShareButtonProps) {
   const { toast } = useToast()
   const [isOnline, setIsOnline] = useState(true)
@@ -80,37 +110,73 @@ export function WhatsAppShareButton({
       // Generate WhatsApp message
       const message = generateWhatsAppBillMessage(miniBillData)
 
+      // Get served by name
+      const servedBy = await getServedByName(invoice)
+
+      // Get profile if not provided
+      let businessProfile = profile
+      if (!businessProfile) {
+        try {
+          const supabase = createClient()
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            const { data: prof } = await supabase
+              .from("user_profiles")
+              .select("*")
+              .eq("id", user.id)
+              .single()
+            if (prof) {
+              businessProfile = prof
+            }
+          }
+        } catch (err) {
+          console.warn("[WhatsAppShare] Failed to fetch profile:", err)
+        }
+      }
+
       // Generate and download mini invoice PDF
       try {
         const pdfData = {
           invoiceNumber: invoice.invoice_number,
           invoiceDate: invoice.invoice_date,
-          customerName: "",
-          customerEmail: "",
-          customerPhone: "",
-          customerGSTIN: "",
-          businessName: storeName || "Business",
-          businessGSTIN: "",
-          businessAddress: "",
-          businessPhone: "",
+          customerName: customer?.name || "",
+          customerEmail: customer?.email || "",
+          customerPhone: customer?.phone || "",
+          customerGSTIN: customer?.gstin || "",
+          businessName: businessProfile?.business_name || storeName || "Business",
+          businessGSTIN: businessProfile?.business_gstin || "",
+          businessAddress: businessProfile?.business_address || "",
+          businessPhone: businessProfile?.business_phone || "",
+          businessEmail: businessProfile?.business_email || "",
+          logoUrl: businessProfile?.logo_url || "",
+          servedBy: servedBy,
           items: items.map((item) => {
-            const lineTotal = item.quantity * item.unit_price
+            const quantity = Number(item.quantity) || 0
+            const unitPrice = Number(item.unit_price) || 0
+            const discountPercent = Number(item.discount_percent || 0)
+            const gstRate = Number(item.gst_rate || 0)
+            const baseAmount = quantity * unitPrice * (1 - discountPercent / 100)
+            const gstAmount = (invoice.is_gst_invoice) 
+              ? (baseAmount * gstRate) / 100 
+              : Number(item.gst_amount || 0)
+            const lineTotal = Number(item.line_total || (baseAmount + gstAmount))
+            
             return {
               description: item.description,
-              quantity: item.quantity,
-              unitPrice: item.unit_price,
-              discountPercent: 0,
-              gstRate: 0,
+              quantity: quantity,
+              unitPrice: unitPrice,
+              discountPercent: discountPercent,
+              gstRate: gstRate,
               lineTotal: lineTotal,
-              gstAmount: 0,
+              gstAmount: gstAmount,
             }
           }),
-          subtotal: invoice.total_amount,
-          cgstAmount: 0,
-          sgstAmount: 0,
-          igstAmount: 0,
-          totalAmount: invoice.total_amount,
-          isGstInvoice: false,
+          subtotal: Number(invoice.subtotal || invoice.total_amount) || 0,
+          cgstAmount: Number(invoice.cgst_amount || 0),
+          sgstAmount: Number(invoice.sgst_amount || 0),
+          igstAmount: Number(invoice.igst_amount || 0),
+          totalAmount: Number(invoice.total_amount) || 0,
+          isGstInvoice: invoice.is_gst_invoice || false,
         }
 
         const pdfBlob = await generateMiniInvoicePDF(pdfData)

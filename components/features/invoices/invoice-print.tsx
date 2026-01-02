@@ -2,9 +2,16 @@
 
 import { Button } from "@/components/ui/button"
 import { Printer } from "lucide-react"
-import { generateInvoicePDF } from "@/lib/utils/pdf-generator"
+import { generateA4InvoicePDF } from "@/lib/utils/pdf-generator-a4"
 import { useToast } from "@/hooks/use-toast"
 import { useState } from "react"
+import { getServedByName } from "@/lib/utils/get-served-by"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 
 interface InvoicePrintProps {
   invoiceId: string
@@ -15,6 +22,7 @@ interface InvoicePrintProps {
 export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoicePrintProps) {
   const { toast } = useToast()
   const [isGenerating, setIsGenerating] = useState(false)
+  const [format, setFormat] = useState<"a4" | "mini">("a4")
 
   const handlePrint = async () => {
     setIsGenerating(true)
@@ -95,30 +103,95 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
         throw new Error("No items found for invoice")
       }
 
-      // Generate PDF
+      // Get served by name
+      const servedBy = await getServedByName(invoice)
+
+      // Generate PDF based on format
       try {
-        await generateInvoicePDF({
-          invoiceNumber: invoice.invoice_number || invoiceNumber,
-          invoiceDate: invoice.invoice_date || invoice.invoiceDate || new Date().toISOString(),
-          dueDate: invoice.due_date || invoice.dueDate,
-          customerName: customer?.name,
-          customerEmail: customer?.email,
-          customerPhone: customer?.phone,
-          customerGSTIN: customer?.gstin,
-          businessName: profile?.business_name || "Business",
-          businessGSTIN: profile?.business_gstin,
-          businessAddress: profile?.business_address,
-          businessPhone: profile?.business_phone,
-          items: items || [],
-          subtotal: Number(invoice.subtotal) || 0,
-          cgstAmount: Number(invoice.cgst_amount || invoice.cgstAmount) || 0,
-          sgstAmount: Number(invoice.sgst_amount || invoice.sgstAmount) || 0,
-          igstAmount: Number(invoice.igst_amount || invoice.igstAmount) || 0,
-          totalAmount: Number(invoice.total_amount || invoice.totalAmount) || 0,
-          notes: invoice.notes,
-          terms: invoice.terms,
-          isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
-        })
+        if (format === "a4") {
+          const pdfBlob = await generateA4InvoicePDF({
+            invoiceNumber: invoice.invoice_number || invoiceNumber,
+            invoiceDate: invoice.invoice_date || invoice.invoiceDate || new Date().toISOString(),
+            dueDate: invoice.due_date || invoice.dueDate,
+            customerName: customer?.name,
+            customerEmail: customer?.email,
+            customerPhone: customer?.phone,
+            customerGSTIN: customer?.gstin,
+            businessName: profile?.business_name || "Business",
+            businessGSTIN: profile?.business_gstin,
+            businessAddress: profile?.business_address,
+            businessPhone: profile?.business_phone,
+            businessEmail: profile?.business_email,
+            logoUrl: profile?.logo_url,
+            servedBy: servedBy,
+            items: items || [],
+            subtotal: Number(invoice.subtotal) || 0,
+            cgstAmount: Number(invoice.cgst_amount || invoice.cgstAmount) || 0,
+            sgstAmount: Number(invoice.sgst_amount || invoice.sgstAmount) || 0,
+            igstAmount: Number(invoice.igst_amount || invoice.igstAmount) || 0,
+            totalAmount: Number(invoice.total_amount || invoice.totalAmount) || 0,
+            notes: invoice.notes,
+            terms: invoice.terms,
+            isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
+          })
+          
+          // Open PDF in new window for printing
+          const url = URL.createObjectURL(pdfBlob)
+          const printWindow = window.open(url, '_blank')
+          if (printWindow) {
+            printWindow.onload = () => {
+              printWindow.print()
+            }
+          } else {
+            // Fallback: download
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `Invoice-${invoice.invoice_number || invoiceNumber}-A4.pdf`
+            a.click()
+            URL.revokeObjectURL(url)
+          }
+        } else {
+          // Mini format - import dynamically
+          const { generateMiniInvoicePDF } = await import("@/lib/utils/mini-invoice-pdf")
+          const pdfBlob = await generateMiniInvoicePDF({
+            invoiceNumber: invoice.invoice_number || invoiceNumber,
+            invoiceDate: invoice.invoice_date || invoice.invoiceDate || new Date().toISOString(),
+            customerName: customer?.name,
+            customerEmail: customer?.email,
+            customerPhone: customer?.phone,
+            customerGSTIN: customer?.gstin,
+            businessName: profile?.business_name || "Business",
+            businessGSTIN: profile?.business_gstin,
+            businessAddress: profile?.business_address,
+            businessPhone: profile?.business_phone,
+            businessEmail: profile?.business_email,
+            logoUrl: profile?.logo_url,
+            servedBy: servedBy,
+            items: items || [],
+            subtotal: Number(invoice.subtotal) || 0,
+            cgstAmount: Number(invoice.cgst_amount || invoice.cgstAmount) || 0,
+            sgstAmount: Number(invoice.sgst_amount || invoice.sgstAmount) || 0,
+            igstAmount: Number(invoice.igst_amount || invoice.igstAmount) || 0,
+            totalAmount: Number(invoice.total_amount || invoice.totalAmount) || 0,
+            isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
+          })
+          
+          // Open PDF in new window for printing
+          const url = URL.createObjectURL(pdfBlob)
+          const printWindow = window.open(url, '_blank')
+          if (printWindow) {
+            printWindow.onload = () => {
+              printWindow.print()
+            }
+          } else {
+            // Fallback: download
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `Invoice-${invoice.invoice_number || invoiceNumber}-Mini.pdf`
+            a.click()
+            URL.revokeObjectURL(url)
+          }
+        }
       } catch (pdfError: any) {
         console.error("[InvoicePrint] PDF generation error:", pdfError)
         throw new Error(`PDF generation failed: ${pdfError?.message || pdfError}`)
@@ -126,13 +199,8 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
 
       toast({
         title: "Success",
-        description: "Invoice PDF generated. Opening print dialog...",
+        description: `Invoice PDF (${format.toUpperCase()}) generated. Opening print dialog...`,
       })
-
-      // Trigger print dialog after a short delay
-      setTimeout(() => {
-        window.print()
-      }, 500)
     } catch (error: any) {
       console.error("[InvoicePrint] Print process error:", {
         error: error,
@@ -150,15 +218,36 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
   }
 
   return (
-    <Button 
-      onClick={handlePrint} 
-      variant="outline" 
-      disabled={isGenerating}
-      className="gap-2"
-    >
-      <Printer className="h-4 w-4" />
-      {isGenerating ? "Generating..." : "Print Invoice"}
-    </Button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button 
+          variant="outline" 
+          disabled={isGenerating}
+          className="gap-2"
+        >
+          <Printer className="h-4 w-4" />
+          {isGenerating ? "Generating..." : "Print Invoice"}
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem 
+          onClick={() => {
+            setFormat("a4")
+            handlePrint()
+          }}
+        >
+          Print A4 Size
+        </DropdownMenuItem>
+        <DropdownMenuItem 
+          onClick={() => {
+            setFormat("mini")
+            handlePrint()
+          }}
+        >
+          Print Mini Bill
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 

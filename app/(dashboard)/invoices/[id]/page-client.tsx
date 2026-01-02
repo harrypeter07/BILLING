@@ -17,6 +17,7 @@ import { useInvoice } from "@/lib/hooks/use-cached-data"
 import { db } from "@/lib/dexie-client"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { createClient } from "@/lib/supabase/client"
+import { getServedByName } from "@/lib/utils/get-served-by"
 
 export default function InvoiceDetailPageClient() {
   const params = useParams()
@@ -27,6 +28,7 @@ export default function InvoiceDetailPageClient() {
   const [settings, setSettings] = useState<any>(null)
   const [storeName, setStoreName] = useState<string>("Business")
   const [isSharingPDF, setIsSharingPDF] = useState(false)
+  const [profile, setProfile] = useState<any>(null)
 
   // Extract invoice, items, and customer from the hook data
   const invoice = invoiceData
@@ -95,7 +97,7 @@ export default function InvoiceDetailPageClient() {
     }
   }, [error, toast])
 
-  // Fetch business settings for printing
+  // Fetch business settings for printing and sharing
   useEffect(() => {
     const fetchSettings = async () => {
       try {
@@ -103,6 +105,7 @@ export default function InvoiceDetailPageClient() {
         const data = await response.json()
         if (data.profile) {
           setSettings(data.profile)
+          setProfile(data.profile)
         }
       } catch (err) {
         console.warn("Failed to fetch business settings:", err)
@@ -187,6 +190,30 @@ export default function InvoiceDetailPageClient() {
         }
       }
 
+      // Get served by name
+      const servedBy = await getServedByName(invoice)
+
+      // Get profile/logo if not already loaded
+      let businessProfile = profile
+      if (!businessProfile) {
+        try {
+          const supabase = createClient()
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            const { data: prof } = await supabase
+              .from("user_profiles")
+              .select("*")
+              .eq("id", user.id)
+              .single()
+            if (prof) {
+              businessProfile = prof
+            }
+          }
+        } catch (err) {
+          console.warn("[SharePDF] Failed to fetch profile:", err)
+        }
+      }
+
       // Prepare PDF data from IndexedDB
       const pdfData = {
         invoiceNumber: invoice.invoice_number || "N/A",
@@ -195,10 +222,13 @@ export default function InvoiceDetailPageClient() {
         customerEmail: fullCustomer?.email || "",
         customerPhone: fullCustomer?.phone || "",
         customerGSTIN: fullCustomer?.gstin || "",
-        businessName: store?.name || storeName || "Business",
-        businessGSTIN: store?.gstin || "",
-        businessAddress: store?.address || "",
-        businessPhone: store?.phone || "",
+        businessName: store?.name || storeName || businessProfile?.business_name || "Business",
+        businessGSTIN: store?.gstin || businessProfile?.business_gstin || "",
+        businessAddress: store?.address || businessProfile?.business_address || "",
+        businessPhone: store?.phone || businessProfile?.business_phone || "",
+        businessEmail: businessProfile?.business_email || "",
+        logoUrl: businessProfile?.logo_url || "",
+        servedBy: servedBy,
         items: items.map((item: any) => {
           const quantity = Number(item.quantity) || 0
           const unitPrice = Number(item.unit_price || item.unitPrice) || 0
@@ -228,7 +258,7 @@ export default function InvoiceDetailPageClient() {
         isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
       }
 
-      // Generate PDF from IndexedDB data
+      // Generate PDF from IndexedDB data (mini format for sharing)
       const pdfBlob = await generateMiniInvoicePDF(pdfData)
 
       // Get invoice number and business name for file naming and sharing
@@ -323,14 +353,28 @@ export default function InvoiceDetailPageClient() {
               invoice_number: invoice.invoice_number,
               invoice_date: invoice.invoice_date,
               total_amount: invoice.total_amount,
+              created_by_employee_id: invoice.created_by_employee_id,
+              employee_id: invoice.employee_id,
+              user_id: invoice.user_id,
+              is_gst_invoice: invoice.is_gst_invoice,
+              subtotal: invoice.subtotal,
+              cgst_amount: invoice.cgst_amount,
+              sgst_amount: invoice.sgst_amount,
+              igst_amount: invoice.igst_amount,
             }}
             items={items.map((item: any) => ({
               description: item.description,
               quantity: item.quantity,
               unit_price: item.unit_price,
+              discount_percent: item.discount_percent,
+              gst_rate: item.gst_rate,
+              line_total: item.line_total,
+              gst_amount: item.gst_amount,
             }))}
             storeName={storeName}
             invoiceLink={`${typeof window !== 'undefined' ? window.location.origin : ''}/i/${invoice.id}`}
+            customer={customer}
+            profile={profile}
           />
           <InvoicePrint
             invoiceId={invoiceId}

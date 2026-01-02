@@ -9,14 +9,19 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
+import { Upload, X, Image as ImageIcon } from "lucide-react"
 
 export default function BusinessSettingsPage() {
   const [loading, setLoading] = useState(false)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [logoPreview, setLogoPreview] = useState<string | null>(null)
   const [businessData, setBusinessData] = useState({
     business_name: "",
     business_gstin: "",
     business_phone: "",
+    business_email: "",
     business_address: "",
+    logo_url: "",
   })
   const [invoiceSettings, setInvoiceSettings] = useState({
     invoice_prefix: "INV",
@@ -45,8 +50,13 @@ export default function BusinessSettingsPage() {
           business_name: profile.business_name || "",
           business_gstin: profile.business_gstin || "",
           business_phone: profile.business_phone || "",
+          business_email: profile.business_email || "",
           business_address: profile.business_address || "",
+          logo_url: profile.logo_url || "",
         })
+        if (profile.logo_url) {
+          setLogoPreview(profile.logo_url)
+        }
       }
 
       const { data: settings } = await supabase.from("business_settings").select("*").eq("user_id", user.id).single()
@@ -75,6 +85,95 @@ export default function BusinessSettingsPage() {
       ...prev,
       [name]: name === "next_invoice_number" || name === "default_due_days" ? Number.parseInt(value) : value,
     }))
+  }
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast({ title: "Error", description: "Please upload an image file", variant: "destructive" })
+      return
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast({ title: "Error", description: "Image size should be less than 2MB", variant: "destructive" })
+      return
+    }
+
+    setUploadingLogo(true)
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
+
+      // Convert to base64 for storage (works offline too)
+      const reader = new FileReader()
+      reader.onloadend = async () => {
+        const base64String = reader.result as string
+        
+        // Try to upload to Supabase storage if online
+        let logoUrl = base64String // Default to base64
+        
+        try {
+          // Upload to Supabase storage
+          const fileExt = file.name.split('.').pop()
+          const fileName = `${user.id}/${Date.now()}.${fileExt}`
+          
+          const { error: uploadError } = await supabase.storage
+            .from('logos')
+            .upload(fileName, file, { upsert: true })
+          
+          if (!uploadError) {
+            const { data: { publicUrl } } = supabase.storage
+              .from('logos')
+              .getPublicUrl(fileName)
+            logoUrl = publicUrl
+          }
+        } catch (storageError) {
+          console.warn("[BusinessSettings] Supabase storage unavailable, using base64:", storageError)
+          // Continue with base64
+        }
+
+        setBusinessData(prev => ({ ...prev, logo_url: logoUrl }))
+        setLogoPreview(logoUrl)
+        
+        // Save immediately
+        const { error } = await supabase.from("user_profiles").update({ logo_url: logoUrl }).eq("id", user.id)
+        if (error) throw error
+        
+        toast({ title: "Success", description: "Logo uploaded successfully" })
+      }
+      reader.onerror = () => {
+        toast({ title: "Error", description: "Failed to read image file", variant: "destructive" })
+      }
+      reader.readAsDataURL(file)
+    } catch (error: any) {
+      toast({ title: "Error", description: error.message || "Failed to upload logo", variant: "destructive" })
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  const handleRemoveLogo = async () => {
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!user) return
+
+      const { error } = await supabase.from("user_profiles").update({ logo_url: null }).eq("id", user.id)
+      if (error) throw error
+
+      setBusinessData(prev => ({ ...prev, logo_url: "" }))
+      setLogoPreview(null)
+      toast({ title: "Success", description: "Logo removed" })
+    } catch (error) {
+      toast({ title: "Error", description: "Failed to remove logo", variant: "destructive" })
+    }
   }
 
   const saveBusinessSettings = async () => {
@@ -165,6 +264,19 @@ export default function BusinessSettingsPage() {
           </div>
 
           <div>
+            <Label htmlFor="business_email">Email</Label>
+            <Input
+              id="business_email"
+              name="business_email"
+              type="email"
+              value={businessData.business_email}
+              onChange={handleBusinessChange}
+              placeholder="business@example.com"
+              className="mt-1"
+            />
+          </div>
+
+          <div>
             <Label htmlFor="business_address">Business Address</Label>
             <Input
               id="business_address"
@@ -174,6 +286,57 @@ export default function BusinessSettingsPage() {
               placeholder="123 Business Street, City, State"
               className="mt-1"
             />
+          </div>
+
+          <div>
+            <Label>Business Logo</Label>
+            <div className="mt-2 space-y-4">
+              {logoPreview && (
+                <div className="relative inline-block">
+                  <img
+                    src={logoPreview}
+                    alt="Business Logo"
+                    className="h-32 w-32 object-contain border rounded-lg p-2 bg-gray-50"
+                  />
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    className="absolute -top-2 -right-2 h-6 w-6"
+                    onClick={handleRemoveLogo}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              <div>
+                <Input
+                  id="logo_upload"
+                  type="file"
+                  accept="image/*"
+                  onChange={handleLogoUpload}
+                  disabled={uploadingLogo}
+                  className="hidden"
+                />
+                <Label htmlFor="logo_upload" className="cursor-pointer">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={uploadingLogo}
+                    className="w-full"
+                    asChild
+                  >
+                    <span>
+                      <Upload className="mr-2 h-4 w-4" />
+                      {uploadingLogo ? "Uploading..." : logoPreview ? "Change Logo" : "Upload Logo"}
+                    </span>
+                  </Button>
+                </Label>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Upload your business logo (max 2MB). Will appear on invoices.
+                </p>
+              </div>
+            </div>
           </div>
 
           <Button onClick={saveBusinessSettings} disabled={loading} className="w-full">
