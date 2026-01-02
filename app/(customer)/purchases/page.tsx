@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client"
 import { getCustomerSession } from "@/lib/utils/customer-auth"
 import { useRouter } from "next/navigation"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Eye } from "lucide-react"
@@ -131,7 +132,18 @@ export default function CustomerDashboardPage() {
                             {inv.status}
                           </span>
                         </TableCell>
-                        <TableCell className="text-right font-medium">₹{Number(inv.total_amount || 0).toLocaleString("en-IN")}</TableCell>
+                        <TableCell className="text-right font-medium">
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="truncate block max-w-[130px] cursor-help">
+                                ₹{Number(inv.total_amount || 0).toLocaleString("en-IN")}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Amount: ₹{Number(inv.total_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
                         <TableCell className="text-right">
                           <Button asChild variant="ghost" size="sm">
                             <Link href={`/invoices/${inv.id}`}>

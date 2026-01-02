@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import Link from "next/link"
 import { ArrowLeft, Printer, Share2 } from "lucide-react"
 import { InvoiceActions } from "@/components/features/invoices/invoice-actions"
@@ -481,11 +482,46 @@ export default function InvoiceDetailPageClient() {
                     <TableRow key={item.id}>
                       <TableCell>{item.description}</TableCell>
                       <TableCell>{item.quantity}</TableCell>
-                      <TableCell>₹{item.unit_price.toFixed(2)}</TableCell>
+                      <TableCell>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="truncate block max-w-[130px] cursor-help">
+                              ₹{item.unit_price.toFixed(2)}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Unit Price: ₹{item.unit_price.toFixed(2)}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableCell>
                       <TableCell>{item.discount_percent}%</TableCell>
                       {invoice.is_gst_invoice && <TableCell>{item.gst_rate}%</TableCell>}
-                      {invoice.is_gst_invoice && <TableCell>₹{item.gst_amount.toFixed(2)}</TableCell>}
-                      <TableCell>₹{item.line_total.toFixed(2)}</TableCell>
+                      {invoice.is_gst_invoice && (
+                        <TableCell>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="truncate block max-w-[130px] cursor-help">
+                                ₹{item.gst_amount.toFixed(2)}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>GST Amount: ₹{item.gst_amount.toFixed(2)}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
+                      )}
+                      <TableCell>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="truncate block max-w-[130px] cursor-help">
+                              ₹{item.line_total.toFixed(2)}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Line Total: ₹{item.line_total.toFixed(2)}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

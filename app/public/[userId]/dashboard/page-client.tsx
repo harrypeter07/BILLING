@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 
@@ -148,7 +149,18 @@ export default function PublicCustomerDashboardClient() {
                         <TableCell>
                           {invoice.due_date ? new Date(invoice.due_date).toLocaleDateString() : "-"}
                         </TableCell>
-                        <TableCell>₹{Number(invoice.total_amount || 0).toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="truncate block max-w-[130px] cursor-help">
+                                ₹{Number(invoice.total_amount || 0).toLocaleString()}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Amount: ₹{Number(invoice.total_amount || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TableCell>
                         <TableCell>
                           <Badge
                             variant={
