@@ -5,6 +5,7 @@
 ### The Problem: Offline Tampering Vulnerability
 
 **Original Issue:**
+
 - Sessions were stored in IndexedDB with only an `expiresAt` timestamp
 - Anyone could open browser DevTools → Application → IndexedDB
 - Modify `expiresAt` to a future date (e.g., year 2099)
@@ -25,28 +26,32 @@
 ### 1. Cryptographic Signatures (HMAC-SHA256)
 
 **What:**
+
 - Every session now has a cryptographic signature
 - Signature is generated from: userId, email, role, storeId, issuedAt, expiresAt
 - Any modification to these fields invalidates the signature
 
 **Why:**
+
 - **Detects Tampering**: If someone modifies `expiresAt`, the signature won't match
 - **Prevents Replay**: Signature is tied to specific session data
 - **Integrity Check**: Can verify data hasn't been changed
 
 **Implementation:**
+
 ```typescript
 // Generate signature
-const signature = HMAC-SHA256(sessionData, secretKey)
+const signature = HMAC - SHA256(sessionData, secretKey);
 
 // Verify signature
 if (signature !== expectedSignature) {
-  // Tampering detected!
-  clearSession()
+	// Tampering detected!
+	clearSession();
 }
 ```
 
 **Limitation:**
+
 - If the secret key is known, signatures can be regenerated
 - This is why we need server-side validation
 
@@ -55,16 +60,19 @@ if (signature !== expectedSignature) {
 ### 2. Server-Side Validation Endpoint
 
 **What:**
+
 - New endpoint: `/api/auth/validate-session`
 - Server uses a **different secret key** (never exposed to client)
 - Validates session on every read (when online)
 
 **Why:**
+
 - **Prevents Offline Tampering**: Even if client secret is known, server validation will fail
 - **Dual-Secret Approach**: Client and server use different secrets
 - **Authoritative Validation**: Server is the source of truth
 
 **How It Works:**
+
 ```
 Client Session (IndexedDB)
   ├─ Client Signature (using CLIENT_SECRET)
@@ -79,6 +87,7 @@ When Validating:
 ```
 
 **Key Point:**
+
 - Even if someone:
   - Modifies IndexedDB data
   - Knows the client secret key
@@ -90,16 +99,19 @@ When Validating:
 ### 3. Server Time Validation
 
 **What:**
+
 - Server provides authoritative timestamp via `/api/time`
 - Client compares server time vs client time
 - Detects time manipulation attempts
 
 **Why:**
+
 - **Prevents Clock Manipulation**: Can't change system time to extend sessions
 - **Authoritative Time**: Server time is trusted source
 - **Offline Fallback**: Uses client time when offline (less secure but necessary)
 
 **Implementation:**
+
 ```typescript
 const serverTime = await fetch("/api/time")
 const clientTime = Date.now()
@@ -121,17 +133,20 @@ if (serverTime > session.expiresAt) {
 ### 4. Multi-Layer Validation
 
 **What:**
+
 - Multiple validation checks happen in sequence
 - Each layer adds security
 - Failure at any layer = session invalid
 
 **Layers:**
+
 1. **Client Signature Check** - Detects obvious tampering
 2. **Server Validation** - Prevents offline tampering (when online)
 3. **Time Validation** - Prevents clock manipulation
 4. **Expiry Check** - Uses server time when available
 
 **Why:**
+
 - **Defense in Depth**: Multiple layers = harder to bypass
 - **Fail-Safe**: If one layer fails, others catch it
 - **Progressive Security**: More secure when online, still works offline
@@ -143,6 +158,7 @@ if (serverTime > session.expiresAt) {
 ### Online Mode (Internet Connected)
 
 ✅ **Fully Protected:**
+
 - Server-side validation prevents all tampering
 - Time manipulation detected and prevented
 - Signature tampering detected immediately
@@ -151,12 +167,14 @@ if (serverTime > session.expiresAt) {
 ### Offline Mode (No Internet)
 
 ⚠️ **Partially Protected:**
+
 - Client-side signature still works
 - Time manipulation can be detected (if server was recently accessed)
 - **Limitation**: Cannot fully prevent tampering when completely offline
 - **Trade-off**: Offline functionality requires some security compromise
 
 **Why This Trade-off:**
+
 - App needs to work offline (core requirement)
 - Server validation requires internet
 - Client-side validation is better than nothing
@@ -169,11 +187,13 @@ if (serverTime > session.expiresAt) {
 ### Scenario 1: Modify expiresAt in IndexedDB
 
 **Attack:**
+
 1. Open DevTools → IndexedDB
 2. Change `expiresAt` to future date
 3. Refresh page
 
 **Mitigation:**
+
 - ✅ Signature verification fails (data changed, signature doesn't match)
 - ✅ Server validation fails (server signature different)
 - ✅ Session cleared automatically
@@ -185,12 +205,14 @@ if (serverTime > session.expiresAt) {
 ### Scenario 2: Know Client Secret, Regenerate Signature
 
 **Attack:**
+
 1. Extract client secret from code
 2. Modify session data
 3. Regenerate signature with known secret
 4. Save to IndexedDB
 
 **Mitigation:**
+
 - ✅ Client signature passes (matches)
 - ❌ Server validation fails (server uses different secret)
 - ✅ Session rejected
@@ -204,10 +226,12 @@ if (serverTime > session.expiresAt) {
 ### Scenario 3: Change System Time
 
 **Attack:**
+
 1. Change system clock to past date
 2. Session appears valid (not expired)
 
 **Mitigation:**
+
 - ✅ Server time validation detects difference
 - ✅ Server time used for expiry check
 - ✅ Session rejected if expired by server time
@@ -219,12 +243,14 @@ if (serverTime > session.expiresAt) {
 ### Scenario 4: Offline Tampering
 
 **Attack:**
+
 1. Go offline
 2. Modify IndexedDB
 3. Regenerate signatures
 4. Use app offline
 
 **Mitigation:**
+
 - ⚠️ Client validation may pass
 - ⚠️ Server validation unavailable
 - ✅ **When user comes online**: Server validation will catch tampering
@@ -233,6 +259,7 @@ if (serverTime > session.expiresAt) {
 **Result:** ⚠️ Temporary bypass possible offline, but caught when online
 
 **Why Acceptable:**
+
 - Offline mode is a core feature
 - Complete offline security is impossible
 - Tampering is detected as soon as user comes online
@@ -245,16 +272,19 @@ if (serverTime > session.expiresAt) {
 ### Files Changed
 
 1. **`lib/utils/auth-session.ts`**
+
    - Added HMAC signature generation
    - Added server validation call
    - Added multi-layer validation
 
 2. **`app/api/auth/validate-session/route.ts`** (NEW)
+
    - Server-side validation endpoint
    - Uses server-only secret
    - Validates time and signatures
 
 3. **`app/api/time/route.ts`** (NEW)
+
    - Provides server timestamp
    - Prevents time manipulation
 
@@ -277,6 +307,7 @@ NEXT_PUBLIC_SESSION_SECRET=your-client-secret-key
 ```
 
 **Important:**
+
 - Server secret should be different from client secret
 - Server secret should NEVER be in `NEXT_PUBLIC_*` variables
 - Use different secrets for production vs development
@@ -286,18 +317,22 @@ NEXT_PUBLIC_SESSION_SECRET=your-client-secret-key
 ## Best Practices
 
 1. **Always Use Server Validation When Online**
+
    - Don't skip server validation
    - Handle offline gracefully
 
 2. **Rotate Secrets Regularly**
+
    - Change secrets periodically
    - Invalidate old sessions on rotation
 
 3. **Monitor Validation Failures**
+
    - Log signature mismatches
    - Alert on suspicious patterns
 
 4. **Set Appropriate Session Duration**
+
    - Balance security vs usability
    - Shorter sessions = more secure
 
@@ -335,16 +370,17 @@ NEXT_PUBLIC_SESSION_SECRET=your-client-secret-key
 ## Conclusion
 
 The changes implement **defense in depth** security:
+
 - Multiple validation layers
 - Server-side authority
 - Cryptographic integrity
 - Time validation
 
 While **perfect offline security is impossible**, the implementation:
+
 - ✅ Prevents most attacks
 - ✅ Detects tampering when online
 - ✅ Maintains offline functionality
 - ✅ Significantly improves security
 
 This is a **practical security solution** that balances security with usability.
-

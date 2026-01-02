@@ -24,6 +24,7 @@ interface SessionValidationRequest {
   }
   clientSignature: string
   clientTime: number
+  requestServerSignature?: boolean // Request server signature for storage
 }
 
 /**
@@ -55,14 +56,26 @@ function generateServerSignature(sessionData: {
 export async function POST(request: NextRequest) {
   try {
     const body: SessionValidationRequest = await request.json()
-    const { sessionData, clientSignature, clientTime } = body
+    const { sessionData, clientSignature, clientTime, requestServerSignature } = body
 
     // Validate request structure
-    if (!sessionData || !clientSignature) {
+    // If requesting server signature only, clientSignature is optional
+    if (!sessionData || (!clientSignature && !requestServerSignature)) {
       return NextResponse.json(
         { valid: false, error: "Invalid request" },
         { status: 400 }
       )
+    }
+
+    // If only requesting server signature (during session creation), skip validation
+    if (requestServerSignature && !clientSignature) {
+      const serverSignature = generateServerSignature(sessionData)
+      return NextResponse.json({
+        valid: true,
+        serverSignature,
+        serverSignatureIssuedAt: Date.now(),
+        serverTime: Date.now(),
+      })
     }
 
     // Get server time
@@ -190,13 +203,21 @@ export async function POST(request: NextRequest) {
     }
 
     // All validations passed - session is valid
-    return NextResponse.json({
+    const response: any = {
       valid: true,
       serverTime,
       expiresAt: sessionData.expiresAt,
       timeRemaining: sessionData.expiresAt - serverTime,
-      serverSignature, // Return server signature for optional client storage
-    })
+    }
+
+    // Return server signature if requested (for offline validation)
+    // This allows client to store server signature for offline validation
+    if (body.requestServerSignature) {
+      response.serverSignature = serverSignature
+      response.serverSignatureIssuedAt = serverTime
+    }
+
+    return NextResponse.json(response)
   } catch (error: any) {
     console.error("[SessionValidation] Error:", error)
     return NextResponse.json(

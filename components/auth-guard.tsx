@@ -205,12 +205,13 @@ export function AuthGuard({ children }: AuthGuardProps) {
 
     checkAuth()
 
-    // Set up periodic check every 5 seconds to catch session expiry
+    // Set up periodic check every 30 seconds to catch session expiry
+    // Reduced frequency to minimize API calls - we use client time for expiry checks
     const interval = setInterval(() => {
       if (!isPublicRoute && pathname !== "/auth/login") {
         checkAuth()
       }
-    }, 5000) // Check every 5 seconds
+    }, 30000) // Check every 30 seconds (reduced from 5 seconds to minimize API calls)
 
     return () => clearInterval(interval)
   }, [pathname, router, isPublicRoute])
