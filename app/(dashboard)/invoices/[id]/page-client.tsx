@@ -7,18 +7,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import Link from "next/link"
-import { ArrowLeft, Printer, Copy, Check } from "lucide-react"
+import { ArrowLeft, Printer, Share2 } from "lucide-react"
 import { InvoiceActions } from "@/components/features/invoices/invoice-actions"
 import { InvoicePrint } from "@/components/features/invoices/invoice-print"
 import { WhatsAppShareButton } from "@/components/features/invoices/whatsapp-share-button"
 import { useToast } from "@/hooks/use-toast"
 import { generateMiniInvoicePDF } from "@/lib/utils/mini-invoice-pdf"
-import { copyPDFToClipboard, downloadPDF } from "@/lib/utils/clipboard-pdf"
-import { useClipboardPermission } from "@/hooks/use-clipboard-permission"
 import { useInvoice } from "@/lib/hooks/use-cached-data"
-import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
+import { createClient } from "@/lib/supabase/client"
 
 export default function InvoiceDetailPageClient() {
   const params = useParams()
@@ -28,10 +26,7 @@ export default function InvoiceDetailPageClient() {
   const { data: invoiceData, isLoading: loading, error } = useInvoice(invoiceId)
   const [settings, setSettings] = useState<any>(null)
   const [storeName, setStoreName] = useState<string>("Business")
-  const [isTestingCopy, setIsTestingCopy] = useState(false)
-  
-  // Request clipboard permission in advance
-  const clipboardPermission = useClipboardPermission(true)
+  const [isSharingPDF, setIsSharingPDF] = useState(false)
 
   // Extract invoice, items, and customer from the hook data
   const invoice = invoiceData
@@ -148,8 +143,8 @@ export default function InvoiceDetailPageClient() {
     cancelled: "bg-red-100 text-red-800",
   }
 
-  // Test PDF copy functionality
-  const handleTestPDFCopy = async () => {
+  // Share PDF using Web Share API - uses only IndexedDB data (no Supabase)
+  const handleSharePDF = async () => {
     if (!invoice || !items || items.length === 0) {
       toast({
         title: "Error",
@@ -159,83 +154,140 @@ export default function InvoiceDetailPageClient() {
       return
     }
 
-    setIsTestingCopy(true)
+    setIsSharingPDF(true)
 
     try {
-      // Prepare PDF data (similar to WhatsApp share)
+      // Check if Web Share API is supported
+      if (!navigator.share || !navigator.canShare) {
+        toast({
+          title: "Not Supported",
+          description: "Web Share API is not supported in this browser. Please download the PDF instead.",
+          variant: "destructive",
+        })
+        setIsSharingPDF(false)
+        return
+      }
+
+      // Fetch additional data from IndexedDB if needed
+      let fullCustomer: any = customer
+      let store: any = null
+      const isIndexedDb = isIndexedDbMode()
+
+      // Fetch customer data if not already loaded
+      if (invoice.customer_id && !fullCustomer) {
+        if (isIndexedDb) {
+          fullCustomer = await db.customers.get(invoice.customer_id)
+        }
+      }
+
+      // Fetch store data if needed
+      if (invoice.store_id) {
+        if (isIndexedDb) {
+          store = await db.stores.get(invoice.store_id)
+        }
+      }
+
+      // Prepare PDF data from IndexedDB
       const pdfData = {
-        invoiceNumber: invoice.invoice_number,
-        invoiceDate: invoice.invoice_date,
-        customerName: customer?.name || "",
-        customerEmail: customer?.email || "",
-        customerPhone: customer?.phone || "",
-        customerGSTIN: customer?.gstin || "",
-        businessName: storeName || "Business",
-        businessGSTIN: settings?.business_gstin || "",
-        businessAddress: settings?.business_address || "",
-        businessPhone: settings?.business_phone || "",
+        invoiceNumber: invoice.invoice_number || "N/A",
+        invoiceDate: invoice.invoice_date || new Date().toISOString(),
+        customerName: fullCustomer?.name || "",
+        customerEmail: fullCustomer?.email || "",
+        customerPhone: fullCustomer?.phone || "",
+        customerGSTIN: fullCustomer?.gstin || "",
+        businessName: store?.name || storeName || "Business",
+        businessGSTIN: store?.gstin || "",
+        businessAddress: store?.address || "",
+        businessPhone: store?.phone || "",
         items: items.map((item: any) => {
-          const lineTotal = (item.quantity || 0) * (item.unit_price || 0)
-          const gstAmount = invoice.is_gst_invoice
-            ? (lineTotal * (item.gst_rate || 0)) / 100
+          const quantity = Number(item.quantity) || 0
+          const unitPrice = Number(item.unit_price || item.unitPrice) || 0
+          const discountPercent = Number(item.discount_percent || item.discountPercent) || 0
+          const gstRate = Number(item.gst_rate || item.gstRate) || 0
+          const baseAmount = quantity * unitPrice * (1 - discountPercent / 100)
+          const gstAmount = (invoice.is_gst_invoice || invoice.isGstInvoice) 
+            ? (baseAmount * gstRate) / 100 
             : 0
+          const lineTotal = baseAmount + gstAmount
+          
           return {
-            description: item.description,
-            quantity: item.quantity,
-            unitPrice: item.unit_price,
-            discountPercent: item.discount_percent || 0,
-            gstRate: item.gst_rate || 0,
-            lineTotal: lineTotal + gstAmount,
+            description: item.description || "",
+            quantity: quantity,
+            unitPrice: unitPrice,
+            discountPercent: discountPercent,
+            gstRate: gstRate,
+            lineTotal: lineTotal,
             gstAmount: gstAmount,
           }
         }),
-        subtotal: invoice.subtotal || 0,
-        cgstAmount: invoice.cgst_amount || 0,
-        sgstAmount: invoice.sgst_amount || 0,
-        igstAmount: invoice.igst_amount || 0,
-        totalAmount: invoice.total_amount || 0,
-        isGstInvoice: invoice.is_gst_invoice || false,
+        subtotal: Number(invoice.subtotal) || 0,
+        cgstAmount: Number(invoice.cgst_amount || invoice.cgstAmount) || 0,
+        sgstAmount: Number(invoice.sgst_amount || invoice.sgstAmount) || 0,
+        igstAmount: Number(invoice.igst_amount || invoice.igstAmount) || 0,
+        totalAmount: Number(invoice.total_amount || invoice.totalAmount) || 0,
+        isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
       }
 
-      // Generate PDF
+      // Generate PDF from IndexedDB data
       const pdfBlob = await generateMiniInvoicePDF(pdfData)
-      const fileName = `Invoice-${invoice.invoice_number}.pdf`
 
-      // Try to copy to clipboard with comprehensive error handling
-      // This will automatically request permission if needed
-      const clipboardResult = await copyPDFToClipboard(pdfBlob)
+      // Get invoice number and business name for file naming and sharing
+      const invoiceNumber = pdfData.invoiceNumber
+      const businessName = pdfData.businessName
 
-      // Always download as well (as backup)
-      downloadPDF(pdfBlob, fileName)
+      // Create File object
+      const file = new File([pdfBlob], `Invoice-${invoiceNumber}.pdf`, {
+        type: "application/pdf",
+      })
 
-      // Show appropriate success/error message
-      if (clipboardResult.success) {
-        toast({
-          title: "✅ PDF Copied Successfully!",
-          description: `PDF has been copied to clipboard and downloaded. You can paste it (Ctrl+V) anywhere.`,
-          duration: 6000,
-        })
-      } else {
-        // Show detailed error message
-        const errorDetails = clipboardResult.error || 'Unknown error'
+      // Check if file sharing is supported
+      if (!navigator.canShare({ files: [file] })) {
+        // Fallback: download the PDF
+        const url = URL.createObjectURL(pdfBlob)
+        const a = document.createElement('a')
+        a.href = url
+        a.download = `Invoice-${invoiceNumber}.pdf`
+        document.body.appendChild(a)
+        a.click()
+        document.body.removeChild(a)
+        URL.revokeObjectURL(url)
+
         toast({
           title: "PDF Downloaded",
-          description: `PDF downloaded. Clipboard copy failed: ${errorDetails}. Check console for details.`,
-          duration: 7000,
-          variant: "default",
+          description: "File sharing is not supported. The PDF has been downloaded.",
+          duration: 3000,
+        })
+        setIsSharingPDF(false)
+        return
+      }
+
+      // Share using Web Share API
+      await navigator.share({
+        files: [file],
+        title: `Invoice ${invoiceNumber}`,
+        text: `Invoice ${invoiceNumber} from ${businessName}. View it here: ${window.location.origin}/i/${invoiceId}`,
+      })
+
+      toast({
+        title: "Shared Successfully",
+        description: "Invoice PDF shared successfully",
+        duration: 3000,
+      })
+    } catch (error: any) {
+      // User cancelled or error occurred
+      if (error.name !== "AbortError") {
+        console.error("[SharePDF] Error:", error)
+        toast({
+          title: "Error",
+          description: error.message || "Failed to share PDF. Please try again.",
+          variant: "destructive",
         })
       }
-    } catch (error) {
-      console.error("[TestPDFCopy] Error:", error)
-      toast({
-        title: "Error",
-        description: "Failed to generate or copy PDF. Please try again.",
-        variant: "destructive",
-      })
     } finally {
-      setIsTestingCopy(false)
+      setIsSharingPDF(false)
     }
   }
+
 
   return (
     <div className="mx-auto max-w-5xl space-y-4 md:space-y-6 p-4 md:p-6">
@@ -255,24 +307,15 @@ export default function InvoiceDetailPageClient() {
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
           <Badge className={statusColors[invoice.status]}>{invoice.status.toUpperCase()}</Badge>
           <Button
-            onClick={handleTestPDFCopy}
-            disabled={isTestingCopy}
+            onClick={handleSharePDF}
+            disabled={isSharingPDF}
             variant="outline"
             size="sm"
             className="gap-2"
-            title="Test PDF copy to clipboard"
+            title="Share PDF using Web Share API"
           >
-            {isTestingCopy ? (
-              <>
-                <Check className="h-4 w-4" />
-                <span className="hidden sm:inline">Testing...</span>
-              </>
-            ) : (
-              <>
-                <Copy className="h-4 w-4" />
-                <span className="hidden sm:inline">Test PDF Copy</span>
-              </>
-            )}
+            <Share2 className="h-4 w-4" />
+            <span className="hidden sm:inline">{isSharingPDF ? "Sharing..." : "Share PDF"}</span>
           </Button>
           <WhatsAppShareButton
             invoice={{

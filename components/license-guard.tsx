@@ -57,12 +57,12 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
       // Only set state if it's different to prevent unnecessary re-renders
       if (checking || !isValid) {
         if (process.env.NODE_ENV === 'development' && renderCountRef.current <= 1) {
-          console.log('[LicenseGuard] On exempt page or localhost, skipping license check:', pathname);
+      console.log('[LicenseGuard] On exempt page or localhost, skipping license check:', pathname);
         }
-        setChecking(false);
-        setIsValid(true); // Allow page to render
-        // Reset check ref when on exempt pages to avoid stale state
-        hasCheckedRef.current = false;
+      setChecking(false);
+      setIsValid(true); // Allow page to render
+      // Reset check ref when on exempt pages to avoid stale state
+      hasCheckedRef.current = false;
         hasLoggedRef.current = false; // Reset log flag
       }
       return;
@@ -73,12 +73,12 @@ export function LicenseGuard({ children }: LicenseGuardProps) {
         (Date.now() - licenseCache.timestamp) < CACHE_DURATION && 
         licenseCache.valid) {
       if (process.env.NODE_ENV === 'development') {
-        console.log('[LicenseGuard] Using cached license validation');
+      console.log('[LicenseGuard] Using cached license validation');
       }
       // Only update state if needed to prevent re-renders
       if (checking || !isValid) {
-        setChecking(false);
-        setIsValid(true);
+      setChecking(false);
+      setIsValid(true);
       }
       return;
     }

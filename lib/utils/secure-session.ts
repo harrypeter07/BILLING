@@ -1,4 +1,8 @@
-"use client"
+/**
+ * Secure Session Management with Cryptographic Signatures
+ * Prevents tampering by signing session data with HMAC
+ * Uses multiple validation layers to prevent time manipulation
+ */
 
 import { db } from "@/lib/db/dexie"
 import type { AuthSession } from "@/lib/db/dexie"
@@ -11,11 +15,10 @@ const SESSION_DURATION_MS =
     : 86400000 // 24 hours default
 
 const SESSION_ID = "current_session"
-// Use environment variable for secret key, fallback to a default (should be changed in production)
 const SECRET_KEY = process.env.NEXT_PUBLIC_SESSION_SECRET || "default-secret-key-change-in-production"
 
 /**
- * Generate HMAC signature for session data to prevent tampering
+ * Generate HMAC signature for session data
  */
 function generateSignature(sessionData: Omit<AuthSession, "id">): string {
   const dataString = JSON.stringify({
@@ -30,11 +33,10 @@ function generateSignature(sessionData: Omit<AuthSession, "id">): string {
 }
 
 /**
- * Verify session signature to detect tampering
+ * Verify session signature
  */
 function verifySignature(session: AuthSession & { signature?: string }): boolean {
   if (!session.signature) {
-    // Legacy sessions without signature - invalidate them
     return false
   }
 
@@ -52,10 +54,11 @@ function verifySignature(session: AuthSession & { signature?: string }): boolean
 }
 
 /**
- * Get server time to prevent client-side time manipulation
+ * Get server time from multiple sources to prevent time manipulation
  */
 async function getServerTime(): Promise<number> {
   try {
+    // Try to get time from API endpoint (if available)
     const response = await fetch("/api/time", { 
       method: "GET",
       cache: "no-store",
@@ -68,9 +71,11 @@ async function getServerTime(): Promise<number> {
       }
     }
   } catch (error) {
-    // API unavailable, use client time (less secure but works offline)
-    console.warn("[AuthSession] Server time API unavailable, using client time")
+    // API unavailable, continue with client time
+    console.warn("[SecureSession] Server time API unavailable, using client time")
   }
+
+  // Fallback to client time (less secure but works offline)
   return Date.now()
 }
 
@@ -79,14 +84,14 @@ async function getServerTime(): Promise<number> {
  */
 interface SecureAuthSession extends AuthSession {
   signature?: string
-  lastValidated?: number
-  validationCount?: number
+  lastValidated?: number // Timestamp of last successful validation
+  validationCount?: number // Number of times validated (for anomaly detection)
 }
 
 /**
- * Save authentication session to IndexedDB with cryptographic signature
+ * Save authentication session with cryptographic signature
  */
-export async function saveAuthSession(data: {
+export async function saveSecureAuthSession(data: {
   userId: string
   email: string
   role: string
@@ -105,7 +110,7 @@ export async function saveAuthSession(data: {
     createdAt: new Date().toISOString(),
   }
 
-  // Generate cryptographic signature to prevent tampering
+  // Generate signature
   const signature = generateSignature(sessionData)
 
   const session: SecureAuthSession = {
@@ -117,43 +122,44 @@ export async function saveAuthSession(data: {
   }
 
   await db.auth_session.put(session as any)
-  console.log("[AuthSession] Session saved with signature, expires at:", new Date(expiresAt).toISOString())
+  console.log("[SecureSession] Session saved with signature, expires at:", new Date(expiresAt).toISOString())
 }
 
 /**
- * Get current authentication session from IndexedDB with validation
+ * Get current authentication session with validation
  */
-export async function getAuthSession(): Promise<AuthSession | null> {
+export async function getSecureAuthSession(): Promise<AuthSession | null> {
   try {
     const session = await db.auth_session.get(SESSION_ID) as SecureAuthSession | undefined
     if (!session) {
       return null
     }
 
-    // Validate signature to detect tampering
+    // Validate signature first
     if (!verifySignature(session)) {
-      console.error("[AuthSession] Invalid signature detected - possible tampering! Clearing session.")
-      await clearAuthSession()
+      console.error("[SecureSession] Invalid signature detected - possible tampering!")
+      await clearSecureAuthSession()
       return null
     }
 
-    // Get server time to prevent time manipulation
+    // Get server time for validation
     const serverTime = await getServerTime()
     const clientTime = Date.now()
     
-    // Check for significant time manipulation (> 5 minutes difference)
+    // Check for time manipulation (if difference > 5 minutes, suspicious)
     const timeDifference = Math.abs(serverTime - clientTime)
     if (timeDifference > 300000) { // 5 minutes
-      console.warn("[AuthSession] Significant time difference detected:", timeDifference, "ms")
+      console.warn("[SecureSession] Significant time difference detected:", timeDifference, "ms")
+      // Still allow but log warning
     }
 
     // Use server time if available, otherwise client time
     const currentTime = serverTime || clientTime
 
-    // Check if session is expired using validated time
+    // Check if session is expired
     if (currentTime > session.expiresAt) {
-      console.log("[AuthSession] Session expired, clearing...")
-      await clearAuthSession()
+      console.log("[SecureSession] Session expired, clearing...")
+      await clearSecureAuthSession()
       return null
     }
 
@@ -161,15 +167,14 @@ export async function getAuthSession(): Promise<AuthSession | null> {
     session.lastValidated = currentTime
     session.validationCount = (session.validationCount || 0) + 1
     
-    // Check for suspicious validation patterns
+    // Check for suspicious validation patterns (too many validations in short time)
     if (session.validationCount > 1000) {
-      console.warn("[AuthSession] Suspicious validation count detected")
+      console.warn("[SecureSession] Suspicious validation count detected")
     }
 
     // Save updated metadata
     await db.auth_session.put(session as any)
 
-    // Return only the standard AuthSession interface
     return {
       id: session.id,
       userId: session.userId,
@@ -181,55 +186,91 @@ export async function getAuthSession(): Promise<AuthSession | null> {
       createdAt: session.createdAt,
     }
   } catch (error) {
-    console.error("[AuthSession] Error reading session:", error)
+    console.error("[SecureSession] Error reading session:", error)
     return null
   }
 }
 
 /**
- * Check if current session is valid (not expired)
+ * Check if session is valid with full validation
  */
-export async function isSessionValid(): Promise<boolean> {
-  const session = await getAuthSession()
+export async function isSecureSessionValid(): Promise<boolean> {
+  const session = await getSecureAuthSession()
   return session !== null
 }
 
 /**
- * Clear authentication session from IndexedDB
+ * Clear authentication session
  */
-export async function clearAuthSession(): Promise<void> {
+export async function clearSecureAuthSession(): Promise<void> {
   try {
     await db.auth_session.delete(SESSION_ID)
-    console.log("[AuthSession] Session cleared from IndexedDB")
+    console.log("[SecureSession] Session cleared from IndexedDB")
   } catch (error) {
-    console.error("[AuthSession] Error clearing session:", error)
+    console.error("[SecureSession] Error clearing session:", error)
   }
 }
 
 /**
- * Get session expiry time in milliseconds
+ * Check if session is expired (with signature validation)
  */
-export function getSessionDuration(): number {
-  return SESSION_DURATION_MS
-}
-
-/**
- * Check if session is expired (with server time validation)
- */
-export async function isSessionExpired(session: AuthSession | null): Promise<boolean> {
+export async function isSecureSessionExpired(session: AuthSession | null): Promise<boolean> {
   if (!session) return true
 
   // Re-fetch and validate signature
-  const validatedSession = await getAuthSession()
-  if (!validatedSession) return true
+  const secureSession = await getSecureAuthSession()
+  if (!secureSession) return true
 
   // Verify it's the same session
-  if (validatedSession.userId !== session.userId || validatedSession.email !== session.email) {
+  if (secureSession.userId !== session.userId || secureSession.email !== session.email) {
     return true
   }
 
   // Check expiry with server time
   const serverTime = await getServerTime()
   return serverTime > session.expiresAt
+}
+
+/**
+ * Refresh session (extend expiry if needed)
+ */
+export async function refreshSecureSession(): Promise<boolean> {
+  const session = await getSecureAuthSession()
+  if (!session) {
+    return false
+  }
+
+  // Only refresh if session is still valid and not too close to expiry
+  const now = Date.now()
+  const timeUntilExpiry = session.expiresAt - now
+  
+  // Only refresh if less than 1 hour remaining
+  if (timeUntilExpiry < 3600000 && timeUntilExpiry > 0) {
+    const newExpiresAt = now + SESSION_DURATION_MS
+    const sessionData: Omit<AuthSession, "id"> = {
+      userId: session.userId,
+      email: session.email,
+      role: session.role,
+      storeId: session.storeId,
+      issuedAt: session.issuedAt, // Keep original issue time
+      expiresAt: newExpiresAt,
+      createdAt: session.createdAt,
+    }
+
+    const signature = generateSignature(sessionData)
+    const secureSession: SecureAuthSession = {
+      id: SESSION_ID,
+      ...sessionData,
+      signature,
+      lastValidated: now,
+      validationCount: (session as any).validationCount || 0,
+    }
+
+    await db.auth_session.put(secureSession as any)
+    console.log("[SecureSession] Session refreshed, new expiry:", new Date(newExpiresAt).toISOString())
+    return true
+  }
+
+  return false
 }
 

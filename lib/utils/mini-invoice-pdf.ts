@@ -14,7 +14,7 @@ export async function generateMiniInvoicePDF(data: InvoiceData): Promise<Blob> {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
-    format: [80, 200] // Thin, tall format like a mini bill
+    format: [80, 210] // Thin, tall format like a mini bill - slightly taller
   })
   
   // Setup autoTable
@@ -33,52 +33,67 @@ export async function generateMiniInvoicePDF(data: InvoiceData): Promise<Blob> {
   let yPosition = 5
 
   // Color scheme - vibrant and professional
-  const primaryColor = [41, 128, 185] // Blue
-  const accentColor = [46, 204, 113] // Green
-  const headerColor = [52, 73, 94] // Dark blue-gray
-  const textColor = [44, 62, 80] // Dark gray
+  const primaryColor = [59, 130, 246] // Bright Blue (#3b82f6)
+  const accentColor = [34, 197, 94] // Bright Green (#22c55e)
+  const headerColor = [30, 41, 59] // Dark slate (#1e293b)
+  const textColor = [51, 65, 85] // Slate gray (#334155)
+  const lightBg = [248, 250, 252] // Slate 50
+  const borderColor = [226, 232, 240] // Slate 200
 
-  // Header with colorful background
+  // Header with gradient-like effect
   doc.setFillColor(...headerColor)
-  doc.rect(0, 0, pageWidth, 12, 'F')
+  doc.rect(0, 0, pageWidth, 14, 'F')
+  
+  // Add a subtle border line
+  doc.setDrawColor(...borderColor)
+  doc.setLineWidth(0.1)
+  doc.line(0, 14, pageWidth, 14)
   
   doc.setTextColor(255, 255, 255)
-  doc.setFontSize(14)
+  doc.setFontSize(16)
   doc.setFont(undefined, 'bold')
-  doc.text("INVOICE", pageWidth / 2, 8, { align: "center" })
+  doc.text("INVOICE", pageWidth / 2, 9, { align: "center" })
   
-  yPosition = 15
+  yPosition = 17
 
-  // Business Name - colorful accent
+  // Business Name - colorful accent with border
   doc.setFillColor(...primaryColor)
-  doc.rect(2, yPosition - 2, pageWidth - 4, 5, 'F')
+  doc.roundedRect(2, yPosition - 1, pageWidth - 4, 6, 1, 1, 'F')
   
   doc.setTextColor(255, 255, 255)
-  doc.setFontSize(10)
+  doc.setFontSize(11)
   doc.setFont(undefined, 'bold')
-  doc.text(data.businessName, pageWidth / 2, yPosition + 1.5, { align: "center" })
-  yPosition += 7
+  doc.text(data.businessName, pageWidth / 2, yPosition + 2.5, { align: "center" })
+  yPosition += 8
 
-  // Invoice Details - compact colorful boxes
-  doc.setFillColor(245, 245, 245)
-  doc.rect(2, yPosition, pageWidth - 4, 6, 'F')
+  // Invoice Details - elegant card style
+  doc.setFillColor(...lightBg)
+  doc.setDrawColor(...borderColor)
+  doc.setLineWidth(0.2)
+  doc.roundedRect(2, yPosition, pageWidth - 4, 7, 1, 1, 'FD')
   
   doc.setTextColor(...textColor)
-  doc.setFontSize(7)
+  doc.setFontSize(7.5)
+  doc.setFont(undefined, 'bold')
+  doc.text(`Invoice #: ${data.invoiceNumber}`, 4, yPosition + 2.5)
   doc.setFont(undefined, 'normal')
-  doc.text(`Invoice #: ${data.invoiceNumber}`, 4, yPosition + 2)
-  doc.text(`Date: ${new Date(data.invoiceDate).toLocaleDateString("en-IN")}`, 4, yPosition + 4.5)
-  yPosition += 8
+  doc.text(`Date: ${new Date(data.invoiceDate).toLocaleDateString("en-IN", { day: '2-digit', month: 'short', year: 'numeric' })}`, 4, yPosition + 5)
+  yPosition += 9
 
   // Customer Info - if available
   if (data.customerName) {
-    doc.setFillColor(230, 244, 255)
-    doc.rect(2, yPosition, pageWidth - 4, 5, 'F')
+    doc.setFillColor(239, 246, 255) // Light blue
+    doc.setDrawColor(...borderColor)
+    doc.setLineWidth(0.2)
+    doc.roundedRect(2, yPosition, pageWidth - 4, 5, 1, 1, 'FD')
     
     doc.setTextColor(...textColor)
-    doc.setFontSize(7)
-    doc.text(`Bill To: ${data.customerName}`, 4, yPosition + 3)
-    yPosition += 6
+    doc.setFontSize(7.5)
+    doc.setFont(undefined, 'bold')
+    doc.text(`Bill To:`, 4, yPosition + 2)
+    doc.setFont(undefined, 'normal')
+    doc.text(data.customerName, 4, yPosition + 3.5)
+    yPosition += 7
   }
 
   yPosition += 2
@@ -131,55 +146,72 @@ export async function generateMiniInvoicePDF(data: InvoiceData): Promise<Blob> {
 
   yPosition = (doc as any).lastAutoTable.finalY + 3
 
-  // Totals Section - colorful highlight
+  // Totals Section - elegant card with gradient effect
   doc.setFillColor(...accentColor)
-  doc.rect(2, yPosition - 1, pageWidth - 4, 8, 'F')
+  doc.setDrawColor(28, 163, 75) // Darker green border
+  doc.setLineWidth(0.3)
+  doc.roundedRect(2, yPosition - 1, pageWidth - 4, 9, 1.5, 1.5, 'FD')
   
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(8)
   doc.setFont(undefined, 'bold')
   
-  doc.text("Subtotal:", 4, yPosition + 2)
-  doc.text(`₹${data.subtotal.toFixed(2)}`, pageWidth - 4, yPosition + 2, { align: "right" })
-  yPosition += 2.5
+  doc.text("Subtotal:", 4, yPosition + 2.5)
+  doc.text(`₹${data.subtotal.toFixed(2)}`, pageWidth - 4, yPosition + 2.5, { align: "right" })
+  yPosition += 2.8
 
   if (data.isGstInvoice) {
     if (data.cgstAmount > 0) {
-      doc.setFontSize(7)
-      doc.text("CGST:", 4, yPosition + 1.5)
-      doc.text(`₹${data.cgstAmount.toFixed(2)}`, pageWidth - 4, yPosition + 1.5, { align: "right" })
-      yPosition += 2
+      doc.setFontSize(7.5)
+      doc.setFont(undefined, 'normal')
+      doc.text("CGST:", 4, yPosition + 1.8)
+      doc.setFont(undefined, 'bold')
+      doc.text(`₹${data.cgstAmount.toFixed(2)}`, pageWidth - 4, yPosition + 1.8, { align: "right" })
+      yPosition += 2.2
     }
     if (data.sgstAmount > 0) {
-      doc.setFontSize(7)
-      doc.text("SGST:", 4, yPosition + 1.5)
-      doc.text(`₹${data.sgstAmount.toFixed(2)}`, pageWidth - 4, yPosition + 1.5, { align: "right" })
-      yPosition += 2
+      doc.setFontSize(7.5)
+      doc.setFont(undefined, 'normal')
+      doc.text("SGST:", 4, yPosition + 1.8)
+      doc.setFont(undefined, 'bold')
+      doc.text(`₹${data.sgstAmount.toFixed(2)}`, pageWidth - 4, yPosition + 1.8, { align: "right" })
+      yPosition += 2.2
     }
     if (data.igstAmount > 0) {
-      doc.setFontSize(7)
-      doc.text("IGST:", 4, yPosition + 1.5)
-      doc.text(`₹${data.igstAmount.toFixed(2)}`, pageWidth - 4, yPosition + 1.5, { align: "right" })
-      yPosition += 2
+      doc.setFontSize(7.5)
+      doc.setFont(undefined, 'normal')
+      doc.text("IGST:", 4, yPosition + 1.8)
+      doc.setFont(undefined, 'bold')
+      doc.text(`₹${data.igstAmount.toFixed(2)}`, pageWidth - 4, yPosition + 1.8, { align: "right" })
+      yPosition += 2.2
     }
   }
 
-  // Total - extra bold
-  doc.setFontSize(10)
+  // Total - extra bold with separator line
+  doc.setDrawColor(255, 255, 255)
+  doc.setLineWidth(0.2)
+  doc.line(4, yPosition, pageWidth - 4, yPosition)
+  yPosition += 1.5
+  
+  doc.setFontSize(11)
   doc.setFont(undefined, 'bold')
   doc.text("TOTAL:", 4, yPosition + 2)
   doc.text(`₹${data.totalAmount.toFixed(2)}`, pageWidth - 4, yPosition + 2, { align: "right" })
 
-  // Footer - thank you message
-  yPosition = pageHeight - 8
-  doc.setFillColor(240, 240, 240)
-  doc.rect(0, yPosition, pageWidth, 8, 'F')
+  // Footer - elegant thank you message
+  yPosition = pageHeight - 10
+  doc.setFillColor(...lightBg)
+  doc.setDrawColor(...borderColor)
+  doc.setLineWidth(0.2)
+  doc.roundedRect(2, yPosition, pageWidth - 4, 8, 1, 1, 'FD')
   
   doc.setTextColor(...textColor)
-  doc.setFontSize(6)
+  doc.setFontSize(7)
+  doc.setFont(undefined, 'bold')
+  doc.text("Thank you for your business!", pageWidth / 2, yPosition + 3.5, { align: "center" })
   doc.setFont(undefined, 'italic')
-  doc.text("Thank you for your business!", pageWidth / 2, yPosition + 4, { align: "center" })
-  doc.text("Visit us again!", pageWidth / 2, yPosition + 6, { align: "center" })
+  doc.setFontSize(6)
+  doc.text("We appreciate your trust in us", pageWidth / 2, yPosition + 5.5, { align: "center" })
 
   // Convert to blob and ensure correct MIME type
   const pdfBlob = doc.output('blob')

@@ -1310,35 +1310,18 @@ export function InvoiceForm({
 			});
 
 			// Share on WhatsApp with PDF
-			const shareResult = await shareOnWhatsApp(
+			await shareOnWhatsApp(
 				whatsappMessage,
 				pdfBlob,
 				`Invoice-${invoiceNumber}.pdf`
 			);
 
-			// Show appropriate feedback based on sharing method
-			if (shareResult.method === "clipboard-and-link") {
-				toast({
-					title: "Invoice Created & PDF Copied!",
-					description:
-						"Invoice saved and WhatsApp opened. PDF is copied to clipboard - Press Ctrl+V (or Cmd+V) to paste and send!",
-					duration: 6000,
-				});
-			} else if (shareResult.method === "download-and-link") {
-				toast({
-					title: "Invoice Created & PDF Downloaded",
-					description:
-						"Invoice saved and WhatsApp opened. Please attach the downloaded PDF manually.",
-					duration: 5000,
-				});
-			} else {
-				toast({
-					title: "Invoice Created & Shared",
-					description:
-						"Invoice saved and WhatsApp opened with your invoice message.",
-					duration: 5000,
-				});
-			}
+			toast({
+				title: "Invoice Created & Shared",
+				description:
+					"Invoice saved. PDF downloaded. WhatsApp opened with your invoice message. You can attach the downloaded PDF manually.",
+				duration: 5000,
+			});
 
 			// Navigate to invoices page
 			router.push("/invoices");

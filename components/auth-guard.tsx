@@ -44,7 +44,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
         // Check IndexedDB session first (works offline)
         const session = await getAuthSession()
 
-        if (!session || isSessionExpired(session)) {
+        if (!session || await isSessionExpired(session)) {
           // Check if user has employee session (localStorage-based)
           const authType = typeof window !== "undefined" ? localStorage.getItem("authType") : null
           const employeeSession = typeof window !== "undefined" ? localStorage.getItem("employeeSession") : null
@@ -52,7 +52,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
           if (authType === "employee" && employeeSession) {
             // Employee session exists, but check if IndexedDB session is expired
             // If IndexedDB session exists but expired, employee session should also be considered expired
-            if (session && isSessionExpired(session)) {
+            if (session && await isSessionExpired(session)) {
               // IndexedDB session expired, clear employee session too
               console.log("[AuthGuard] Session expired, clearing employee session")
               if (typeof window !== "undefined") {
@@ -93,7 +93,7 @@ export function AuthGuard({ children }: AuthGuardProps) {
               const parsed = JSON.parse(offlineAdminSession)
               if (parsed.email && parsed.role) {
                 // Still check IndexedDB session expiry
-                if (session && isSessionExpired(session)) {
+                if (session && await isSessionExpired(session)) {
                   // Session expired, clear everything
                   console.log("[AuthGuard] Session expired, clearing offline admin session")
                   if (typeof window !== "undefined") {

@@ -32,9 +32,6 @@ export function WhatsAppShareButton({
   const { toast } = useToast()
   const [isOnline, setIsOnline] = useState(true)
   const [isSharing, setIsSharing] = useState(false)
-  
-  // Request clipboard permission in advance
-  const clipboardPermission = useClipboardPermission(true)
 
   useEffect(() => {
     // Check initial online status
@@ -83,7 +80,7 @@ export function WhatsAppShareButton({
       // Generate WhatsApp message
       const message = generateWhatsAppBillMessage(miniBillData)
 
-      // Generate mini invoice PDF
+      // Generate and download mini invoice PDF
       try {
         const pdfData = {
           invoiceNumber: invoice.invoice_number,
@@ -117,35 +114,13 @@ export function WhatsAppShareButton({
         }
 
         const pdfBlob = await generateMiniInvoicePDF(pdfData)
-        const result = await shareOnWhatsApp(message, pdfBlob, `Invoice-${invoice.invoice_number}.pdf`)
+        await shareOnWhatsApp(message, pdfBlob, `Invoice-${invoice.invoice_number}.pdf`)
         
-        // Show appropriate feedback based on sharing method
-        if (result.method === 'web-share') {
-          toast({
-            title: "Shared Successfully",
-            description: "Invoice PDF and message shared via Web Share API. If WhatsApp is installed, it should open automatically.",
-            duration: 5000,
-          })
-        } else if (result.method === 'clipboard-and-link') {
-          toast({
-            title: "PDF Copied to Clipboard!",
-            description: "WhatsApp is opening. Press Ctrl+V (or Cmd+V) to paste the PDF, then send!",
-            duration: 6000,
-          })
-        } else if (result.method === 'download-and-link') {
-          const errorMsg = result.error ? ` ${result.error}` : ''
-          toast({
-            title: "PDF Downloaded",
-            description: `WhatsApp is opening. Please attach the downloaded PDF manually.${errorMsg}`,
-            duration: 6000,
-          })
-        } else {
-          toast({
-            title: "Opening WhatsApp",
-            description: "WhatsApp is opening with your invoice message.",
-            duration: 3000,
-          })
-        }
+        toast({
+          title: "Opening WhatsApp",
+          description: "PDF downloaded. WhatsApp is opening with your invoice message. You can attach the downloaded PDF manually.",
+          duration: 5000,
+        })
       } catch (pdfError) {
         console.warn("[WhatsAppShare] PDF generation failed, sharing text only:", pdfError)
         await shareOnWhatsApp(message)
