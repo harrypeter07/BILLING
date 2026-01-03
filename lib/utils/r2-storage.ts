@@ -37,7 +37,7 @@ function getR2Client(): S3Client | null {
     return null
   }
 
-  // Create and cache client instance
+  // Create and cache client instance with optimized settings for speed
   r2ClientInstance = new S3Client({
     region: 'auto',
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
@@ -45,10 +45,14 @@ function getR2Client(): S3Client | null {
       accessKeyId,
       secretAccessKey,
     },
-    // Optimize for speed
+    // Optimize for speed - reduce timeout and add retry settings
     requestHandler: {
-      requestTimeout: 30000, // 30s timeout
+      requestTimeout: 15000, // 15s timeout (reduced from 30s)
     },
+    // Disable request compression for faster uploads (PDFs are already compressed)
+    disableRequestCompression: true,
+    // Use HTTP/2 if available for better performance
+    forcePathStyle: false,
   })
 
   return r2ClientInstance
@@ -94,26 +98,38 @@ export async function uploadInvoicePDFToR2(
       }
     }
 
-    // Generate deterministic object key: invoices/{adminId}/{invoiceId}.pdf
-    // Example: invoices/admin_23/INV_2026_0042.pdf
-    const sanitizedAdminId = adminId.replace(/[^a-zA-Z0-9_-]/g, '_')
+    // Generate deterministic object key: invoices/{adminId}/{invoiceNumber}.pdf
+    // Standardize adminId format - use consistent sanitization
+    // Example: invoices/3babf88a-89a9-4e4b-a844-cdce52b5e618/INV_2026_0042.pdf
+    // Keep UUIDs as-is, sanitize other formats
+    let sanitizedAdminId: string
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(adminId)) {
+      // It's a UUID, keep it as-is
+      sanitizedAdminId = adminId.toLowerCase()
+    } else {
+      // Sanitize non-UUID adminIds
+      sanitizedAdminId = adminId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
+    }
     const sanitizedInvoiceNumber = invoiceNumber.replace(/[^a-zA-Z0-9_-]/g, '_')
     const objectKey = `invoices/${sanitizedAdminId}/${sanitizedInvoiceNumber}.pdf`
 
-    // Upload to R2
+    // Upload to R2 with optimized settings
     const command = new PutObjectCommand({
       Bucket: bucketName,
       Key: objectKey,
       Body: pdfBuffer,
       ContentType: 'application/pdf',
-      // Metadata for tracking
+      // Cache control for faster access
+      CacheControl: 'public, max-age=31536000', // 1 year cache
+      // Metadata for tracking (minimal to reduce overhead)
       Metadata: {
-        invoiceId,
-        adminId,
+        invoiceId: invoiceId.substring(0, 100), // Limit metadata size
+        adminId: adminId.substring(0, 100),
         uploadedAt: new Date().toISOString(),
       },
     })
 
+    // Send command (timeout is handled by requestHandler config)
     await client.send(command)
 
     // Generate public URL

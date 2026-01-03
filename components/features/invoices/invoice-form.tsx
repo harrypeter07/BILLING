@@ -1356,50 +1356,74 @@ export function InvoiceForm({
 				}
 			}
 
-			// Upload PDF to R2 if adminId is available (optimized for speed)
+			// Try to upload PDF to R2 first (with timeout), then open WhatsApp with the link
 			let r2PublicUrl: string | undefined;
+			
 			if (adminId) {
 				toast({
 					title: "Uploading PDF...",
-					description: "Uploading to cloud storage...",
-					duration: 3000,
+					description: "Uploading to cloud storage, then opening WhatsApp...",
+					duration: 2000,
 				});
 
-				const uploadStartTime = Date.now();
-				const r2Result = await uploadInvoicePDFToR2Client(
+				// Try to upload with 8 second timeout - if it succeeds, use R2 link; otherwise use invoice link
+				const uploadPromise = uploadInvoicePDFToR2Client(
 					pdfBlob,
 					adminId,
 					invoiceId,
 					invoiceNumber
 				);
-				const uploadDuration = Date.now() - uploadStartTime;
+				
+				const timeoutPromise = new Promise<null>((resolve) => 
+					setTimeout(() => resolve(null), 8000) // 8 second timeout
+				);
+				
+				const uploadResult = await Promise.race([uploadPromise, timeoutPromise]);
+				
+				if (uploadResult && (uploadResult as any).success && (uploadResult as any).publicUrl) {
+					r2PublicUrl = (uploadResult as any).publicUrl;
 
-				if (r2Result.success && r2Result.publicUrl) {
-					r2PublicUrl = r2Result.publicUrl;
-
-					// Save metadata to database (non-blocking - fire and forget for speed)
-					if (r2Result.expiresAt) {
+					// Save metadata to database (non-blocking)
+					if ((uploadResult as any).expiresAt) {
 						saveInvoiceStorage({
 							invoice_id: invoiceId,
-							r2_object_key: r2Result.objectKey || "",
-							public_url: r2Result.publicUrl,
-							expires_at: r2Result.expiresAt,
+							r2_object_key: (uploadResult as any).objectKey || "",
+							public_url: (uploadResult as any).publicUrl,
+							expires_at: (uploadResult as any).expiresAt,
 						}).catch((err) => {
 							console.warn("[InvoiceForm] Failed to save storage metadata (non-critical):", err);
 						});
 					}
+
+					// Auto-copy link to clipboard
+					try {
+						await navigator.clipboard.writeText((uploadResult as any).publicUrl);
+					} catch (clipboardError) {
+						// Clipboard failed, continue anyway
+					}
 				} else {
-					console.warn("[InvoiceForm] R2 upload failed:", r2Result.error);
-					toast({
-						title: "Upload failed",
-						description: "Falling back to local PDF download.",
-						variant: "default",
-						duration: 2000,
+					// Upload is still in progress or failed - continue in background
+					uploadPromise.then((r2Result) => {
+						if (r2Result.success && r2Result.publicUrl) {
+							// Save metadata
+							if (r2Result.expiresAt) {
+								saveInvoiceStorage({
+									invoice_id: invoiceId,
+									r2_object_key: r2Result.objectKey || "",
+									public_url: r2Result.publicUrl,
+									expires_at: r2Result.expiresAt,
+								}).catch((err) => {
+									console.warn("[InvoiceForm] Failed to save storage metadata (non-critical):", err);
+								});
+							}
+						}
+					}).catch((err) => {
+						console.warn("[InvoiceForm] Background upload error:", err);
 					});
 				}
 			}
 
-			// Generate WhatsApp message
+			// Generate WhatsApp message with R2 link if available, otherwise use invoice link
 			const whatsappMessage = generateWhatsAppBillMessage({
 				storeName: storeName || "Business",
 				invoiceNumber: invoiceNumber,
@@ -1414,16 +1438,28 @@ export function InvoiceForm({
 				pdfR2Url: r2PublicUrl,
 			});
 
-			// Share on WhatsApp
-			await shareOnWhatsApp(whatsappMessage, pdfBlob, fileName);
+			console.log("[InvoiceForm] Opening WhatsApp with message:", whatsappMessage.substring(0, 100) + "...")
+			console.log("[InvoiceForm] R2 URL:", r2PublicUrl || "Not available")
 
-			toast({
-				title: "✅ Invoice Created & Shared!",
-				description: r2PublicUrl
-					? "Invoice saved and PDF uploaded. WhatsApp opened with shareable link."
-					: "Invoice saved. PDF downloaded. WhatsApp opened with your invoice message.",
-				duration: 3000,
-			});
+			// Share on WhatsApp with the message (includes R2 link if upload succeeded quickly)
+			const shareResult = await shareOnWhatsApp(whatsappMessage, pdfBlob, fileName);
+
+			if (shareResult.success) {
+				toast({
+					title: "✅ Invoice Created & Shared!",
+					description: r2PublicUrl
+						? "Invoice saved and PDF uploaded! WhatsApp opened with shareable PDF link. Link copied to clipboard."
+						: "Invoice saved. WhatsApp opened. PDF is being uploaded in the background.",
+					duration: 3000,
+				});
+			} else {
+				toast({
+					title: "Invoice Saved, but WhatsApp Failed to Open",
+					description: "Invoice was saved successfully. Please try opening WhatsApp manually.",
+					variant: "default",
+					duration: 5000,
+				});
+			}
 
 			// Navigate to invoices page
 			router.push("/invoices");

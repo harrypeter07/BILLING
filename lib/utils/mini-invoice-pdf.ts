@@ -20,7 +20,8 @@ export async function generateMiniInvoicePDF(data: MiniInvoiceData): Promise<Blo
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
-    format: [80, 210] // Thin, tall format like a mini bill - slightly taller
+    format: [80, 210], // Thin, tall format like a mini bill - slightly taller
+    compress: true, // Enable compression to reduce file size
   })
   
   // Setup autoTable
@@ -87,14 +88,61 @@ export async function generateMiniInvoicePDF(data: MiniInvoiceData): Promise<Blo
               logoWidth = logoSize * aspectRatio
             }
             
-            doc.addImage(
-              img,
-              'PNG',
-              logoX,
-              logoY,
-              logoWidth,
-              logoHeight
-            )
+            // Compress image before adding to reduce PDF size
+            // Use JPEG format with compression for smaller file size
+            // Calculate max dimensions to reduce image size (max 200x200px for logo)
+            let imageAdded = false
+            try {
+              const maxLogoPixels = 200
+              let compressedWidth = img.width
+              let compressedHeight = img.height
+              
+              if (compressedWidth > maxLogoPixels || compressedHeight > maxLogoPixels) {
+                const scale = Math.min(maxLogoPixels / compressedWidth, maxLogoPixels / compressedHeight)
+                compressedWidth = Math.floor(compressedWidth * scale)
+                compressedHeight = Math.floor(compressedHeight * scale)
+              }
+              
+              // Create canvas to resize and compress image (only if available)
+              if (typeof document !== 'undefined' && typeof HTMLCanvasElement !== 'undefined') {
+                const canvas = document.createElement('canvas')
+                canvas.width = compressedWidth
+                canvas.height = compressedHeight
+                const ctx = canvas.getContext('2d')
+                if (ctx) {
+                  ctx.drawImage(img, 0, 0, compressedWidth, compressedHeight)
+                  // Convert to JPEG with compression (quality 0.7 for smaller size)
+                  const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.7)
+                  doc.addImage(
+                    compressedDataUrl,
+                    'JPEG',
+                    logoX,
+                    logoY,
+                    logoWidth,
+                    logoHeight,
+                    undefined,
+                    'FAST' // Use FAST compression mode
+                  )
+                  imageAdded = true
+                }
+              }
+            } catch (compressionError) {
+              console.warn("[MiniPDF] Image compression failed, using original:", compressionError)
+            }
+            
+            // Fallback to original if compression fails or canvas not available
+            if (!imageAdded) {
+              doc.addImage(
+                img,
+                'PNG',
+                logoX,
+                logoY,
+                logoWidth,
+                logoHeight,
+                undefined,
+                'FAST' // Use FAST compression mode
+              )
+            }
             yPosition += logoHeight + 3
             resolve(true)
           } catch (error) {
@@ -280,8 +328,11 @@ export async function generateMiniInvoicePDF(data: MiniInvoiceData): Promise<Blo
   doc.setFontSize(6)
   doc.text("We appreciate your trust in us", pageWidth / 2, yPosition + 5.5, { align: "center" })
 
-  // Convert to blob and ensure correct MIME type
-  const pdfBlob = doc.output('blob')
+  // Convert to blob with compression settings to reduce file size
+  // Use output options to reduce PDF size
+  const pdfBlob = doc.output('blob', {
+    compression: true, // Enable compression
+  })
   
   // Ensure the blob has the correct MIME type (jsPDF should set this, but we normalize it)
   if (pdfBlob.type !== 'application/pdf') {

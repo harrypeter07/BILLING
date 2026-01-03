@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
-import { MessageCircle, WifiOff } from "lucide-react"
+import { MessageCircle, WifiOff, Copy, Check, ExternalLink } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { generateWhatsAppBillMessage, shareOnWhatsApp, type MiniBillData } from "@/lib/utils/whatsapp-bill"
 import { generateMiniInvoicePDF } from "@/lib/utils/mini-invoice-pdf"
 import { getServedByName } from "@/lib/utils/get-served-by"
@@ -64,6 +65,9 @@ export function WhatsAppShareButton({
   const { toast } = useToast()
   const [isOnline, setIsOnline] = useState(true)
   const [isSharing, setIsSharing] = useState(false)
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(null)
+  const [showLinkModal, setShowLinkModal] = useState(false)
+  const [linkCopied, setLinkCopied] = useState(false)
 
   useEffect(() => {
     // Check initial online status
@@ -198,74 +202,107 @@ export function WhatsAppShareButton({
           }
         }
 
-        // Upload PDF to R2 if adminId is available (optimized for speed)
+        // Try to upload PDF to R2 first (with timeout), then open WhatsApp with the link
         let r2PublicUrl: string | undefined
+        
         if (adminId) {
           toast({
             title: "Uploading PDF...",
-            description: "Uploading to cloud storage...",
-            duration: 3000,
+            description: "Uploading to cloud storage, then opening WhatsApp...",
+            duration: 2000,
           })
 
-          const uploadStartTime = Date.now()
-          const r2Result = await uploadInvoicePDFToR2Client(
+          // Try to upload with 8 second timeout - if it succeeds, use R2 link; otherwise use invoice link
+          const uploadPromise = uploadInvoicePDFToR2Client(
             pdfBlob,
             adminId,
             invoice.id,
             invoice.invoice_number
           )
-          const uploadDuration = Date.now() - uploadStartTime
+          
+          const timeoutPromise = new Promise<null>((resolve) => 
+            setTimeout(() => resolve(null), 8000) // 8 second timeout
+          )
+          
+          const uploadResult = await Promise.race([uploadPromise, timeoutPromise])
+          
+          if (uploadResult && (uploadResult as any).success && (uploadResult as any).publicUrl) {
+            r2PublicUrl = (uploadResult as any).publicUrl
+            setUploadedUrl((uploadResult as any).publicUrl)
 
-          if (r2Result.success && r2Result.publicUrl) {
-            r2PublicUrl = r2Result.publicUrl
-
-            // Save metadata to database (non-blocking - fire and forget for speed)
-            if (r2Result.expiresAt) {
+            // Save metadata to database (non-blocking)
+            if ((uploadResult as any).expiresAt) {
               saveInvoiceStorage({
                 invoice_id: invoice.id,
-                r2_object_key: r2Result.objectKey || "",
-                public_url: r2Result.publicUrl,
-                expires_at: r2Result.expiresAt,
+                r2_object_key: (uploadResult as any).objectKey || "",
+                public_url: (uploadResult as any).publicUrl,
+                expires_at: (uploadResult as any).expiresAt,
               }).catch((err) => {
                 console.warn("[WhatsAppShare] Failed to save storage metadata (non-critical):", err)
               })
             }
 
-            // Update message with R2 link
-            const messageWithR2Link = generateWhatsAppBillMessage({
-              ...miniBillData,
-              pdfR2Url: r2PublicUrl,
-            })
-
-            await shareOnWhatsApp(messageWithR2Link)
-            
-            toast({
-              title: "✅ Uploaded & Shared!",
-              description: `PDF uploaded in ${uploadDuration}ms. WhatsApp opened with shareable link.`,
-              duration: 3000,
-            })
-            return
+            // Auto-copy link to clipboard
+            try {
+              await navigator.clipboard.writeText((uploadResult as any).publicUrl)
+              setLinkCopied(true)
+              setTimeout(() => setLinkCopied(false), 2000)
+            } catch (clipboardError) {
+              // Clipboard failed, continue anyway
+            }
           } else {
-            console.warn("[WhatsAppShare] R2 upload failed:", r2Result.error)
-            toast({
-              title: "Upload failed",
-              description: "Falling back to local PDF download.",
-              variant: "default",
-              duration: 2000,
+            // Upload is still in progress or failed - continue in background
+            uploadPromise.then((r2Result) => {
+              if (r2Result.success && r2Result.publicUrl) {
+                setUploadedUrl(r2Result.publicUrl)
+                // Save metadata
+                if (r2Result.expiresAt) {
+                  saveInvoiceStorage({
+                    invoice_id: invoice.id,
+                    r2_object_key: r2Result.objectKey || "",
+                    public_url: r2Result.publicUrl,
+                    expires_at: r2Result.expiresAt,
+                  }).catch((err) => {
+                    console.warn("[WhatsAppShare] Failed to save storage metadata (non-critical):", err)
+                  })
+                }
+                // Show modal with link after WhatsApp is already open
+                setShowLinkModal(true)
+              }
+            }).catch((err) => {
+              console.warn("[WhatsAppShare] Background upload error:", err)
             })
           }
         }
 
-        // Fallback: share with PDF download if R2 upload fails or adminId unavailable
-        await shareOnWhatsApp(baseMessage, pdfBlob, fileName)
-        
-        toast({
-          title: "Opening WhatsApp",
-          description: r2PublicUrl 
-            ? "PDF uploaded. Opening WhatsApp with shareable link."
-            : "PDF downloaded. WhatsApp is opening with your invoice message. You can attach the downloaded PDF manually.",
-          duration: 5000,
+        // Generate WhatsApp message with R2 link if available, otherwise use invoice link
+        const finalMessage = generateWhatsAppBillMessage({
+          ...miniBillData,
+          pdfR2Url: r2PublicUrl,
         })
+
+        console.log("[WhatsAppShare] Opening WhatsApp with message:", finalMessage.substring(0, 100) + "...")
+        console.log("[WhatsAppShare] R2 URL:", r2PublicUrl || "Not available")
+
+        // Open WhatsApp with the message (includes R2 link if upload succeeded quickly)
+        const shareResult = await shareOnWhatsApp(finalMessage, pdfBlob, fileName)
+        
+        if (shareResult.success) {
+          toast({
+            title: r2PublicUrl ? "✅ WhatsApp Opened with PDF Link!" : "✅ WhatsApp Opened",
+            description: r2PublicUrl 
+              ? "PDF uploaded! WhatsApp opened with shareable PDF link. Link copied to clipboard."
+              : "WhatsApp opened. PDF is being uploaded in the background.",
+            duration: 3000,
+          })
+        } else {
+          toast({
+            title: "Failed to Open WhatsApp",
+            description: "Please try opening WhatsApp manually or check your browser settings.",
+            variant: "destructive",
+            duration: 5000,
+          })
+        }
       } catch (pdfError) {
         console.warn("[WhatsAppShare] PDF generation failed, sharing text only:", pdfError)
         await shareOnWhatsApp(baseMessage)
@@ -288,26 +325,96 @@ export function WhatsAppShareButton({
     }
   }
 
+  const handleCopyLink = async () => {
+    if (uploadedUrl) {
+      try {
+        await navigator.clipboard.writeText(uploadedUrl)
+        setLinkCopied(true)
+        toast({
+          title: "Link Copied!",
+          description: "PDF link has been copied to clipboard.",
+          duration: 2000,
+        })
+        setTimeout(() => setLinkCopied(false), 2000)
+      } catch (err) {
+        toast({
+          title: "Copy Failed",
+          description: "Failed to copy link. Please copy manually.",
+          variant: "destructive",
+        })
+      }
+    }
+  }
+
+  const handleOpenLink = () => {
+    if (uploadedUrl) {
+      window.open(uploadedUrl, '_blank', 'noopener,noreferrer')
+    }
+  }
+
   return (
-    <Button
-      onClick={handleShare}
-      disabled={!isOnline || isSharing}
-      variant="outline"
-      className="gap-2"
-      title={!isOnline ? "Internet required to share invoice" : "Share invoice on WhatsApp"}
-    >
-      {!isOnline ? (
-        <>
-          <WifiOff className="h-4 w-4" />
-          <span className="hidden sm:inline">Offline</span>
-        </>
-      ) : (
-        <>
-          <MessageCircle className="h-4 w-4" />
-          <span className="hidden sm:inline">{isSharing ? "Opening..." : "Share on WhatsApp"}</span>
-        </>
-      )}
-    </Button>
+    <>
+      <Button
+        onClick={handleShare}
+        disabled={!isOnline || isSharing}
+        variant="outline"
+        className="gap-2"
+        title={!isOnline ? "Internet required to share invoice" : "Share invoice on WhatsApp"}
+      >
+        {!isOnline ? (
+          <>
+            <WifiOff className="h-4 w-4" />
+            <span className="hidden sm:inline">Offline</span>
+          </>
+        ) : (
+          <>
+            <MessageCircle className="h-4 w-4" />
+            <span className="hidden sm:inline">{isSharing ? "Opening..." : "Share on WhatsApp"}</span>
+          </>
+        )}
+      </Button>
+
+      <Dialog open={showLinkModal} onOpenChange={setShowLinkModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>PDF Uploaded Successfully!</DialogTitle>
+            <DialogDescription>
+              Your invoice PDF has been uploaded to cloud storage. The link has been copied to your clipboard.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
+              <code className="flex-1 text-xs break-all">{uploadedUrl}</code>
+            </div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              {linkCopied && (
+                <span className="flex items-center gap-1 text-green-600">
+                  <Check className="h-4 w-4" />
+                  Copied!
+                </span>
+              )}
+            </div>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={handleCopyLink}
+              className="w-full sm:w-auto"
+            >
+              <Copy className="h-4 w-4 mr-2" />
+              {linkCopied ? "Copied!" : "Copy Link"}
+            </Button>
+            <Button
+              onClick={handleOpenLink}
+              className="w-full sm:w-auto"
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Open PDF
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

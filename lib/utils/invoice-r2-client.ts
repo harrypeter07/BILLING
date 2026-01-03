@@ -29,12 +29,19 @@ export async function uploadInvoicePDFToR2Client(
 ): Promise<InvoiceR2UploadResult> {
   try {
     // Use FormData for efficient binary transfer (faster than JSON with Base64)
-    // Create a File object with a filename so it's properly recognized as a file upload
+    // Ensure we have a proper Blob/File for FormData
     const fileName = `invoice-${invoiceNumber}.pdf`
-    const pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' })
+    
+    // Create File from Blob - ensure it's a proper File object
+    let pdfFile: File | Blob = pdfBlob
+    if (pdfBlob instanceof Blob && !(pdfBlob instanceof File)) {
+      pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' })
+    } else if (!(pdfBlob instanceof File)) {
+      pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' })
+    }
     
     const formData = new FormData()
-    formData.append('pdfData', pdfFile)
+    formData.append('pdfData', pdfFile, fileName)
     formData.append('adminId', adminId)
     formData.append('invoiceId', invoiceId)
     formData.append('invoiceNumber', invoiceNumber)
