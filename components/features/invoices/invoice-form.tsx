@@ -1255,7 +1255,37 @@ export function InvoiceForm({
 				(c) => c.id === finalCustomerId
 			);
 
-			// Generate mini invoice PDF
+			// Fetch business profile for PDF (logo, business details)
+			let businessProfile: any = null;
+			try {
+				const supabase = createClient();
+				const { data: { user } } = await supabase.auth.getUser();
+				if (user) {
+					const { data: prof } = await supabase
+						.from("user_profiles")
+						.select("*")
+						.eq("id", user.id)
+						.single();
+					if (prof) {
+						businessProfile = prof;
+					}
+				}
+			} catch (err) {
+				console.warn("[InvoiceForm] Failed to fetch profile:", err);
+			}
+
+			// Get served by name
+			const { getServedByName } = await import("@/lib/utils/get-served-by");
+			const supabaseForServedBy = createClient();
+			const { data: { user: currentUser } } = await supabaseForServedBy.auth.getUser();
+			const servedBy = await getServedByName({
+				...invoiceData,
+				user_id: currentUser?.id,
+				created_by_employee_id: employeeId,
+				employee_id: employeeId,
+			});
+
+			// Generate mini invoice PDF with all business data
 			const pdfData = {
 				invoiceNumber: invoiceNumber,
 				invoiceDate: invoiceDate,
@@ -1263,10 +1293,13 @@ export function InvoiceForm({
 				customerEmail: customerData.email || "",
 				customerPhone: customerData.phone || "",
 				customerGSTIN: "",
-				businessName: storeName || "Business",
-				businessGSTIN: "",
-				businessAddress: "",
-				businessPhone: "",
+				businessName: businessProfile?.business_name || storeName || "Business",
+				businessGSTIN: businessProfile?.business_gstin || "",
+				businessAddress: businessProfile?.business_address || "",
+				businessPhone: businessProfile?.business_phone || "",
+				businessEmail: businessProfile?.business_email || "",
+				logoUrl: businessProfile?.logo_url || "",
+				servedBy: servedBy,
 				items: items.map((item) => {
 					const calc = calculateLineItem({
 						unitPrice: item.unit_price,
