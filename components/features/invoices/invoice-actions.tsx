@@ -6,7 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { MoreVertical, Download, Edit2, Trash2, Printer } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
-import { generateInvoicePDF } from "@/lib/utils/pdf-generator"
+import { generateInvoicePDF } from "@/lib/utils/invoice-pdf"
 
 interface InvoiceActionsProps {
   invoiceId: string
@@ -140,7 +140,7 @@ export function InvoiceActions({ invoiceId, invoiceNumber, invoiceData }: Invoic
         }
       }
 
-      await generateInvoicePDF({
+      const pdfBlob = await generateInvoicePDF({
         invoiceNumber: invoice.invoice_number || invoiceNumber,
         invoiceDate: invoice.invoice_date || invoice.invoiceDate || new Date().toISOString(),
         dueDate: invoice.due_date || invoice.dueDate,
@@ -152,6 +152,8 @@ export function InvoiceActions({ invoiceId, invoiceNumber, invoiceData }: Invoic
         businessGSTIN: profile?.business_gstin,
         businessAddress: profile?.business_address,
         businessPhone: profile?.business_phone,
+        businessEmail: profile?.business_email,
+        logoUrl: profile?.logo_url,
         items: items || [],
         subtotal: Number(invoice.subtotal) || 0,
         cgstAmount: Number(invoice.cgst_amount || invoice.cgstAmount) || 0,
@@ -162,6 +164,14 @@ export function InvoiceActions({ invoiceId, invoiceNumber, invoiceData }: Invoic
         terms: invoice.terms,
         isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
       })
+
+      // Download the PDF
+      const url = URL.createObjectURL(pdfBlob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `Invoice-${invoice.invoice_number || invoiceNumber}.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
 
       toast({
         title: "Success",

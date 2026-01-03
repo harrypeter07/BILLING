@@ -13,7 +13,7 @@ import { InvoiceActions } from "@/components/features/invoices/invoice-actions"
 import { InvoicePrint } from "@/components/features/invoices/invoice-print"
 import { WhatsAppShareButton } from "@/components/features/invoices/whatsapp-share-button"
 import { useToast } from "@/hooks/use-toast"
-import { generateMiniInvoicePDF } from "@/lib/utils/mini-invoice-pdf"
+import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf"
 import { useInvoice } from "@/lib/hooks/use-cached-data"
 import { db } from "@/lib/dexie-client"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
@@ -267,8 +267,8 @@ export default function InvoiceDetailPageClient() {
         isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
       }
 
-      // Generate PDF from IndexedDB data (mini format for sharing)
-      const pdfBlob = await generateMiniInvoicePDF(pdfData)
+      // Generate PDF from IndexedDB data (slip format for sharing)
+      const pdfBlob = await generateInvoiceSlipPDF(pdfData)
 
       // Get invoice number and business name for file naming and sharing
       const invoiceNumber = pdfData.invoiceNumber

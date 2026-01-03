@@ -2,7 +2,7 @@
 
 ## Overview
 When a user clicks "Share on WhatsApp", the system automatically:
-1. Generates a mini invoice PDF
+1. Generates an invoice slip PDF
 2. Uploads the PDF to Cloudflare R2 bucket
 3. Gets a public shareable link
 4. Includes the R2 link in the WhatsApp message
@@ -15,7 +15,7 @@ User clicks "Share on WhatsApp"
          ↓
 [WhatsApp Share Button / Invoice Form]
          ↓
-1. Generate Mini Invoice PDF (with logo & "Served by")
+1. Generate Invoice Slip PDF (with logo & "Served by")
          ↓
 2. Get Admin/User ID
          ↓
@@ -51,8 +51,8 @@ User clicks "Share on WhatsApp"
 
 ### 2. PDF Generation
 
-**File**: `lib/utils/mini-invoice-pdf.ts`
-- Generates mini invoice PDF using `jspdf` and `jspdf-autotable`
+**File**: `lib/utils/invoice-slip-pdf.ts`
+- Generates invoice slip PDF using `jspdf` and `jspdf-autotable`
 - Includes:
   - Logo (centered)
   - Store name, email, contact (from admin settings)
@@ -282,7 +282,7 @@ This will:
 
 The implementation is **complete and working**. When users click "Share on WhatsApp":
 
-1. ✅ PDF is generated (mini format with logo and "Served by")
+1. ✅ PDF is generated (slip format with logo and "Served by")
 2. ✅ PDF is uploaded to Cloudflare R2
 3. ✅ Public URL is generated
 4. ✅ Metadata is saved to database

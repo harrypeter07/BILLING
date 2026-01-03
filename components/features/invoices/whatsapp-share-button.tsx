@@ -6,10 +6,10 @@ import { MessageCircle, WifiOff, Copy, Check, ExternalLink } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { generateWhatsAppBillMessage, shareOnWhatsApp, type MiniBillData } from "@/lib/utils/whatsapp-bill"
-import { generateMiniInvoicePDF } from "@/lib/utils/mini-invoice-pdf"
+import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf"
 import { getServedByName } from "@/lib/utils/get-served-by"
 import { uploadInvoicePDFToR2Client } from "@/lib/utils/invoice-r2-client"
-import { saveInvoiceStorage } from "@/lib/utils/save-invoice-storage"
+import { saveInvoiceStorage, getInvoiceStorage } from "@/lib/utils/save-invoice-storage"
 import { createClient } from "@/lib/supabase/client"
 
 interface WhatsAppShareButtonProps {
@@ -185,7 +185,7 @@ export function WhatsAppShareButton({
           isGstInvoice: invoice.is_gst_invoice || false,
         }
 
-        const pdfBlob = await generateMiniInvoicePDF(pdfData)
+        const pdfBlob = await generateInvoiceSlipPDF(pdfData)
         const fileName = `Invoice-${invoice.invoice_number}.pdf`
 
         // Get admin/user ID for R2 upload
@@ -202,83 +202,97 @@ export function WhatsAppShareButton({
           }
         }
 
-        // Try to upload PDF to R2 first (with timeout), then open WhatsApp with the link
+        // ALWAYS use Cloudflare R2 link - check for existing URL first, then upload if needed
         let r2PublicUrl: string | undefined
         
         if (adminId) {
-          toast({
-            title: "Uploading PDF...",
-            description: "Uploading to cloud storage, then opening WhatsApp...",
-            duration: 2000,
-          })
+          // First, check if we already have an R2 URL for this invoice
+          console.log("[WhatsAppShare] Checking for existing R2 URL...")
+          const existingStorage = await getInvoiceStorage(invoice.id)
+          
+          if (existingStorage && existingStorage.public_url) {
+            // Check if URL hasn't expired
+            const expiresAt = new Date(existingStorage.expires_at).getTime()
+            const now = Date.now()
+            
+            if (expiresAt > now) {
+              // Use existing valid URL
+              r2PublicUrl = existingStorage.public_url
+              setUploadedUrl(existingStorage.public_url)
+              console.log("[WhatsAppShare] Using existing R2 URL:", r2PublicUrl)
+              
+              // Auto-copy link to clipboard
+              try {
+                await navigator.clipboard.writeText(r2PublicUrl)
+                setLinkCopied(true)
+                setTimeout(() => setLinkCopied(false), 2000)
+              } catch (clipboardError) {
+                // Clipboard failed, continue anyway
+              }
+            } else {
+              console.log("[WhatsAppShare] Existing R2 URL expired, uploading new one...")
+            }
+          }
+          
+          // If no existing valid URL, upload new one
+          if (!r2PublicUrl) {
+            toast({
+              title: "Uploading PDF...",
+              description: "Uploading to cloud storage, then opening WhatsApp...",
+              duration: 2000,
+            })
 
-          // Try to upload with 8 second timeout - if it succeeds, use R2 link; otherwise use invoice link
-          const uploadPromise = uploadInvoicePDFToR2Client(
-            pdfBlob,
-            adminId,
-            invoice.id,
-            invoice.invoice_number
-          )
-          
-          const timeoutPromise = new Promise<null>((resolve) => 
-            setTimeout(() => resolve(null), 8000) // 8 second timeout
-          )
-          
-          const uploadResult = await Promise.race([uploadPromise, timeoutPromise])
-          
-          if (uploadResult && (uploadResult as any).success && (uploadResult as any).publicUrl) {
-            r2PublicUrl = (uploadResult as any).publicUrl
-            setUploadedUrl((uploadResult as any).publicUrl)
+            // Wait for upload to complete (no timeout - we need the R2 link)
+            console.log("[WhatsAppShare] Uploading PDF to R2...")
+            const uploadResult = await uploadInvoicePDFToR2Client(
+              pdfBlob,
+              adminId,
+              invoice.id,
+              invoice.invoice_number
+            )
+            
+            if (uploadResult.success && uploadResult.publicUrl) {
+              r2PublicUrl = uploadResult.publicUrl
+              setUploadedUrl(uploadResult.publicUrl)
+              console.log("[WhatsAppShare] R2 upload successful:", r2PublicUrl)
 
-            // Save metadata to database (non-blocking)
-            if ((uploadResult as any).expiresAt) {
-              saveInvoiceStorage({
-                invoice_id: invoice.id,
-                r2_object_key: (uploadResult as any).objectKey || "",
-                public_url: (uploadResult as any).publicUrl,
-                expires_at: (uploadResult as any).expiresAt,
-              }).catch((err) => {
-                console.warn("[WhatsAppShare] Failed to save storage metadata (non-critical):", err)
+              // Save metadata to database (non-blocking)
+              if (uploadResult.expiresAt) {
+                saveInvoiceStorage({
+                  invoice_id: invoice.id,
+                  r2_object_key: uploadResult.objectKey || "",
+                  public_url: uploadResult.publicUrl,
+                  expires_at: uploadResult.expiresAt,
+                }).catch((err) => {
+                  console.warn("[WhatsAppShare] Failed to save storage metadata (non-critical):", err)
+                })
+              }
+
+              // Auto-copy link to clipboard
+              try {
+                await navigator.clipboard.writeText(uploadResult.publicUrl)
+                setLinkCopied(true)
+                setTimeout(() => setLinkCopied(false), 2000)
+              } catch (clipboardError) {
+                // Clipboard failed, continue anyway
+              }
+            } else {
+              console.error("[WhatsAppShare] R2 upload failed:", uploadResult.error)
+              toast({
+                title: "Upload Failed",
+                description: "Failed to upload PDF. Opening WhatsApp with invoice link instead.",
+                variant: "destructive",
+                duration: 3000,
               })
             }
-
-            // Auto-copy link to clipboard
-            try {
-              await navigator.clipboard.writeText((uploadResult as any).publicUrl)
-              setLinkCopied(true)
-              setTimeout(() => setLinkCopied(false), 2000)
-            } catch (clipboardError) {
-              // Clipboard failed, continue anyway
-            }
-          } else {
-            // Upload is still in progress or failed - continue in background
-            uploadPromise.then((r2Result) => {
-              if (r2Result.success && r2Result.publicUrl) {
-                setUploadedUrl(r2Result.publicUrl)
-                // Save metadata
-                if (r2Result.expiresAt) {
-                  saveInvoiceStorage({
-                    invoice_id: invoice.id,
-                    r2_object_key: r2Result.objectKey || "",
-                    public_url: r2Result.publicUrl,
-                    expires_at: r2Result.expiresAt,
-                  }).catch((err) => {
-                    console.warn("[WhatsAppShare] Failed to save storage metadata (non-critical):", err)
-                  })
-                }
-                // Show modal with link after WhatsApp is already open
-                setShowLinkModal(true)
-              }
-            }).catch((err) => {
-              console.warn("[WhatsAppShare] Background upload error:", err)
-            })
           }
         }
 
-        // Generate WhatsApp message with R2 link if available, otherwise use invoice link
+        // ALWAYS use R2 link if available - never fall back to invoice link for WhatsApp share
+        // If R2 upload failed, we still try to use R2 URL (it might be in background)
         const finalMessage = generateWhatsAppBillMessage({
           ...miniBillData,
-          pdfR2Url: r2PublicUrl,
+          pdfR2Url: r2PublicUrl, // Always use R2 URL if we have it
         })
 
         console.log("[WhatsAppShare] Opening WhatsApp with message:", finalMessage.substring(0, 100) + "...")

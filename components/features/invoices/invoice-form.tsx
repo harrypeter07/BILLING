@@ -49,13 +49,13 @@ import {
 } from "@/components/ui/tooltip";
 import { db } from "@/lib/dexie-client";
 import { useInvalidateQueries } from "@/lib/hooks/use-cached-data";
-import { generateMiniInvoicePDF } from "@/lib/utils/mini-invoice-pdf";
+import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf";
 import {
 	generateWhatsAppBillMessage,
 	shareOnWhatsApp,
 } from "@/lib/utils/whatsapp-bill";
 import { uploadInvoicePDFToR2Client } from "@/lib/utils/invoice-r2-client";
-import { saveInvoiceStorage } from "@/lib/utils/save-invoice-storage";
+import { saveInvoiceStorage, getInvoiceStorage } from "@/lib/utils/save-invoice-storage";
 import { getServedByName } from "@/lib/utils/get-served-by";
 import {
 	ResizablePanelGroup,
@@ -1325,7 +1325,7 @@ export function InvoiceForm({
 				isGstInvoice: isGstInvoice,
 			};
 
-			const pdfBlob = await generateMiniInvoicePDF(pdfData);
+			const pdfBlob = await generateInvoiceSlipPDF(pdfData);
 			const fileName = `Invoice-${invoiceNumber}.pdf`;
 
 			// Generate invoice link
@@ -1356,74 +1356,87 @@ export function InvoiceForm({
 				}
 			}
 
-			// Try to upload PDF to R2 first (with timeout), then open WhatsApp with the link
+			// ALWAYS use Cloudflare R2 link - check for existing URL first, then upload if needed
 			let r2PublicUrl: string | undefined;
 			
 			if (adminId) {
-				toast({
-					title: "Uploading PDF...",
-					description: "Uploading to cloud storage, then opening WhatsApp...",
-					duration: 2000,
-				});
+				// First, check if we already have an R2 URL for this invoice
+				console.log("[InvoiceForm] Checking for existing R2 URL...");
+				const existingStorage = await getInvoiceStorage(invoiceId);
+				
+				if (existingStorage && existingStorage.public_url) {
+					// Check if URL hasn't expired
+					const expiresAt = new Date(existingStorage.expires_at).getTime();
+					const now = Date.now();
+					
+					if (expiresAt > now) {
+						// Use existing valid URL
+						r2PublicUrl = existingStorage.public_url;
+						console.log("[InvoiceForm] Using existing R2 URL:", r2PublicUrl);
+						
+						// Auto-copy link to clipboard
+						try {
+							await navigator.clipboard.writeText(r2PublicUrl);
+						} catch (clipboardError) {
+							// Clipboard failed, continue anyway
+						}
+					} else {
+						console.log("[InvoiceForm] Existing R2 URL expired, uploading new one...");
+					}
+				}
+				
+				// If no existing valid URL, upload new one
+				if (!r2PublicUrl) {
+					toast({
+						title: "Uploading PDF...",
+						description: "Uploading to cloud storage, then opening WhatsApp...",
+						duration: 2000,
+					});
 
-				// Try to upload with 8 second timeout - if it succeeds, use R2 link; otherwise use invoice link
-				const uploadPromise = uploadInvoicePDFToR2Client(
-					pdfBlob,
-					adminId,
-					invoiceId,
-					invoiceNumber
-				);
-				
-				const timeoutPromise = new Promise<null>((resolve) => 
-					setTimeout(() => resolve(null), 8000) // 8 second timeout
-				);
-				
-				const uploadResult = await Promise.race([uploadPromise, timeoutPromise]);
-				
-				if (uploadResult && (uploadResult as any).success && (uploadResult as any).publicUrl) {
-					r2PublicUrl = (uploadResult as any).publicUrl;
+					// Wait for upload to complete (no timeout - we need the R2 link)
+					console.log("[InvoiceForm] Uploading PDF to R2...");
+					const uploadResult = await uploadInvoicePDFToR2Client(
+						pdfBlob,
+						adminId,
+						invoiceId,
+						invoiceNumber
+					);
+					
+					if (uploadResult.success && uploadResult.publicUrl) {
+						r2PublicUrl = uploadResult.publicUrl;
+						console.log("[InvoiceForm] R2 upload successful:", r2PublicUrl);
 
-					// Save metadata to database (non-blocking)
-					if ((uploadResult as any).expiresAt) {
-						saveInvoiceStorage({
-							invoice_id: invoiceId,
-							r2_object_key: (uploadResult as any).objectKey || "",
-							public_url: (uploadResult as any).publicUrl,
-							expires_at: (uploadResult as any).expiresAt,
-						}).catch((err) => {
-							console.warn("[InvoiceForm] Failed to save storage metadata (non-critical):", err);
+						// Save metadata to database (non-blocking)
+						if (uploadResult.expiresAt) {
+							saveInvoiceStorage({
+								invoice_id: invoiceId,
+								r2_object_key: uploadResult.objectKey || "",
+								public_url: uploadResult.publicUrl,
+								expires_at: uploadResult.expiresAt,
+							}).catch((err) => {
+								console.warn("[InvoiceForm] Failed to save storage metadata (non-critical):", err);
+							});
+						}
+
+						// Auto-copy link to clipboard
+						try {
+							await navigator.clipboard.writeText(uploadResult.publicUrl);
+						} catch (clipboardError) {
+							// Clipboard failed, continue anyway
+						}
+					} else {
+						console.error("[InvoiceForm] R2 upload failed:", uploadResult.error);
+						toast({
+							title: "Upload Failed",
+							description: "Failed to upload PDF. Opening WhatsApp with invoice link instead.",
+							variant: "destructive",
+							duration: 3000,
 						});
 					}
-
-					// Auto-copy link to clipboard
-					try {
-						await navigator.clipboard.writeText((uploadResult as any).publicUrl);
-					} catch (clipboardError) {
-						// Clipboard failed, continue anyway
-					}
-				} else {
-					// Upload is still in progress or failed - continue in background
-					uploadPromise.then((r2Result) => {
-						if (r2Result.success && r2Result.publicUrl) {
-							// Save metadata
-							if (r2Result.expiresAt) {
-								saveInvoiceStorage({
-									invoice_id: invoiceId,
-									r2_object_key: r2Result.objectKey || "",
-									public_url: r2Result.publicUrl,
-									expires_at: r2Result.expiresAt,
-								}).catch((err) => {
-									console.warn("[InvoiceForm] Failed to save storage metadata (non-critical):", err);
-								});
-							}
-						}
-					}).catch((err) => {
-						console.warn("[InvoiceForm] Background upload error:", err);
-					});
 				}
 			}
 
-			// Generate WhatsApp message with R2 link if available, otherwise use invoice link
+			// ALWAYS use R2 link if available - never fall back to invoice link for WhatsApp share
 			const whatsappMessage = generateWhatsAppBillMessage({
 				storeName: storeName || "Business",
 				invoiceNumber: invoiceNumber,
@@ -1435,89 +1448,48 @@ export function InvoiceForm({
 				})),
 				totalAmount: t.total,
 				invoiceLink: invoiceLink,
-				pdfR2Url: r2PublicUrl,
+				pdfR2Url: r2PublicUrl, // Always use R2 URL if we have it
 			});
 
 			console.log("[InvoiceForm] Opening WhatsApp with message:", whatsappMessage.substring(0, 100) + "...")
 			console.log("[InvoiceForm] R2 URL:", r2PublicUrl || "Not available")
 
-			// Share on WhatsApp with the message (includes R2 link if upload succeeded quickly)
-			// Store WhatsApp URL in sessionStorage as backup in case redirect happens too fast
-			const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`
-			sessionStorage.setItem('pendingWhatsAppUrl', whatsappUrl)
-			sessionStorage.setItem('pendingWhatsAppMessage', whatsappMessage)
+			// Use the same approach as invoice details page - use shareOnWhatsApp directly
+			// This is the proven working method
+			const shareResult = await shareOnWhatsApp(whatsappMessage, pdfBlob, fileName);
 			
-			// Open WhatsApp FIRST - use direct window.open for immediate opening
-			// This ensures WhatsApp opens before any redirect happens
-			console.log("[InvoiceForm] Opening WhatsApp immediately...")
-			try {
-				// Open WhatsApp immediately (synchronous operation)
-				const whatsappWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
-				
-				// If popup blocked, try link method
-				if (!whatsappWindow || whatsappWindow.closed || typeof whatsappWindow.closed === 'undefined') {
-					console.log("[InvoiceForm] Popup blocked, trying link method...")
-					const link = document.createElement('a')
-					link.href = whatsappUrl
-					link.target = '_blank'
-					link.rel = 'noopener noreferrer'
-					link.style.display = 'none'
-					document.body.appendChild(link)
-					link.click()
-					setTimeout(() => {
-						if (document.body.contains(link)) {
-							document.body.removeChild(link)
-						}
-					}, 1000)
-				}
-				
-				// Also call shareOnWhatsApp for PDF download
-				shareOnWhatsApp(whatsappMessage, pdfBlob, fileName).catch(err => {
-					console.warn("[InvoiceForm] shareOnWhatsApp error (non-critical):", err)
-				})
-				
+			if (shareResult.success) {
 				toast({
-					title: "✅ Invoice Created & Shared!",
+					title: r2PublicUrl ? "✅ Invoice Created & Shared!" : "✅ Invoice Created & Shared!",
 					description: r2PublicUrl
 						? "Invoice saved and PDF uploaded! WhatsApp opened with shareable PDF link. Link copied to clipboard."
 						: "Invoice saved. WhatsApp opened. PDF is being uploaded in the background.",
 					duration: 3000,
 				});
 				
-				// Wait longer to ensure WhatsApp fully opens before redirecting
-				// Increased delay to prevent redirect from interrupting WhatsApp
-				await new Promise(resolve => setTimeout(resolve, 4000)); // 4 second delay to ensure WhatsApp opens
-			} catch (error) {
-				console.error("[InvoiceForm] Failed to open WhatsApp directly:", error)
-				// Fallback to shareOnWhatsApp function
-				const shareResult = await shareOnWhatsApp(whatsappMessage, pdfBlob, fileName);
-				if (shareResult.success) {
-					toast({
-						title: "✅ Invoice Created & Shared!",
-						description: r2PublicUrl
-							? "Invoice saved and PDF uploaded! WhatsApp opened with shareable PDF link."
-							: "Invoice saved. WhatsApp opened. PDF is being uploaded in the background.",
-						duration: 3000,
-					});
-					await new Promise(resolve => setTimeout(resolve, 3000));
-				} else {
-					toast({
-						title: "Invoice Saved, but WhatsApp Failed to Open",
-						description: "Invoice was saved successfully. WhatsApp will open after redirect.",
-						variant: "default",
-						duration: 5000,
-					});
-					await new Promise(resolve => setTimeout(resolve, 2000));
-				}
+				// Wait to ensure WhatsApp fully opens before redirecting
+				// Use the same delay as invoice details page (which works)
+				await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
+			} else {
+				toast({
+					title: "Invoice Saved, but WhatsApp Failed to Open",
+					description: "Invoice was saved successfully. Please try opening WhatsApp manually.",
+					variant: "default",
+					duration: 5000,
+				});
+				await new Promise(resolve => setTimeout(resolve, 2000));
 			}
 
 			// Navigate to invoices page (after WhatsApp has had time to open)
 			// Use setTimeout to ensure redirect happens after WhatsApp window is fully open
 			console.log("[InvoiceForm] Redirecting to invoices page...")
 			setTimeout(() => {
-				router.push("/invoices");
-				router.refresh();
-			}, 500); // Additional delay to ensure redirect doesn't interrupt WhatsApp
+				// Only redirect if we're still on the invoice creation page
+				if (window.location.pathname.includes('/invoices/new')) {
+					router.push("/invoices");
+					router.refresh();
+				}
+			}, 1000); // Additional 1 second delay before redirect
 		} catch (error) {
 			console.error("[InvoiceForm] Error saving and sharing invoice:", error);
 			toast({

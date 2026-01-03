@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { createServerClient } from "@supabase/ssr"
 import { cookies } from "next/headers"
-import { generateMiniInvoicePDF } from "@/lib/utils/mini-invoice-pdf"
+import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf"
 
 export async function GET(
   request: NextRequest,
@@ -124,7 +124,7 @@ export async function GET(
     }
 
     // Generate PDF
-    const pdfBlob = await generateMiniInvoicePDF(pdfData)
+    const pdfBlob = await generateInvoiceSlipPDF(pdfData)
 
     // Convert blob to buffer
     const arrayBuffer = await pdfBlob.arrayBuffer()

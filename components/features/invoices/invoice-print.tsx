@@ -2,7 +2,7 @@
 
 import { Button } from "@/components/ui/button"
 import { Printer } from "lucide-react"
-import { generateA4InvoicePDF } from "@/lib/utils/pdf-generator-a4"
+import { generateInvoicePDF } from "@/lib/utils/invoice-pdf"
 import { useToast } from "@/hooks/use-toast"
 import { useState } from "react"
 import { getServedByName } from "@/lib/utils/get-served-by"
@@ -22,7 +22,7 @@ interface InvoicePrintProps {
 export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoicePrintProps) {
   const { toast } = useToast()
   const [isGenerating, setIsGenerating] = useState(false)
-  const [format, setFormat] = useState<"a4" | "mini">("a4")
+  const [format, setFormat] = useState<"invoice" | "slip">("invoice")
 
   const handlePrint = async () => {
     setIsGenerating(true)
@@ -155,8 +155,8 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
 
       // Generate PDF based on format
       try {
-        if (format === "a4") {
-          const pdfBlob = await generateA4InvoicePDF({
+        if (format === "invoice") {
+          const pdfBlob = await generateInvoicePDF({
             invoiceNumber: invoice.invoice_number || invoiceNumber,
             invoiceDate: invoice.invoice_date || invoice.invoiceDate || new Date().toISOString(),
             dueDate: invoice.due_date || invoice.dueDate,
@@ -193,14 +193,14 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
             // Fallback: download
             const a = document.createElement('a')
             a.href = url
-            a.download = `Invoice-${invoice.invoice_number || invoiceNumber}-A4.pdf`
+            a.download = `Invoice-${invoice.invoice_number || invoiceNumber}.pdf`
             a.click()
             URL.revokeObjectURL(url)
           }
         } else {
-          // Mini format - import dynamically
-          const { generateMiniInvoicePDF } = await import("@/lib/utils/mini-invoice-pdf")
-          const pdfBlob = await generateMiniInvoicePDF({
+          // Slip format - import dynamically
+          const { generateInvoiceSlipPDF } = await import("@/lib/utils/invoice-slip-pdf")
+          const pdfBlob = await generateInvoiceSlipPDF({
             invoiceNumber: invoice.invoice_number || invoiceNumber,
             invoiceDate: invoice.invoice_date || invoice.invoiceDate || new Date().toISOString(),
             customerName: customer?.name,
@@ -234,7 +234,7 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
             // Fallback: download
             const a = document.createElement('a')
             a.href = url
-            a.download = `Invoice-${invoice.invoice_number || invoiceNumber}-Mini.pdf`
+            a.download = `Invoice-${invoice.invoice_number || invoiceNumber}-Slip.pdf`
             a.click()
             URL.revokeObjectURL(url)
           }
@@ -279,19 +279,19 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
       <DropdownMenuContent align="end">
         <DropdownMenuItem 
           onClick={() => {
-            setFormat("a4")
+            setFormat("invoice")
             handlePrint()
           }}
         >
-          Print A4 Size
+          Print Invoice
         </DropdownMenuItem>
         <DropdownMenuItem 
           onClick={() => {
-            setFormat("mini")
+            setFormat("slip")
             handlePrint()
           }}
         >
-          Print Mini Bill
+          Print Slip
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

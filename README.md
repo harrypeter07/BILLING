@@ -84,7 +84,7 @@ A comprehensive offline-first Progressive Web App (PWA) for small businesses to 
 ### PDF Generation
 
 - **Library**: jsPDF + jsPDF-AutoTable
-- **Format**: Mini invoice PDFs for WhatsApp sharing
+- **Format**: Invoice slip PDFs for WhatsApp sharing
 
 ### Other Libraries
 
@@ -261,7 +261,7 @@ User Clicks "Share on WhatsApp"
     │
     ▼
 ┌─────────────────────────┐
-│  Generate Mini PDF      │
+│  Generate Slip PDF      │
 │  (Compact Format)       │
 └─────────────────────────┘
     │
@@ -392,9 +392,9 @@ The application implements multiple layers of security to prevent session tamper
 
 #### Files Involved:
 
-- `lib/utils/mini-invoice-pdf.ts` - Mini invoice PDF (WhatsApp format)
-- `lib/utils/pdf-generator.ts` - Full invoice PDF
-- `lib/utils/pdf-invoice-generator.ts` - Alternative PDF generator
+- `lib/utils/invoice-slip-pdf.ts` - Invoice slip PDF (compact format for WhatsApp)
+- `lib/utils/invoice-pdf.ts` - Full invoice PDF (A4 format)
+- `lib/utils/pdf-generator.ts` - Shared InvoiceData interface
 
 #### PDF Generation Flow:
 
@@ -410,8 +410,8 @@ The application implements multiple layers of security to prevent session tamper
    - Uses jsPDF library
    - AutoTable plugin for item tables
    - Custom styling (colors, fonts, layout)
-   - Mini format: 80mm x 210mm (receipt-like)
-   - Full format: A4 size
+   - Slip format: 80mm x 210mm (receipt-like, for WhatsApp)
+   - Invoice format: A4 size (full invoice)
 
 3. **Output**:
    - Returns Blob object
@@ -424,7 +424,7 @@ The application implements multiple layers of security to prevent session tamper
 **Flow**:
 
 1. Fetches invoice data from IndexedDB (no Supabase dependency)
-2. Generates PDF using `generateMiniInvoicePDF()`
+2. Generates PDF using `generateInvoiceSlipPDF()`
 3. Creates File object from PDF Blob
 4. Uses Web Share API (`navigator.share()`)
 5. User selects sharing app (Email, WhatsApp, etc.)
@@ -444,7 +444,7 @@ The application implements multiple layers of security to prevent session tamper
 
 1. Checks internet connection (required)
 2. Generates formatted WhatsApp message
-3. Generates mini invoice PDF
+3. Generates invoice slip PDF
 4. Downloads PDF automatically
 5. Opens WhatsApp Web (`https://wa.me/?text=...`)
 6. User manually attaches downloaded PDF
@@ -627,7 +627,8 @@ billing-solutions/
 │   │   └── dexie.ts            # IndexedDB schema
 │   ├── utils/
 │   │   ├── auth-session.ts     # Secure session management
-│   │   ├── mini-invoice-pdf.ts # PDF generation
+│   │   ├── invoice-slip-pdf.ts # PDF slip generation
+│   │   ├── invoice-pdf.ts # PDF invoice generation
 │   │   ├── whatsapp-bill.ts    # WhatsApp integration
 │   │   └── invoice-pdf-sync.ts # PDF sync utilities
 │   ├── supabase/               # Supabase clients
