@@ -91,11 +91,11 @@ function downloadPDF(pdfBlob: Blob, fileName: string = 'invoice.pdf'): void {
 }
 
 /**
- * Share invoice on WhatsApp - simple version
+ * Share invoice on WhatsApp - optimized version
  * 
  * Flow:
- * 1. Download PDF automatically
- * 2. Open WhatsApp with message and link
+ * 1. Download PDF automatically (if provided)
+ * 2. Open WhatsApp with message and link (reliable method)
  * 
  * @returns Object with success status
  */
@@ -112,14 +112,43 @@ export async function shareOnWhatsApp(
   const encodedMessage = encodeURIComponent(message)
   const fileName = pdfFileName || 'invoice.pdf'
 
-  // Download PDF if available
+  // Download PDF if available (non-blocking)
   if (pdfBlob) {
-    downloadPDF(pdfBlob, fileName)
+    // Use setTimeout to make it non-blocking
+    setTimeout(() => {
+      downloadPDF(pdfBlob, fileName)
+    }, 100)
   }
   
-  // Open WhatsApp directly with message (which includes the link)
-  const whatsappUrl = `https://wa.me/?text=${encodedMessage}`
-  window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
-  
-  return { success: true }
+  // Open WhatsApp using a more reliable method
+  // Try window.location first (most reliable), fallback to window.open
+  try {
+    const whatsappUrl = `https://wa.me/?text=${encodedMessage}`
+    
+    // Create a temporary link and click it (most reliable, works even with popup blockers)
+    const link = document.createElement('a')
+    link.href = whatsappUrl
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.style.display = 'none'
+    document.body.appendChild(link)
+    link.click()
+    
+    // Clean up after a short delay
+    setTimeout(() => {
+      document.body.removeChild(link)
+    }, 100)
+    
+    return { success: true }
+  } catch (error) {
+    console.error('[WhatsAppShare] Failed to open WhatsApp:', error)
+    // Fallback to window.location
+    try {
+      window.location.href = `https://wa.me/?text=${encodedMessage}`
+      return { success: true }
+    } catch (fallbackError) {
+      console.error('[WhatsAppShare] Fallback also failed:', fallbackError)
+      return { success: false }
+    }
+  }
 }
