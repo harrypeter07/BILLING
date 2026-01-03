@@ -17,10 +17,18 @@ export interface R2UploadResult {
   error?: string
 }
 
+// Reuse S3 client instance for better performance (singleton pattern)
+let r2ClientInstance: S3Client | null = null
+
 /**
- * Initialize S3 client for Cloudflare R2
+ * Initialize S3 client for Cloudflare R2 (singleton for performance)
  */
 function getR2Client(): S3Client | null {
+  // Return cached client if already initialized
+  if (r2ClientInstance) {
+    return r2ClientInstance
+  }
+
   const accountId = process.env.R2_ACCOUNT_ID
   const accessKeyId = process.env.R2_ACCESS_KEY_ID
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY
@@ -29,14 +37,21 @@ function getR2Client(): S3Client | null {
     return null
   }
 
-  return new S3Client({
+  // Create and cache client instance
+  r2ClientInstance = new S3Client({
     region: 'auto',
     endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
     credentials: {
       accessKeyId,
       secretAccessKey,
     },
+    // Optimize for speed
+    requestHandler: {
+      requestTimeout: 30000, // 30s timeout
+    },
   })
+
+  return r2ClientInstance
 }
 
 /**

@@ -1323,36 +1323,46 @@ export function InvoiceForm({
 				}
 			}
 
-			// Upload PDF to R2 if adminId is available
+			// Upload PDF to R2 if adminId is available (optimized for speed)
 			let r2PublicUrl: string | undefined;
 			if (adminId) {
 				toast({
-					title: "Uploading to Cloudflare R2",
-					description: "Please wait while we upload your invoice PDF...",
-					duration: 2000,
+					title: "Uploading PDF...",
+					description: "Uploading to cloud storage...",
+					duration: 3000,
 				});
 
+				const uploadStartTime = Date.now();
 				const r2Result = await uploadInvoicePDFToR2Client(
 					pdfBlob,
 					adminId,
 					invoiceId,
 					invoiceNumber
 				);
+				const uploadDuration = Date.now() - uploadStartTime;
 
 				if (r2Result.success && r2Result.publicUrl) {
 					r2PublicUrl = r2Result.publicUrl;
 
-					// Save metadata to database
+					// Save metadata to database (non-blocking - fire and forget for speed)
 					if (r2Result.expiresAt) {
-						await saveInvoiceStorage({
+						saveInvoiceStorage({
 							invoice_id: invoiceId,
 							r2_object_key: r2Result.objectKey || "",
 							public_url: r2Result.publicUrl,
 							expires_at: r2Result.expiresAt,
+						}).catch((err) => {
+							console.warn("[InvoiceForm] Failed to save storage metadata (non-critical):", err);
 						});
 					}
 				} else {
 					console.warn("[InvoiceForm] R2 upload failed:", r2Result.error);
+					toast({
+						title: "Upload failed",
+						description: "Falling back to local PDF download.",
+						variant: "default",
+						duration: 2000,
+					});
 				}
 			}
 
@@ -1375,11 +1385,11 @@ export function InvoiceForm({
 			await shareOnWhatsApp(whatsappMessage, pdfBlob, fileName);
 
 			toast({
-				title: "Invoice Created & Shared",
+				title: "✅ Invoice Created & Shared!",
 				description: r2PublicUrl
-					? "Invoice saved and PDF uploaded to Cloudflare R2. Opening WhatsApp with shareable link."
-					: "Invoice saved. PDF downloaded. WhatsApp opened with your invoice message. You can attach the downloaded PDF manually.",
-				duration: 5000,
+					? "Invoice saved and PDF uploaded. WhatsApp opened with shareable link."
+					: "Invoice saved. PDF downloaded. WhatsApp opened with your invoice message.",
+				duration: 3000,
 			});
 
 			// Navigate to invoices page

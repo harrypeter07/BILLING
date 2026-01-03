@@ -1,7 +1,7 @@
 /**
  * Client-side utility for uploading invoice PDFs to R2
  * 
- * This is a thin wrapper around the API route.
+ * Optimized for speed: Uses ArrayBuffer instead of Base64 for faster transfer
  */
 
 export interface InvoiceR2UploadResult {
@@ -13,7 +13,7 @@ export interface InvoiceR2UploadResult {
 }
 
 /**
- * Upload PDF to R2 via API route
+ * Upload PDF to R2 via API route (OPTIMIZED - uses ArrayBuffer for speed)
  * 
  * @param pdfBlob - PDF file as Blob
  * @param adminId - Admin/User ID
@@ -28,21 +28,23 @@ export async function uploadInvoicePDFToR2Client(
   invoiceNumber: string
 ): Promise<InvoiceR2UploadResult> {
   try {
-    // Convert blob to base64
-    const base64 = await blobToBase64(pdfBlob)
+    // Convert blob to ArrayBuffer (faster than Base64, no encoding overhead)
+    const arrayBuffer = await pdfBlob.arrayBuffer()
+    
+    // Convert ArrayBuffer to Uint8Array for efficient transfer
+    const uint8Array = new Uint8Array(arrayBuffer)
 
-    // Call API route
+    // Use FormData for efficient binary transfer (faster than JSON with Base64)
+    const formData = new FormData()
+    formData.append('pdfData', new Blob([uint8Array], { type: 'application/pdf' }))
+    formData.append('adminId', adminId)
+    formData.append('invoiceId', invoiceId)
+    formData.append('invoiceNumber', invoiceNumber)
+
+    // Call API route with FormData (no Content-Type header needed, browser sets it)
     const response = await fetch('/api/invoices/upload-r2', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        pdfData: base64,
-        adminId,
-        invoiceId,
-        invoiceNumber,
-      }),
+      body: formData,
     })
 
     if (!response.ok) {
@@ -78,20 +80,5 @@ export async function uploadInvoicePDFToR2Client(
       error: error.message || 'Failed to upload PDF to R2',
     }
   }
-}
-
-/**
- * Convert Blob to Base64 string
- */
-function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      const base64String = (reader.result as string).split(',')[1]
-      resolve(base64String)
-    }
-    reader.onerror = reject
-    reader.readAsDataURL(blob)
-  })
 }
 

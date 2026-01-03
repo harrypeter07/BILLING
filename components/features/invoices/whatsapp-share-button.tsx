@@ -198,32 +198,36 @@ export function WhatsAppShareButton({
           }
         }
 
-        // Upload PDF to R2 if adminId is available
+        // Upload PDF to R2 if adminId is available (optimized for speed)
         let r2PublicUrl: string | undefined
         if (adminId) {
           toast({
-            title: "Uploading to Cloudflare R2",
-            description: "Please wait while we upload your invoice PDF...",
-            duration: 2000,
+            title: "Uploading PDF...",
+            description: "Uploading to cloud storage...",
+            duration: 3000,
           })
 
+          const uploadStartTime = Date.now()
           const r2Result = await uploadInvoicePDFToR2Client(
             pdfBlob,
             adminId,
             invoice.id,
             invoice.invoice_number
           )
+          const uploadDuration = Date.now() - uploadStartTime
 
           if (r2Result.success && r2Result.publicUrl) {
             r2PublicUrl = r2Result.publicUrl
 
-            // Save metadata to database
+            // Save metadata to database (non-blocking - fire and forget for speed)
             if (r2Result.expiresAt) {
-              await saveInvoiceStorage({
+              saveInvoiceStorage({
                 invoice_id: invoice.id,
                 r2_object_key: r2Result.objectKey || "",
                 public_url: r2Result.publicUrl,
                 expires_at: r2Result.expiresAt,
+              }).catch((err) => {
+                console.warn("[WhatsAppShare] Failed to save storage metadata (non-critical):", err)
               })
             }
 
@@ -236,13 +240,19 @@ export function WhatsAppShareButton({
             await shareOnWhatsApp(messageWithR2Link)
             
             toast({
-              title: "Success!",
-              description: "Invoice PDF uploaded to Cloudflare R2. Opening WhatsApp with shareable link.",
-              duration: 5000,
+              title: "✅ Uploaded & Shared!",
+              description: `PDF uploaded in ${uploadDuration}ms. WhatsApp opened with shareable link.`,
+              duration: 3000,
             })
             return
           } else {
             console.warn("[WhatsAppShare] R2 upload failed:", r2Result.error)
+            toast({
+              title: "Upload failed",
+              description: "Falling back to local PDF download.",
+              variant: "default",
+              duration: 2000,
+            })
           }
         }
 

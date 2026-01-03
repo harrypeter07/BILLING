@@ -51,51 +51,98 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
           gstAmount: Number(item.gst_amount || item.gstAmount) || 0,
         }))
       } else {
-        // Fallback: Fetch from API if data not provided
+        // Fallback: Fetch from database directly if data not provided
+        console.log("[InvoicePrint] Fetching invoice from database (fallback)")
         
-        // Determine if this is an employee session
-        const authType = localStorage.getItem("authType")
-        let apiUrl = `/api/invoices/${invoiceId}`
-        
-        if (authType === "employee") {
-          const employeeSession = localStorage.getItem("employeeSession")
-          if (employeeSession) {
-            const session = JSON.parse(employeeSession)
-            apiUrl += `?store_id=${encodeURIComponent(session.storeId)}`
+        const { isIndexedDbMode } = await import("@/lib/utils/db-mode")
+        const { createClient } = await import("@/lib/supabase/client")
+        const { db } = await import("@/lib/dexie-client")
+        const isIndexedDb = isIndexedDbMode()
+
+        if (isIndexedDb) {
+          // Fetch from IndexedDB
+          invoice = await db.invoices.get(invoiceId)
+          if (!invoice) throw new Error("Invoice not found")
+          
+          const rawItems = await db.invoice_items
+            .where("invoice_id")
+            .equals(invoiceId)
+            .toArray()
+          
+          customer = invoice.customer_id 
+            ? await db.customers.get(invoice.customer_id)
+            : null
+          
+          // Get profile from Supabase (business settings)
+          const supabase = createClient()
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            const { data: prof } = await supabase
+              .from("user_profiles")
+              .select("*")
+              .eq("id", user.id)
+              .single()
+            profile = prof
           }
+          
+          items = rawItems.map((item: any) => ({
+            description: item.description || '',
+            quantity: Number(item.quantity) || 0,
+            unitPrice: Number(item.unit_price) || 0,
+            discountPercent: Number(item.discount_percent) || 0,
+            gstRate: Number(item.gst_rate) || 0,
+            lineTotal: Number(item.line_total) || 0,
+            gstAmount: Number(item.gst_amount) || 0,
+          }))
+        } else {
+          // Fetch from Supabase
+          const supabase = createClient()
+          
+          const { data: invData, error: invoiceError } = await supabase
+            .from("invoices")
+            .select("*, customers(*)")
+            .eq("id", invoiceId)
+            .single()
+          
+          if (invoiceError || !invData) {
+            throw new Error(invoiceError?.message || "Invoice not found")
+          }
+          
+          invoice = invData
+          customer = invData.customers || null
+          
+          const { data: itemsData, error: itemsError } = await supabase
+            .from("invoice_items")
+            .select("*")
+            .eq("invoice_id", invoiceId)
+          
+          if (itemsError) {
+            console.warn("[InvoicePrint] Error fetching items:", itemsError)
+          }
+          
+          const rawItems = itemsData || []
+          
+          // Get profile
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            const { data: prof } = await supabase
+              .from("user_profiles")
+              .select("*")
+              .eq("id", user.id)
+              .single()
+            profile = prof
+          }
+          
+          items = rawItems.map((item: any) => ({
+            description: item.description || '',
+            quantity: Number(item.quantity) || 0,
+            unitPrice: Number(item.unit_price) || 0,
+            discountPercent: Number(item.discount_percent) || 0,
+            gstRate: Number(item.gst_rate) || 0,
+            lineTotal: Number(item.line_total) || 0,
+            gstAmount: Number(item.gst_amount) || 0,
+          }))
         }
-
-
-        // Fetch invoice data via API route
-        const response = await fetch(apiUrl)
-        const data = await response.json()
-
-
-        if (!response.ok || !data.invoice) {
-          const errorMsg = data.error || data.hint || "Failed to fetch invoice"
-          console.error("[InvoicePrint] API error:", {
-            status: response.status,
-            error: errorMsg,
-            debug: data.debug
-          })
-          throw new Error(errorMsg)
-        }
-
-        invoice = data.invoice
-        const rawItems = invoice.invoice_items || []
-        customer = invoice.customers || null
-        profile = data.profile || null
-        
-        // Transform items to match PDF generator format (snake_case to camelCase)
-        items = rawItems.map((item: any) => ({
-          description: item.description || '',
-          quantity: Number(item.quantity) || 0,
-          unitPrice: Number(item.unit_price || item.unitPrice) || 0,
-          discountPercent: Number(item.discount_percent || item.discountPercent) || 0,
-          gstRate: Number(item.gst_rate || item.gstRate) || 0,
-          lineTotal: Number(item.line_total || item.lineTotal) || 0,
-          gstAmount: Number(item.gst_amount || item.gstAmount) || 0,
-        }))
       }
 
       // Validate required data
