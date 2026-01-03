@@ -1300,6 +1300,62 @@ export function InvoiceForm({
 				typeof window !== "undefined" ? window.location.origin : ""
 			}/i/${invoiceId}`;
 
+			// Get admin/user ID for R2 upload
+			let adminId = "";
+			if (isIndexedDb) {
+				// For IndexedDB, try to get from store or use a default
+				// You may need to adjust this based on your auth setup
+				const supabase = createClient();
+				try {
+					const { data: { user } } = await supabase.auth.getUser();
+					if (user) {
+						adminId = user.id;
+					}
+				} catch (err) {
+					console.warn("[InvoiceForm] Failed to get user ID for R2:", err);
+				}
+			} else {
+				// For Supabase, user.id is already available from above
+				const supabase = createClient();
+				const { data: { user } } = await supabase.auth.getUser();
+				if (user) {
+					adminId = user.id;
+				}
+			}
+
+			// Upload PDF to R2 if adminId is available
+			let r2PublicUrl: string | undefined;
+			if (adminId) {
+				toast({
+					title: "Uploading to Cloudflare R2",
+					description: "Please wait while we upload your invoice PDF...",
+					duration: 2000,
+				});
+
+				const r2Result = await uploadInvoicePDFToR2Client(
+					pdfBlob,
+					adminId,
+					invoiceId,
+					invoiceNumber
+				);
+
+				if (r2Result.success && r2Result.publicUrl) {
+					r2PublicUrl = r2Result.publicUrl;
+
+					// Save metadata to database
+					if (r2Result.expiresAt) {
+						await saveInvoiceStorage({
+							invoice_id: invoiceId,
+							r2_object_key: r2Result.objectKey || "",
+							public_url: r2Result.publicUrl,
+							expires_at: r2Result.expiresAt,
+						});
+					}
+				} else {
+					console.warn("[InvoiceForm] R2 upload failed:", r2Result.error);
+				}
+			}
+
 			// Generate WhatsApp message
 			const whatsappMessage = generateWhatsAppBillMessage({
 				storeName: storeName || "Business",
@@ -1312,15 +1368,17 @@ export function InvoiceForm({
 				})),
 				totalAmount: t.total,
 				invoiceLink: invoiceLink,
+				pdfR2Url: r2PublicUrl,
 			});
 
-			// Share on WhatsApp with PDF
+			// Share on WhatsApp
 			await shareOnWhatsApp(whatsappMessage, pdfBlob, fileName);
 
 			toast({
 				title: "Invoice Created & Shared",
-				description:
-					"Invoice saved. PDF downloaded. WhatsApp opened with your invoice message. You can attach the downloaded PDF manually.",
+				description: r2PublicUrl
+					? "Invoice saved and PDF uploaded to Cloudflare R2. Opening WhatsApp with shareable link."
+					: "Invoice saved. PDF downloaded. WhatsApp opened with your invoice message. You can attach the downloaded PDF manually.",
 				duration: 5000,
 			});
 
