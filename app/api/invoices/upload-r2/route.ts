@@ -15,12 +15,34 @@ import { uploadInvoicePDFToR2 } from '@/lib/utils/r2-storage'
  * - R2_PUBLIC_BASE_URL
  */
 
+// Disable body parsing - Next.js will handle FormData automatically
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+
 export async function POST(request: NextRequest) {
   const startTime = Date.now()
   
   try {
     // Parse FormData (faster than JSON with Base64)
-    const formData = await request.formData()
+    // Next.js automatically handles FormData when body is FormData
+    // The browser sets Content-Type: multipart/form-data with boundary automatically
+    let formData: FormData
+    try {
+      formData = await request.formData()
+    } catch (formDataError: any) {
+      // If FormData parsing fails, check if it's a Content-Type issue
+      const contentType = request.headers.get('content-type') || ''
+      console.error('[R2Upload API] FormData parsing error:', formDataError)
+      console.error('[R2Upload API] Content-Type:', contentType)
+      
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Invalid request format. Expected multipart/form-data, got: ${contentType || 'unknown'}. Please ensure the request is sent as FormData.`,
+        },
+        { status: 400 }
+      )
+    }
     const pdfFile = formData.get('pdfData') as File | null
     const adminId = formData.get('adminId') as string | null
     const invoiceId = formData.get('invoiceId') as string | null

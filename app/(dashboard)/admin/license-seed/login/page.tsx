@@ -4,14 +4,16 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { PasswordInput } from "@/components/ui/password-input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useToast } from "@/hooks/use-toast"
 import { Key, Loader2 } from "lucide-react"
 
-// Simple key for license seed admin access
-const LICENSE_SEED_ADMIN_KEY = "1234" // You can change this to any 3-4 digit key
+// Get license seed admin key from environment variable (client-side accessible)
+// Fallback to "1234" if not set (for development)
+const LICENSE_SEED_ADMIN_KEY = process.env.NEXT_PUBLIC_LICENSE_SEED_KEY || "1234"
 
 export default function LicenseSeedLoginPage() {
   const router = useRouter()

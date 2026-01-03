@@ -53,29 +53,55 @@ function verifySignature(session: AuthSession & { signature?: string }): boolean
   return session.signature === expectedSignature
 }
 
+// Cache for server time to reduce API calls
+let serverTimeCache: { time: number; timestamp: number } | null = null
+const SERVER_TIME_CACHE_DURATION = 30000 // Cache for 30 seconds
+
 /**
  * Get server time from multiple sources to prevent time manipulation
+ * CACHED: Only fetches from server if cache is older than 30 seconds
  */
 async function getServerTime(): Promise<number> {
-  try {
-    // Try to get time from API endpoint (if available)
-    const response = await fetch("/api/time", { 
-      method: "GET",
-      cache: "no-store",
-      signal: AbortSignal.timeout(2000) // 2 second timeout
-    })
-    if (response.ok) {
-      const data = await response.json()
-      if (data.timestamp) {
-        return data.timestamp
+  // When online, use client time (we have clock) - no need for server time
+  // Server time is only needed for initial validation or when offline detection
+  if (typeof window !== "undefined" && navigator.onLine) {
+    // Check cache first
+    if (serverTimeCache) {
+      const age = Date.now() - serverTimeCache.timestamp
+      if (age < SERVER_TIME_CACHE_DURATION) {
+        // Use cached server time (adjusted for elapsed time)
+        return serverTimeCache.time + age
       }
     }
-  } catch (error) {
-    // API unavailable, continue with client time
-    console.warn("[SecureSession] Server time API unavailable, using client time")
+
+    // Cache expired or doesn't exist - fetch once, then use client time
+    // We only need server time occasionally to detect time manipulation
+    try {
+      const response = await fetch("/api/time", { 
+        method: "GET",
+        cache: "no-store",
+        signal: AbortSignal.timeout(2000) // 2 second timeout
+      })
+      if (response.ok) {
+        const data = await response.json()
+        if (data.timestamp) {
+          // Cache the server time
+          serverTimeCache = {
+            time: data.timestamp,
+            timestamp: Date.now(),
+          }
+          return data.timestamp
+        }
+      }
+    } catch (error) {
+      // API unavailable, use client time
+      console.warn("[SecureSession] Server time API unavailable, using client time")
+    }
+    // Use client time (we have clock when online)
+    return Date.now()
   }
 
-  // Fallback to client time (less secure but works offline)
+  // Offline: Use client time
   return Date.now()
 }
 
