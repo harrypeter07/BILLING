@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { createClient } from "@/lib/supabase/client"
 import { getOfflineSession } from "@/lib/utils/offline-auth"
 
@@ -15,29 +15,57 @@ export interface UserRoleInfo {
   loading?: boolean // Alias for isLoading for backward compatibility
 }
 
+// Global cache for user role to avoid repeated API calls
+let globalRoleCache: { role: UserRole; timestamp: number } | null = null
+const ROLE_CACHE_DURATION = 60000 // Cache for 1 minute
+
 export function useUserRole(): UserRoleInfo {
   const [role, setRole] = useState<UserRole>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const hasCheckedRef = useRef(false)
 
   useEffect(() => {
+    // Skip if already checked in this session
+    if (hasCheckedRef.current) {
+      return
+    }
+
     const checkRole = async () => {
+      // Check global cache first
+      if (globalRoleCache) {
+        const age = Date.now() - globalRoleCache.timestamp
+        if (age < ROLE_CACHE_DURATION) {
+          setRole(globalRoleCache.role)
+          setIsLoading(false)
+          hasCheckedRef.current = true
+          return
+        }
+      }
+
       setIsLoading(true)
-      // Check for employee session first
+      
+      // Check for employee session first (fastest check)
       const authType = localStorage.getItem("authType")
       if (authType === "employee") {
-        setRole("employee")
+        const employeeRole: UserRole = "employee"
+        setRole(employeeRole)
         setIsLoading(false)
+        globalRoleCache = { role: employeeRole, timestamp: Date.now() }
+        hasCheckedRef.current = true
         return
       }
 
       const offlineSession = getOfflineSession()
       if (offlineSession && !navigator.onLine) {
-        setRole(offlineSession.role as UserRole)
+        const offlineRole = offlineSession.role as UserRole
+        setRole(offlineRole)
         setIsLoading(false)
+        globalRoleCache = { role: offlineRole, timestamp: Date.now() }
+        hasCheckedRef.current = true
         return
       }
 
-      // Check for Supabase user
+      // Check for Supabase user (async, but cached)
       const supabase = createClient()
       let user = null
       try {
@@ -46,8 +74,11 @@ export function useUserRole(): UserRoleInfo {
       } catch (error) {
         console.warn("[useUserRole] Supabase unavailable:", error)
         if (offlineSession) {
-          setRole(offlineSession.role as UserRole)
+          const offlineRole = offlineSession.role as UserRole
+          setRole(offlineRole)
           setIsLoading(false)
+          globalRoleCache = { role: offlineRole, timestamp: Date.now() }
+          hasCheckedRef.current = true
           return
         }
       }
@@ -55,6 +86,8 @@ export function useUserRole(): UserRoleInfo {
       if (!user) {
         setRole(null)
         setIsLoading(false)
+        globalRoleCache = { role: null, timestamp: Date.now() }
+        hasCheckedRef.current = true
         return
       }
 
@@ -81,6 +114,8 @@ export function useUserRole(): UserRoleInfo {
       const userRole = (profile?.role as UserRole) || "admin"
       setRole(userRole)
       setIsLoading(false)
+      globalRoleCache = { role: userRole, timestamp: Date.now() }
+      hasCheckedRef.current = true
     }
 
     checkRole()

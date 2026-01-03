@@ -15,7 +15,8 @@ interface SessionCountdown {
 }
 
 const WARNING_THRESHOLD_MS = 30000 // 30 seconds before expiry
-const CHECK_INTERVAL_MS = 1000 // Check every second
+const CHECK_INTERVAL_MS = 1000 // Check every second for UI updates
+const SESSION_VALIDATION_INTERVAL_MS = 30000 // Only validate session with getAuthSession every 30 seconds
 
 // Public routes that don't need session countdown
 const PUBLIC_ROUTES = ["/auth/login", "/auth/signup", "/auth/employee-login", "/auth/customer-login", "/auth/session-expired", "/license", "/"]
@@ -28,6 +29,8 @@ export function useSessionCountdown(): SessionCountdown {
   const pathname = usePathname()
   const { toast } = useToast()
   const warningShownRef = useRef(false)
+  const lastValidationRef = useRef<number>(0)
+  const cachedSessionRef = useRef<any>(null)
 
   const formatTime = useCallback((ms: number): string => {
     if (ms <= 0) return "0s"
@@ -52,7 +55,19 @@ export function useSessionCountdown(): SessionCountdown {
     }
 
     try {
-      const session = await getAuthSession()
+      // Only call getAuthSession every 30 seconds to reduce API calls
+      // Use cached session for countdown updates between validations
+      const now = Date.now()
+      const timeSinceLastValidation = now - lastValidationRef.current
+      
+      let session = cachedSessionRef.current
+      
+      // Only validate session if cache is old or doesn't exist
+      if (!session || timeSinceLastValidation >= SESSION_VALIDATION_INTERVAL_MS) {
+        session = await getAuthSession()
+        cachedSessionRef.current = session
+        lastValidationRef.current = now
+      }
       
       if (!session) {
         // Check for employee session as fallback
@@ -100,8 +115,8 @@ export function useSessionCountdown(): SessionCountdown {
         return
       }
 
-      const now = Date.now()
-      const remaining = session.expiresAt - now
+      // Calculate remaining time using cached session (no need to call getAuthSession again)
+      const remaining = session.expiresAt - Date.now()
 
       if (remaining <= 0) {
         // Session expired

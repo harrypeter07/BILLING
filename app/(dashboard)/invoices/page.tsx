@@ -17,7 +17,24 @@ export default function InvoicesPage() {
   const { invalidateInvoices } = useInvalidateQueries()
   const { isAdmin, isEmployee } = useUserRole()
 
-
+  // Check for pending WhatsApp URL and open it after page loads
+  useEffect(() => {
+    const pendingUrl = sessionStorage.getItem('pendingWhatsAppUrl')
+    if (pendingUrl) {
+      // Clear it first to prevent multiple opens
+      sessionStorage.removeItem('pendingWhatsAppUrl')
+      sessionStorage.removeItem('pendingWhatsAppMessage')
+      
+      // Open WhatsApp after a short delay to ensure page is loaded
+      setTimeout(() => {
+        try {
+          window.open(pendingUrl, '_blank', 'noopener,noreferrer')
+        } catch (error) {
+          console.error('[InvoicesPage] Failed to open pending WhatsApp:', error)
+        }
+      }, 500)
+    }
+  }, [])
 
   // Excel import removed
 
@@ -29,15 +46,14 @@ export default function InvoicesPage() {
           <p className="text-sm sm:text-base text-muted-foreground">Create and manage your invoices</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {(isAdmin || isEmployee) && (
-            <Button asChild className="text-xs sm:text-sm">
-              <Link href="/invoices/new">
-                <Plus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="hidden sm:inline">Create Invoice</span>
-                <span className="sm:hidden">Create</span>
-              </Link>
-            </Button>
-          )}
+          {/* Show button immediately - don't wait for role check to avoid delay */}
+          <Button asChild className="text-xs sm:text-sm">
+            <Link href="/invoices/new">
+              <Plus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="hidden sm:inline">Create Invoice</span>
+              <span className="sm:hidden">Create</span>
+            </Link>
+          </Button>
         </div>
       </div>
 

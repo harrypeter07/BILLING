@@ -59,7 +59,7 @@ function verifySignature(
 
 // Cache for server time to reduce API calls
 let serverTimeCache: { time: number; timestamp: number } | null = null;
-const SERVER_TIME_CACHE_DURATION = 30000; // Cache for 30 seconds
+const SERVER_TIME_CACHE_DURATION = 1800000; // Cache for 30 minutes (1800000ms) as requested
 
 // Cache for server validation to reduce API calls
 let serverValidationCache: { valid: boolean; timestamp: number } | null = null;
@@ -541,11 +541,12 @@ export async function getAuthSession(): Promise<AuthSession | null> {
 		// This reduces API calls significantly
 		const clientTime = Date.now();
 
-		// Only check server time occasionally (every 30 seconds) when online
+		// Only check server time occasionally (every 30 minutes) when online
 		// This reduces API calls while still detecting time manipulation
 		let currentTime = clientTime;
 		if (typeof window !== "undefined" && navigator.onLine) {
-			// Check server time only if cache is old (reduces API calls)
+			// Check server time only if cache is old (reduces API calls to once per 30 minutes)
+			// The getServerTime function already has 30 minute cache, so this will only call API once per 30 minutes
 			const serverTime = await getServerTime();
 			const timeDifference = Math.abs(serverTime - clientTime);
 

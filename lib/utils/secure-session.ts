@@ -55,7 +55,7 @@ function verifySignature(session: AuthSession & { signature?: string }): boolean
 
 // Cache for server time to reduce API calls
 let serverTimeCache: { time: number; timestamp: number } | null = null
-const SERVER_TIME_CACHE_DURATION = 30000 // Cache for 30 seconds
+const SERVER_TIME_CACHE_DURATION = 1800000 // Cache for 30 minutes (1800000ms) as requested
 
 /**
  * Get server time from multiple sources to prevent time manipulation

@@ -56,6 +56,7 @@ import {
 } from "@/lib/utils/whatsapp-bill";
 import { uploadInvoicePDFToR2Client } from "@/lib/utils/invoice-r2-client";
 import { saveInvoiceStorage } from "@/lib/utils/save-invoice-storage";
+import { getServedByName } from "@/lib/utils/get-served-by";
 import {
 	ResizablePanelGroup,
 	ResizablePanel,
@@ -1275,7 +1276,6 @@ export function InvoiceForm({
 			}
 
 			// Get served by name
-			const { getServedByName } = await import("@/lib/utils/get-served-by");
 			const supabaseForServedBy = createClient();
 			const { data: { user: currentUser } } = await supabaseForServedBy.auth.getUser();
 			const servedBy = await getServedByName({
@@ -1442,9 +1442,40 @@ export function InvoiceForm({
 			console.log("[InvoiceForm] R2 URL:", r2PublicUrl || "Not available")
 
 			// Share on WhatsApp with the message (includes R2 link if upload succeeded quickly)
-			const shareResult = await shareOnWhatsApp(whatsappMessage, pdfBlob, fileName);
-
-			if (shareResult.success) {
+			// Store WhatsApp URL in sessionStorage as backup in case redirect happens too fast
+			const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`
+			sessionStorage.setItem('pendingWhatsAppUrl', whatsappUrl)
+			sessionStorage.setItem('pendingWhatsAppMessage', whatsappMessage)
+			
+			// Open WhatsApp FIRST - use direct window.open for immediate opening
+			// This ensures WhatsApp opens before any redirect happens
+			console.log("[InvoiceForm] Opening WhatsApp immediately...")
+			try {
+				// Open WhatsApp immediately (synchronous operation)
+				const whatsappWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
+				
+				// If popup blocked, try link method
+				if (!whatsappWindow || whatsappWindow.closed || typeof whatsappWindow.closed === 'undefined') {
+					console.log("[InvoiceForm] Popup blocked, trying link method...")
+					const link = document.createElement('a')
+					link.href = whatsappUrl
+					link.target = '_blank'
+					link.rel = 'noopener noreferrer'
+					link.style.display = 'none'
+					document.body.appendChild(link)
+					link.click()
+					setTimeout(() => {
+						if (document.body.contains(link)) {
+							document.body.removeChild(link)
+						}
+					}, 1000)
+				}
+				
+				// Also call shareOnWhatsApp for PDF download
+				shareOnWhatsApp(whatsappMessage, pdfBlob, fileName).catch(err => {
+					console.warn("[InvoiceForm] shareOnWhatsApp error (non-critical):", err)
+				})
+				
 				toast({
 					title: "✅ Invoice Created & Shared!",
 					description: r2PublicUrl
@@ -1452,18 +1483,41 @@ export function InvoiceForm({
 						: "Invoice saved. WhatsApp opened. PDF is being uploaded in the background.",
 					duration: 3000,
 				});
-			} else {
-				toast({
-					title: "Invoice Saved, but WhatsApp Failed to Open",
-					description: "Invoice was saved successfully. Please try opening WhatsApp manually.",
-					variant: "default",
-					duration: 5000,
-				});
+				
+				// Wait longer to ensure WhatsApp fully opens before redirecting
+				// Increased delay to prevent redirect from interrupting WhatsApp
+				await new Promise(resolve => setTimeout(resolve, 4000)); // 4 second delay to ensure WhatsApp opens
+			} catch (error) {
+				console.error("[InvoiceForm] Failed to open WhatsApp directly:", error)
+				// Fallback to shareOnWhatsApp function
+				const shareResult = await shareOnWhatsApp(whatsappMessage, pdfBlob, fileName);
+				if (shareResult.success) {
+					toast({
+						title: "✅ Invoice Created & Shared!",
+						description: r2PublicUrl
+							? "Invoice saved and PDF uploaded! WhatsApp opened with shareable PDF link."
+							: "Invoice saved. WhatsApp opened. PDF is being uploaded in the background.",
+						duration: 3000,
+					});
+					await new Promise(resolve => setTimeout(resolve, 3000));
+				} else {
+					toast({
+						title: "Invoice Saved, but WhatsApp Failed to Open",
+						description: "Invoice was saved successfully. WhatsApp will open after redirect.",
+						variant: "default",
+						duration: 5000,
+					});
+					await new Promise(resolve => setTimeout(resolve, 2000));
+				}
 			}
 
-			// Navigate to invoices page
-			router.push("/invoices");
-			router.refresh();
+			// Navigate to invoices page (after WhatsApp has had time to open)
+			// Use setTimeout to ensure redirect happens after WhatsApp window is fully open
+			console.log("[InvoiceForm] Redirecting to invoices page...")
+			setTimeout(() => {
+				router.push("/invoices");
+				router.refresh();
+			}, 500); // Additional delay to ensure redirect doesn't interrupt WhatsApp
 		} catch (error) {
 			console.error("[InvoiceForm] Error saving and sharing invoice:", error);
 			toast({

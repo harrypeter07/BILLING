@@ -8,6 +8,10 @@ import { db } from "@/lib/dexie-client"
 import { useStore } from "@/lib/utils/store-context"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 
+// Optimize page loading - allow caching to prevent recompilation
+export const dynamic = 'auto' // Allow Next.js to cache when possible
+export const revalidate = 3600 // Revalidate every hour (3600 seconds)
+
 export default function NewInvoicePage() {
   const [customers, setCustomers] = useState<any[]>([])
   const [products, setProducts] = useState<any[]>([])

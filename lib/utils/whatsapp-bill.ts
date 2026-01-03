@@ -125,52 +125,60 @@ export async function shareOnWhatsApp(
   }
   
   // Open WhatsApp using multiple methods for maximum reliability
-  try {
-    // Method 1: Try window.open first (most reliable for new tabs)
-    console.log('[WhatsAppShare] Trying window.open...')
-    const whatsappWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
-    
-    // Check if popup was blocked
-    if (!whatsappWindow || whatsappWindow.closed || typeof whatsappWindow.closed === 'undefined') {
-      console.warn('[WhatsAppShare] window.open was blocked, trying link method...')
-      // Method 2: Create and click a link
+  // Use setTimeout to ensure it happens asynchronously and isn't blocked by page navigation
+  return new Promise((resolve) => {
+    // Use setTimeout(0) to ensure this runs in the next event loop cycle
+    // This prevents page navigation from blocking the WhatsApp opening
+    setTimeout(() => {
       try {
-        const link = document.createElement('a')
-        link.href = whatsappUrl
-        link.target = '_blank'
-        link.rel = 'noopener noreferrer'
-        link.style.display = 'none'
-        document.body.appendChild(link)
-        link.click()
-        console.log('[WhatsAppShare] Link clicked successfully')
+        // Method 1: Try window.open first (most reliable for new tabs)
+        console.log('[WhatsAppShare] Trying window.open...')
+        const whatsappWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
         
-        // Clean up after a short delay
-        setTimeout(() => {
-          if (document.body.contains(link)) {
-            document.body.removeChild(link)
+        // Check if popup was blocked
+        if (!whatsappWindow || whatsappWindow.closed || typeof whatsappWindow.closed === 'undefined') {
+          console.warn('[WhatsAppShare] window.open was blocked, trying link method...')
+          // Method 2: Create and click a link
+          try {
+            const link = document.createElement('a')
+            link.href = whatsappUrl
+            link.target = '_blank'
+            link.rel = 'noopener noreferrer'
+            link.style.display = 'none'
+            document.body.appendChild(link)
+            link.click()
+            console.log('[WhatsAppShare] Link clicked successfully')
+            
+            // Clean up after a short delay
+            setTimeout(() => {
+              if (document.body.contains(link)) {
+                document.body.removeChild(link)
+              }
+            }, 1000)
+            resolve({ success: true })
+          } catch (linkError) {
+            console.warn('[WhatsAppShare] Link method failed, trying location:', linkError)
+            // Method 3: Fallback - store in sessionStorage and open after navigation
+            // This ensures WhatsApp opens even if page redirects
+            try {
+              sessionStorage.setItem('pendingWhatsAppUrl', whatsappUrl)
+              // Try to open immediately
+              window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
+              console.log('[WhatsAppShare] Stored URL and attempted open')
+              resolve({ success: true })
+            } catch (storageError) {
+              console.error('[WhatsAppShare] All methods failed:', storageError)
+              resolve({ success: false })
+            }
           }
-        }, 1000)
-      } catch (linkError) {
-        console.warn('[WhatsAppShare] Link method failed, trying location:', linkError)
-        // Method 3: Fallback to window.location (will navigate current page)
-        window.location.href = whatsappUrl
-        console.log('[WhatsAppShare] Using window.location.href')
+        } else {
+          console.log('[WhatsAppShare] window.open succeeded')
+          resolve({ success: true })
+        }
+      } catch (error) {
+        console.error('[WhatsAppShare] Failed to open WhatsApp:', error)
+        resolve({ success: false })
       }
-    } else {
-      console.log('[WhatsAppShare] window.open succeeded')
-    }
-    
-    return { success: true }
-  } catch (error) {
-    console.error('[WhatsAppShare] Failed to open WhatsApp:', error)
-    // Final fallback: try window.location
-    try {
-      window.location.href = whatsappUrl
-      console.log('[WhatsAppShare] Using window.location.href as fallback')
-      return { success: true }
-    } catch (fallbackError) {
-      console.error('[WhatsAppShare] All methods failed:', fallbackError)
-      return { success: false }
-    }
-  }
+    }, 100) // Small delay to ensure it's not blocked
+  })
 }

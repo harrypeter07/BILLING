@@ -2,6 +2,8 @@
  * Get the name of the person who created/generated the invoice
  * Returns employee name if created by employee, or admin name if created by admin
  */
+"use client"
+
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
