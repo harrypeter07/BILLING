@@ -102,11 +102,19 @@ export default function InvoiceDetailPageClient() {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const response = await fetch(`/api/invoices/${invoiceId}`)
-        const data = await response.json()
-        if (data.profile) {
-          setSettings(data.profile)
-          setProfile(data.profile)
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("*")
+          .eq("id", user.id)
+          .single()
+
+        if (profile) {
+          setSettings(profile)
+          setProfile(profile)
         }
       } catch (err) {
         console.warn("Failed to fetch business settings:", err)

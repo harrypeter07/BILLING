@@ -54,6 +54,8 @@ import {
 	generateWhatsAppBillMessage,
 	shareOnWhatsApp,
 } from "@/lib/utils/whatsapp-bill";
+import { uploadInvoicePDFToR2Client } from "@/lib/utils/invoice-r2-client";
+import { saveInvoiceStorage } from "@/lib/utils/save-invoice-storage";
 import {
 	ResizablePanelGroup,
 	ResizablePanel,
@@ -1291,11 +1293,80 @@ export function InvoiceForm({
 			};
 
 			const pdfBlob = await generateMiniInvoicePDF(pdfData);
+			const fileName = `Invoice-${invoiceNumber}.pdf`;
 
-			// Generate WhatsApp message
+			// Generate invoice link
 			const invoiceLink = `${
 				typeof window !== "undefined" ? window.location.origin : ""
 			}/i/${invoiceId}`;
+
+			// Get admin/user ID for R2 upload
+			let adminId = "";
+			if (isIndexedDb) {
+				// For IndexedDB, try to get from store or use a default
+				// You may need to adjust this based on your auth setup
+				const supabase = createClient();
+				try {
+					const { data: { user } } = await supabase.auth.getUser();
+					if (user) {
+						adminId = user.id;
+					}
+				} catch (err) {
+					console.warn("[InvoiceForm] Failed to get user ID for R2:", err);
+				}
+			} else {
+				// For Supabase, user.id is already available from above
+				const supabase = createClient();
+				const { data: { user } } = await supabase.auth.getUser();
+				if (user) {
+					adminId = user.id;
+				}
+			}
+
+			// Upload PDF to R2 if adminId is available (optimized for speed)
+			let r2PublicUrl: string | undefined;
+			if (adminId) {
+				toast({
+					title: "Uploading PDF...",
+					description: "Uploading to cloud storage...",
+					duration: 3000,
+				});
+
+				const uploadStartTime = Date.now();
+				const r2Result = await uploadInvoicePDFToR2Client(
+					pdfBlob,
+					adminId,
+					invoiceId,
+					invoiceNumber
+				);
+				const uploadDuration = Date.now() - uploadStartTime;
+
+				if (r2Result.success && r2Result.publicUrl) {
+					r2PublicUrl = r2Result.publicUrl;
+
+					// Save metadata to database (non-blocking - fire and forget for speed)
+					if (r2Result.expiresAt) {
+						saveInvoiceStorage({
+							invoice_id: invoiceId,
+							r2_object_key: r2Result.objectKey || "",
+							public_url: r2Result.publicUrl,
+							expires_at: r2Result.expiresAt,
+						}).catch((err) => {
+							console.warn("[InvoiceForm] Failed to save storage metadata (non-critical):", err);
+						});
+					}
+				} else {
+					console.warn("[InvoiceForm] R2 upload failed:", r2Result.error);
+					toast({
+						title: "Upload failed",
+						description: "Falling back to local PDF download.",
+						variant: "default",
+						duration: 2000,
+					});
+				}
+			}
+
+			// Generate WhatsApp message
 			const whatsappMessage = generateWhatsAppBillMessage({
 				storeName: storeName || "Business",
 				invoiceNumber: invoiceNumber,
@@ -1307,20 +1378,18 @@ export function InvoiceForm({
 				})),
 				totalAmount: t.total,
 				invoiceLink: invoiceLink,
+				pdfR2Url: r2PublicUrl,
 			});
 
-			// Share on WhatsApp with PDF
-			await shareOnWhatsApp(
-				whatsappMessage,
-				pdfBlob,
-				`Invoice-${invoiceNumber}.pdf`
-			);
+			// Share on WhatsApp
+			await shareOnWhatsApp(whatsappMessage, pdfBlob, fileName);
 
 			toast({
-				title: "Invoice Created & Shared",
-				description:
-					"Invoice saved. PDF downloaded. WhatsApp opened with your invoice message. You can attach the downloaded PDF manually.",
-				duration: 5000,
+				title: "✅ Invoice Created & Shared!",
+				description: r2PublicUrl
+					? "Invoice saved and PDF uploaded. WhatsApp opened with shareable link."
+					: "Invoice saved. PDF downloaded. WhatsApp opened with your invoice message.",
+				duration: 3000,
 			});
 
 			// Navigate to invoices page

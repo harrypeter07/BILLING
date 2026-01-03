@@ -10,9 +10,11 @@
     "vercel-build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "seed:license": "node scripts/seed-license.js"
+    "seed:license": "node scripts/seed-license.js",
+    "test:r2": "node scripts/test-r2-upload.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.962.0",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "1.2.2",
     "@radix-ui/react-alert-dialog": "1.1.4",

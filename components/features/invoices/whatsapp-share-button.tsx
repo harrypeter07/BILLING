@@ -7,6 +7,8 @@ import { useToast } from "@/hooks/use-toast"
 import { generateWhatsAppBillMessage, shareOnWhatsApp, type MiniBillData } from "@/lib/utils/whatsapp-bill"
 import { generateMiniInvoicePDF } from "@/lib/utils/mini-invoice-pdf"
 import { getServedByName } from "@/lib/utils/get-served-by"
+import { uploadInvoicePDFToR2Client } from "@/lib/utils/invoice-r2-client"
+import { saveInvoiceStorage } from "@/lib/utils/save-invoice-storage"
 import { createClient } from "@/lib/supabase/client"
 
 interface WhatsAppShareButtonProps {
@@ -107,8 +109,8 @@ export function WhatsAppShareButton({
         invoiceLink: invoiceLink,
       }
 
-      // Generate WhatsApp message
-      const message = generateWhatsAppBillMessage(miniBillData)
+      // Generate base WhatsApp message (without Drive link)
+      const baseMessage = generateWhatsAppBillMessage(miniBillData)
 
       // Get served by name
       const servedBy = await getServedByName(invoice)
@@ -134,7 +136,7 @@ export function WhatsAppShareButton({
         }
       }
 
-      // Generate and download mini invoice PDF
+      // Generate mini invoice PDF
       try {
         const pdfData = {
           invoiceNumber: invoice.invoice_number,
@@ -180,19 +182,97 @@ export function WhatsAppShareButton({
         }
 
         const pdfBlob = await generateMiniInvoicePDF(pdfData)
-        await shareOnWhatsApp(message, pdfBlob, `Invoice-${invoice.invoice_number}.pdf`)
+        const fileName = `Invoice-${invoice.invoice_number}.pdf`
+
+        // Get admin/user ID for R2 upload
+        let adminId = invoice.user_id || invoice.created_by_employee_id || ""
+        if (!adminId) {
+          try {
+            const supabase = createClient()
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user) {
+              adminId = user.id
+            }
+          } catch (err) {
+            console.warn("[WhatsAppShare] Failed to get user ID:", err)
+          }
+        }
+
+        // Upload PDF to R2 if adminId is available (optimized for speed)
+        let r2PublicUrl: string | undefined
+        if (adminId) {
+          toast({
+            title: "Uploading PDF...",
+            description: "Uploading to cloud storage...",
+            duration: 3000,
+          })
+
+          const uploadStartTime = Date.now()
+          const r2Result = await uploadInvoicePDFToR2Client(
+            pdfBlob,
+            adminId,
+            invoice.id,
+            invoice.invoice_number
+          )
+          const uploadDuration = Date.now() - uploadStartTime
+
+          if (r2Result.success && r2Result.publicUrl) {
+            r2PublicUrl = r2Result.publicUrl
+
+            // Save metadata to database (non-blocking - fire and forget for speed)
+            if (r2Result.expiresAt) {
+              saveInvoiceStorage({
+                invoice_id: invoice.id,
+                r2_object_key: r2Result.objectKey || "",
+                public_url: r2Result.publicUrl,
+                expires_at: r2Result.expiresAt,
+              }).catch((err) => {
+                console.warn("[WhatsAppShare] Failed to save storage metadata (non-critical):", err)
+              })
+            }
+
+            // Update message with R2 link
+            const messageWithR2Link = generateWhatsAppBillMessage({
+              ...miniBillData,
+              pdfR2Url: r2PublicUrl,
+            })
+
+            await shareOnWhatsApp(messageWithR2Link)
+            
+            toast({
+              title: "✅ Uploaded & Shared!",
+              description: `PDF uploaded in ${uploadDuration}ms. WhatsApp opened with shareable link.`,
+              duration: 3000,
+            })
+            return
+          } else {
+            console.warn("[WhatsAppShare] R2 upload failed:", r2Result.error)
+            toast({
+              title: "Upload failed",
+              description: "Falling back to local PDF download.",
+              variant: "default",
+              duration: 2000,
+            })
+          }
+        }
+
+        // Fallback: share with PDF download if R2 upload fails or adminId unavailable
+        await shareOnWhatsApp(baseMessage, pdfBlob, fileName)
         
         toast({
           title: "Opening WhatsApp",
-          description: "PDF downloaded. WhatsApp is opening with your invoice message. You can attach the downloaded PDF manually.",
+          description: r2PublicUrl 
+            ? "PDF uploaded. Opening WhatsApp with shareable link."
+            : "PDF downloaded. WhatsApp is opening with your invoice message. You can attach the downloaded PDF manually.",
           duration: 5000,
         })
       } catch (pdfError) {
         console.warn("[WhatsAppShare] PDF generation failed, sharing text only:", pdfError)
-        await shareOnWhatsApp(message)
+        await shareOnWhatsApp(baseMessage)
         toast({
           title: "Opening WhatsApp",
-          description: "WhatsApp is opening with your invoice message.",
+          description: "PDF generation failed. Opening WhatsApp with text message only.",
+          variant: "default",
           duration: 3000,
         })
       }
