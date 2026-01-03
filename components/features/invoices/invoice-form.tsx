@@ -54,6 +54,8 @@ import {
 	generateWhatsAppBillMessage,
 	shareOnWhatsApp,
 } from "@/lib/utils/whatsapp-bill";
+import { uploadInvoicePDFToR2Client } from "@/lib/utils/invoice-r2-client";
+import { saveInvoiceStorage } from "@/lib/utils/save-invoice-storage";
 import {
 	ResizablePanelGroup,
 	ResizablePanel,
@@ -1291,11 +1293,14 @@ export function InvoiceForm({
 			};
 
 			const pdfBlob = await generateMiniInvoicePDF(pdfData);
+			const fileName = `Invoice-${invoiceNumber}.pdf`;
 
-			// Generate WhatsApp message
+			// Generate invoice link
 			const invoiceLink = `${
 				typeof window !== "undefined" ? window.location.origin : ""
 			}/i/${invoiceId}`;
+
+			// Generate WhatsApp message
 			const whatsappMessage = generateWhatsAppBillMessage({
 				storeName: storeName || "Business",
 				invoiceNumber: invoiceNumber,
@@ -1310,11 +1315,7 @@ export function InvoiceForm({
 			});
 
 			// Share on WhatsApp with PDF
-			await shareOnWhatsApp(
-				whatsappMessage,
-				pdfBlob,
-				`Invoice-${invoiceNumber}.pdf`
-			);
+			await shareOnWhatsApp(whatsappMessage, pdfBlob, fileName);
 
 			toast({
 				title: "Invoice Created & Shared",

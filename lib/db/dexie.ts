@@ -195,6 +195,16 @@ export interface AuthSession {
   createdAt: string
 }
 
+export interface InvoiceStorage {
+  id: string
+  invoice_id: string
+  r2_object_key: string
+  public_url: string
+  expires_at: string // ISO date string
+  created_at: string
+  updated_at: string
+}
+
 // Dexie database class
 class BillingDatabase extends Dexie {
   products!: EntityTable<Product, "id">
@@ -211,6 +221,7 @@ class BillingDatabase extends Dexie {
   sales_items!: EntityTable<SalesItem, "id">
   license!: EntityTable<License, "id">
   auth_session!: EntityTable<AuthSession, "id">
+  invoice_storage!: EntityTable<InvoiceStorage, "id">
 
   constructor() {
     super("BillingDatabase")
@@ -273,6 +284,25 @@ class BillingDatabase extends Dexie {
       sales_items: "id, sale_id, product_id",
       license: "++id, licenseKey, macAddress, status, updated_at",
       auth_session: "id, userId, expiresAt",
+    })
+
+    // Version 5: Add invoice_storage table for R2 metadata
+    this.version(5).stores({
+      products: "id, user_id, name, is_synced, deleted",
+      customers: "id, user_id, name, is_synced, deleted",
+      invoices: "id, user_id, customer_id, invoice_number, invoice_date, is_synced, deleted",
+      invoice_items: "id, invoice_id, product_id",
+      sync_queue: "++id, entity_type, entity_id, created_at",
+      settings: "++id",
+      users: "id, email, role",
+      inventory: "id, product_id",
+      employees: "id, employee_id, is_active",
+      attendance: "id, employee_id, date",
+      sales_header: "id, invoice_number, customer_id, sale_date, status",
+      sales_items: "id, sale_id, product_id",
+      license: "++id, licenseKey, macAddress, status, updated_at",
+      auth_session: "id, userId, expiresAt",
+      invoice_storage: "id, invoice_id, r2_object_key, expires_at",
     })
   }
 }

@@ -12,6 +12,7 @@ export interface MiniBillData {
   }>
   totalAmount: number
   invoiceLink: string
+  pdfR2Url?: string // Optional Cloudflare R2 URL for PDF
 }
 
 export function generateWhatsAppBillMessage(data: MiniBillData): string {
@@ -33,7 +34,10 @@ export function generateWhatsAppBillMessage(data: MiniBillData): string {
     })
     .join('\n\n')
 
-  // Build message
+  // Build message - use R2 link if available, otherwise use invoice link
+  const viewLink = data.pdfR2Url || invoiceLink
+  const linkLabel = data.pdfR2Url ? '📄 Download Invoice PDF' : '📱 View full invoice'
+
   const message = `📋 *Invoice Receipt*
 
 🏪 *${storeName}*
@@ -50,8 +54,8 @@ ${itemsList}
 💰 *Total: ₹${totalAmount.toFixed(2)}*
 ━━━━━━━━━━━━━━━━━━━━
 
-📱 View full invoice:
-${invoiceLink}
+${linkLabel}:
+${viewLink}
 
 Thank you for your business! 🙏`
 
