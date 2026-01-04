@@ -1,4 +1,4 @@
-"use client"
+"use client";
 
 /**
  * Client-side HTML to PDF generation
@@ -48,7 +48,7 @@ async function loadLibraries() {
 		// Retry once after delay for HMR issues
 		console.warn("[InvoicePDFClient] Import failed, retrying...", error);
 		await new Promise((resolve) => setTimeout(resolve, 200));
-		
+
 		const [jsPDFModule, html2canvasModule] = await Promise.all([
 			import("jspdf"),
 			import("html2canvas"),
@@ -91,14 +91,14 @@ export async function generateInvoicePDFClient(
 		try {
 			// Wait longer for the container to fully render and images to load
 			await new Promise((resolve) => setTimeout(resolve, 500));
-			
+
 			// Verify container has content
 			if (!container.innerHTML || container.innerHTML.trim().length === 0) {
 				throw new Error("Container is empty - HTML generation failed");
 			}
-			
+
 			console.log("[InvoicePDFClient] Container ready, generating canvas...");
-			
+
 			// Convert HTML to canvas
 			// Configure html2canvas to handle color parsing issues
 			const canvas = await html2canvas(container, {
@@ -115,7 +115,11 @@ export async function generateInvoicePDFClient(
 					// Ignore broken or loading images
 					if (element.tagName === "IMG") {
 						const img = element as HTMLImageElement;
-						if (!img.complete || img.naturalWidth === 0 || img.naturalHeight === 0) {
+						if (
+							!img.complete ||
+							img.naturalWidth === 0 ||
+							img.naturalHeight === 0
+						) {
 							return true;
 						}
 					}
@@ -126,13 +130,17 @@ export async function generateInvoicePDFClient(
 					const images = clonedDoc.querySelectorAll("img");
 					images.forEach((img) => {
 						const imgEl = img as HTMLImageElement;
-						if (!imgEl.complete || imgEl.naturalWidth === 0 || imgEl.naturalHeight === 0) {
+						if (
+							!imgEl.complete ||
+							imgEl.naturalWidth === 0 ||
+							imgEl.naturalHeight === 0
+						) {
 							(imgEl as HTMLElement).style.display = "none";
 						}
 					});
 					// Force all colors to use hex/rgb format to avoid lab() color issues
 					// This converts any lab(), oklch(), or other unsupported color formats to rgb()
-					const style = clonedDoc.createElement('style');
+					const style = clonedDoc.createElement("style");
 					style.textContent = `
 						/* Convert all color properties to rgb() format to avoid lab() parsing errors */
 						* {
@@ -253,7 +261,8 @@ export async function generateInvoicePDFClient(
 				document.body.removeChild(container);
 			}
 			// Re-throw with more context
-			const errorMessage = error instanceof Error ? error.message : String(error);
+			const errorMessage =
+				error instanceof Error ? error.message : String(error);
 			throw new Error(`PDF generation failed: ${errorMessage}`);
 		}
 	} catch (error) {

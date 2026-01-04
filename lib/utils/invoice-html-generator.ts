@@ -4,19 +4,19 @@
 import type { InvoicePDFData } from "./invoice-pdf";
 
 export function generateInvoiceHTML(data: InvoicePDFData): string {
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  };
+	const formatDate = (dateStr: string) => {
+		return new Date(dateStr).toLocaleDateString("en-IN", {
+			day: "2-digit",
+			month: "short",
+			year: "numeric",
+		});
+	};
 
-  const formatCurrency = (amount: number) => {
-    return `₹${amount.toFixed(2)}`;
-  };
+	const formatCurrency = (amount: number) => {
+		return `₹${amount.toFixed(2)}`;
+	};
 
-  return `<!DOCTYPE html>
+	return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -201,7 +201,10 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
   <div class="invoice-container">
     <div class="header">
       <div class="logo-section">
-        <img src="${data.logoUrl || "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjYwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iNjAiIGZpbGw9IiMzYjgyZjYiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE0IiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+TE9HTzwvdGV4dD48L3N2Zz4="}" alt="Logo" class="logo" onerror="this.style.display='none'" />
+        <img src="${
+					data.logoUrl ||
+					"data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjYwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iNjAiIGZpbGw9IiMzYjgyZjYiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE0IiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+TE9HTzwvdGV4dD48L3N2Zz4="
+				}" alt="Logo" class="logo" onerror="this.style.display='none'" />
       </div>
       <div class="business-info">
         <div class="business-name">${data.businessName}</div>
@@ -223,19 +226,41 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
           Invoice #: ${data.invoiceNumber}
         </div>
         <div class="detail-value">Date: ${formatDate(data.invoiceDate)}</div>
-        ${data.dueDate ? `<div class="detail-value">Due Date: ${formatDate(data.dueDate)}</div>` : ""}
+        ${
+					data.dueDate
+						? `<div class="detail-value">Due Date: ${formatDate(
+								data.dueDate
+						  )}</div>`
+						: ""
+				}
       </div>
-      ${data.customerName ? `
+      ${
+				data.customerName
+					? `
       <div class="detail-box">
         <div class="detail-label">Bill To</div>
         <div class="detail-value" style="font-size: 14px; font-weight: bold; margin-bottom: 8px;">
           ${data.customerName}
         </div>
-        ${data.customerEmail ? `<div class="detail-value">${data.customerEmail}</div>` : ""}
-        ${data.customerPhone ? `<div class="detail-value">${data.customerPhone}</div>` : ""}
-        ${data.customerGSTIN ? `<div class="detail-value">GSTIN: ${data.customerGSTIN}</div>` : ""}
+        ${
+					data.customerEmail
+						? `<div class="detail-value">${data.customerEmail}</div>`
+						: ""
+				}
+        ${
+					data.customerPhone
+						? `<div class="detail-value">${data.customerPhone}</div>`
+						: ""
+				}
+        ${
+					data.customerGSTIN
+						? `<div class="detail-value">GSTIN: ${data.customerGSTIN}</div>`
+						: ""
+				}
       </div>
-      ` : ""}
+      `
+					: ""
+			}
     </div>
 
     <table class="items-table">
@@ -244,23 +269,35 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
           <th>Description</th>
           <th class="text-center">Qty</th>
           <th class="text-right">Unit Price</th>
-          ${data.isGstInvoice ? `<th class="text-center">GST %</th><th class="text-right">GST Amount</th>` : ""}
+          ${
+						data.isGstInvoice
+							? `<th class="text-center">GST %</th><th class="text-right">GST Amount</th>`
+							: ""
+					}
           <th class="text-right">Total</th>
         </tr>
       </thead>
       <tbody>
-        ${data.items.map(item => `
+        ${data.items
+					.map(
+						(item) => `
         <tr>
           <td>${item.description}</td>
           <td class="text-center">${item.quantity}</td>
           <td class="text-right">${formatCurrency(item.unitPrice)}</td>
-          ${data.isGstInvoice ? `
+          ${
+						data.isGstInvoice
+							? `
           <td class="text-center">${item.gstRate}%</td>
           <td class="text-right">${formatCurrency(item.gstAmount)}</td>
-          ` : ""}
+          `
+							: ""
+					}
           <td class="text-right">${formatCurrency(item.lineTotal)}</td>
         </tr>
-        `).join("")}
+        `
+					)
+					.join("")}
       </tbody>
     </table>
 
@@ -270,26 +307,42 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
           <td>Subtotal:</td>
           <td>${formatCurrency(data.subtotal)}</td>
         </tr>
-        ${data.isGstInvoice ? `
-        ${data.cgstAmount > 0 ? `
+        ${
+					data.isGstInvoice
+						? `
+        ${
+					data.cgstAmount > 0
+						? `
         <tr>
           <td>CGST:</td>
           <td>${formatCurrency(data.cgstAmount)}</td>
         </tr>
-        ` : ""}
-        ${data.sgstAmount > 0 ? `
+        `
+						: ""
+				}
+        ${
+					data.sgstAmount > 0
+						? `
         <tr>
           <td>SGST:</td>
           <td>${formatCurrency(data.sgstAmount)}</td>
         </tr>
-        ` : ""}
-        ${data.igstAmount > 0 ? `
+        `
+						: ""
+				}
+        ${
+					data.igstAmount > 0
+						? `
         <tr>
           <td>IGST:</td>
           <td>${formatCurrency(data.igstAmount)}</td>
         </tr>
-        ` : ""}
-        ` : ""}
+        `
+						: ""
+				}
+        `
+						: ""
+				}
         <tr class="total-row">
           <td>Total:</td>
           <td>${formatCurrency(data.totalAmount)}</td>
@@ -297,23 +350,35 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
       </table>
     </div>
 
-    ${data.notes ? `
+    ${
+			data.notes
+				? `
     <div class="notes-section">
       <div class="section-title">Notes:</div>
       <div class="section-content">${data.notes}</div>
     </div>
-    ` : ""}
+    `
+				: ""
+		}
 
-    ${data.terms ? `
+    ${
+			data.terms
+				? `
     <div class="terms-section">
       <div class="section-title">Terms & Conditions:</div>
       <div class="section-content">${data.terms}</div>
     </div>
-    ` : ""}
+    `
+				: ""
+		}
 
-    ${data.servedBy ? `
+    ${
+			data.servedBy
+				? `
     <div class="served-by">Served by: ${data.servedBy}</div>
-    ` : ""}
+    `
+				: ""
+		}
 
     <div class="footer">
       Thank you for your business!
@@ -322,4 +387,3 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
 </body>
 </html>`;
 }
-

@@ -4,19 +4,19 @@
 import type { InvoiceSlipData } from "./invoice-slip-pdf";
 
 export function generateSlipHTML(data: InvoiceSlipData): string {
-  const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString("en-IN", {
-      day: "2-digit",
-      month: "short",
-      year: "numeric",
-    });
-  };
+	const formatDate = (dateStr: string) => {
+		return new Date(dateStr).toLocaleDateString("en-IN", {
+			day: "2-digit",
+			month: "short",
+			year: "numeric",
+		});
+	};
 
-  const formatCurrency = (amount: number) => {
-    return `₹${amount.toFixed(2)}`;
-  };
+	const formatCurrency = (amount: number) => {
+		return `₹${amount.toFixed(2)}`;
+	};
 
-  return `<!DOCTYPE html>
+	return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -142,7 +142,10 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
 <body>
   <div class="slip-container">
     <div class="logo-section">
-      <img src="${data.logoUrl || "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAiIGhlaWdodD0iODAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjZWM0ODk5Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxMiIgZmlsbD0iI2ZmZiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkxPR088L3RleHQ+PC9zdmc+"}" alt="Logo" class="logo" onerror="this.style.display='none'" />
+      <img src="${
+				data.logoUrl ||
+				"data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAiIGhlaWdodD0iODAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjZWM0ODk5Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxMiIgZmlsbD0iI2ZmZiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkxPR088L3RleHQ+PC9zdmc+"
+			}" alt="Logo" class="logo" onerror="this.style.display='none'" />
     </div>
     
     <div class="business-name">${data.businessName}</div>
@@ -156,13 +159,17 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
     
     <div class="divider"></div>
     
-    ${data.customerName ? `
+    ${
+			data.customerName
+				? `
     <div class="customer-section">
       <div class="customer-label">Bill To:</div>
       <div class="customer-name">${data.customerName}</div>
     </div>
     <div class="divider"></div>
-    ` : ""}
+    `
+				: ""
+		}
     
     <table class="items-table">
       <thead>
@@ -173,13 +180,17 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
         </tr>
       </thead>
       <tbody>
-        ${data.items.map(item => `
+        ${data.items
+					.map(
+						(item) => `
         <tr>
           <td>${item.description.substring(0, 20)}</td>
           <td>${item.quantity}</td>
           <td>${formatCurrency(item.lineTotal)}</td>
         </tr>
-        `).join("")}
+        `
+					)
+					.join("")}
       </tbody>
     </table>
     
@@ -190,26 +201,42 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
         <span>Subtotal:</span>
         <span>${formatCurrency(data.subtotal)}</span>
       </div>
-      ${data.isGstInvoice ? `
-      ${data.cgstAmount > 0 ? `
+      ${
+				data.isGstInvoice
+					? `
+      ${
+				data.cgstAmount > 0
+					? `
       <div class="total-row">
         <span>CGST:</span>
         <span>${formatCurrency(data.cgstAmount)}</span>
       </div>
-      ` : ""}
-      ${data.sgstAmount > 0 ? `
+      `
+					: ""
+			}
+      ${
+				data.sgstAmount > 0
+					? `
       <div class="total-row">
         <span>SGST:</span>
         <span>${formatCurrency(data.sgstAmount)}</span>
       </div>
-      ` : ""}
-      ${data.igstAmount > 0 ? `
+      `
+					: ""
+			}
+      ${
+				data.igstAmount > 0
+					? `
       <div class="total-row">
         <span>IGST:</span>
         <span>${formatCurrency(data.igstAmount)}</span>
       </div>
-      ` : ""}
-      ` : ""}
+      `
+					: ""
+			}
+      `
+					: ""
+			}
       <div class="total-row bold">
         <span>TOTAL:</span>
         <span>${formatCurrency(data.totalAmount)}</span>
@@ -223,4 +250,3 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
 </body>
 </html>`;
 }
-

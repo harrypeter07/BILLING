@@ -26,13 +26,7 @@ import {
 	shareOnWhatsApp,
 	type MiniBillData,
 } from "@/lib/utils/whatsapp-bill";
-import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf";
-import { getServedByName } from "@/lib/utils/get-served-by";
-import { uploadInvoicePDFToR2Client } from "@/lib/utils/invoice-r2-client";
-import {
-	saveInvoiceStorage,
-	getInvoiceStorage,
-} from "@/lib/utils/save-invoice-storage";
+import { getInvoiceStorage } from "@/lib/utils/save-invoice-storage";
 import { createClient } from "@/lib/supabase/client";
 
 interface WhatsAppShareButtonProps {
@@ -146,264 +140,103 @@ export function WhatsAppShareButton({
 				invoiceLink: invoiceLink,
 			};
 
-			// Generate base WhatsApp message (without Drive link)
-			const baseMessage = generateWhatsAppBillMessage(miniBillData);
-
-			// Get served by name
-			const servedBy = await getServedByName(invoice);
-
-			// Get profile if not provided
-			let businessProfile = profile;
-			if (!businessProfile) {
-				try {
-					const supabase = createClient();
-					const {
-						data: { user },
-					} = await supabase.auth.getUser();
-					if (user) {
-						const { data: prof } = await supabase
-							.from("user_profiles")
-							.select("*")
-							.eq("id", user.id)
-							.single();
-						if (prof) {
-							businessProfile = prof;
+			// Quick check for existing R2 URL (non-blocking, fire-and-forget)
+			// We check but don't wait - WhatsApp opens immediately
+			let existingR2Url: string | undefined;
+			getInvoiceStorage(invoice.id)
+				.then((storage) => {
+					if (storage?.public_url) {
+						const expiresAt = new Date(storage.expires_at).getTime();
+						const now = Date.now();
+						if (expiresAt > now) {
+							existingR2Url = storage.public_url;
+							setUploadedUrl(storage.public_url);
+							console.log(
+								"[WhatsAppShare] Found existing R2 URL:",
+								existingR2Url
+							);
 						}
 					}
-				} catch (err) {
-					console.warn("[WhatsAppShare] Failed to fetch profile:", err);
-				}
-			}
-
-			// Generate invoice slip PDF using new HTML-to-PDF design
-			// This uses the modern client-side HTML-to-PDF generation (html2canvas + jsPDF)
-			try {
-				const pdfData = {
-					invoiceNumber: invoice.invoice_number,
-					invoiceDate: invoice.invoice_date,
-					customerName: customer?.name || "",
-					customerEmail: customer?.email || "",
-					customerPhone: customer?.phone || "",
-					customerGSTIN: customer?.gstin || "",
-					businessName:
-						businessProfile?.business_name || storeName || "Business",
-					businessGSTIN: businessProfile?.business_gstin || "",
-					businessAddress: businessProfile?.business_address || "",
-					businessPhone: businessProfile?.business_phone || "",
-					businessEmail: businessProfile?.business_email || "",
-					logoUrl: businessProfile?.logo_url || "",
-					servedBy: servedBy,
-					items: items.map((item) => {
-						const quantity = Number(item.quantity) || 0;
-						const unitPrice = Number(item.unit_price) || 0;
-						const discountPercent = Number(item.discount_percent || 0);
-						const gstRate = Number(item.gst_rate || 0);
-						const baseAmount =
-							quantity * unitPrice * (1 - discountPercent / 100);
-						const gstAmount = invoice.is_gst_invoice
-							? (baseAmount * gstRate) / 100
-							: Number(item.gst_amount || 0);
-						const lineTotal = Number(item.line_total || baseAmount + gstAmount);
-
-						return {
-							description: item.description,
-							quantity: quantity,
-							unitPrice: unitPrice,
-							discountPercent: discountPercent,
-							gstRate: gstRate,
-							lineTotal: lineTotal,
-							gstAmount: gstAmount,
-						};
-					}),
-					subtotal: Number(invoice.subtotal || invoice.total_amount) || 0,
-					cgstAmount: Number(invoice.cgst_amount || 0),
-					sgstAmount: Number(invoice.sgst_amount || 0),
-					igstAmount: Number(invoice.igst_amount || 0),
-					totalAmount: Number(invoice.total_amount) || 0,
-					isGstInvoice: invoice.is_gst_invoice || false,
-				};
-
-				// Use server-side for faster generation (default) or client-side if toggled
-				console.log(
-					"[WhatsAppShare] Generating PDF (server-side:",
-					useServerSide,
-					")..."
-				);
-				const pdfBlob = await generateInvoiceSlipPDF(pdfData, {
-					useServerSide,
-				});
-				const fileName = `Invoice-${invoice.invoice_number}.pdf`;
-
-				// Validate PDF blob
-				if (!pdfBlob || !(pdfBlob instanceof Blob)) {
-					throw new Error("PDF generation returned invalid blob");
-				}
-
-				if (pdfBlob.size === 0) {
-					throw new Error("PDF generation returned empty blob");
-				}
-
-				console.log(
-					"[WhatsAppShare] PDF generated successfully, size:",
-					pdfBlob.size,
-					"bytes"
-				);
-
-				// Save preference
-				if (typeof window !== "undefined") {
-					localStorage.setItem(
-						"whatsapp-pdf-use-server-side",
-						String(useServerSide)
-					);
-				}
-
-				// Get admin/user ID for R2 upload
-				let adminId = invoice.user_id || invoice.created_by_employee_id || "";
-				if (!adminId) {
-					try {
-						const supabase = createClient();
-						const {
-							data: { user },
-						} = await supabase.auth.getUser();
-						if (user) {
-							adminId = user.id;
-						}
-					} catch (err) {
-						console.warn("[WhatsAppShare] Failed to get user ID:", err);
-					}
-				}
-
-				// ALWAYS use Cloudflare R2 link - always upload new PDF to ensure latest design
-				// We don't reuse old R2 URLs as they might have outdated designs
-				let r2PublicUrl: string | undefined;
-
-				// Only attempt R2 upload if a valid PDF blob was generated
-				if (pdfBlob.size > 0 && adminId) {
-					// Always upload new PDF to ensure it uses the latest design
-					console.log(
-						"[WhatsAppShare] Uploading new PDF with latest design to R2..."
-					);
-
-					toast({
-						title: "Uploading PDF...",
-						description: "Uploading to cloud storage, then opening WhatsApp...",
-						duration: 2000,
-					});
-
-					// Wait for upload to complete (no timeout - we need the R2 link)
-					const uploadResult = await uploadInvoicePDFToR2Client(
-						pdfBlob,
-						adminId,
-						invoice.id,
-						invoice.invoice_number
-					);
-
-					if (uploadResult.success && uploadResult.publicUrl) {
-						r2PublicUrl = uploadResult.publicUrl;
-						setUploadedUrl(uploadResult.publicUrl);
-						console.log(
-							"[WhatsAppShare] R2 upload successful (new design):",
-							r2PublicUrl
-						);
-
-						// Save metadata to database (non-blocking)
-						if (uploadResult.expiresAt) {
-							saveInvoiceStorage({
-								invoice_id: invoice.id,
-								r2_object_key: uploadResult.objectKey || "",
-								public_url: uploadResult.publicUrl,
-								expires_at: uploadResult.expiresAt,
-							}).catch((err) => {
-								console.warn(
-									"[WhatsAppShare] Failed to save storage metadata (non-critical):",
-									err
-								);
-							});
-						}
-
-						// Auto-copy link to clipboard
-						try {
-							await navigator.clipboard.writeText(uploadResult.publicUrl);
-							setLinkCopied(true);
-							setTimeout(() => setLinkCopied(false), 2000);
-						} catch (clipboardError) {
-							// Clipboard failed, continue anyway
-						}
-					} else {
-						console.error(
-							"[WhatsAppShare] R2 upload failed:",
-							uploadResult.error
-						);
-						toast({
-							title: "Upload Failed",
-							description:
-								"Failed to upload PDF. Opening WhatsApp with invoice link instead.",
-							variant: "destructive",
-							duration: 3000,
-						});
-					}
-				} else if (pdfBlob.size === 0) {
-					console.warn(
-						"[WhatsAppShare] Skipping R2 upload because PDF generation failed."
-					);
-				} else {
-					console.warn(
-						"[WhatsAppShare] Skipping R2 upload because adminId is missing."
-					);
-				}
-
-				// Upload is already awaited above, so r2PublicUrl is ready
-				// ALWAYS use R2 link if available - never fall back to invoice link for WhatsApp share
-				const finalMessage = generateWhatsAppBillMessage({
-					...miniBillData,
-					pdfR2Url: r2PublicUrl, // Always use R2 URL if we have it
+				})
+				.catch((err) => {
+					console.warn("[WhatsAppShare] Failed to check existing R2 URL:", err);
 				});
 
-				console.log(
-					"[WhatsAppShare] Opening WhatsApp with message:",
-					finalMessage.substring(0, 100) + "..."
-				);
-				console.log("[WhatsAppShare] R2 URL:", r2PublicUrl || "Not available");
+			// Generate WhatsApp message immediately (with invoice link or existing R2 URL)
+			// PDF link will be updated later if background job completes
+			const whatsappMessage = generateWhatsAppBillMessage({
+				...miniBillData,
+				pdfR2Url: existingR2Url, // Use existing URL if found, otherwise invoice link
+			});
 
-				// Open WhatsApp with the message (includes R2 link if upload succeeded)
-				const shareResult = await shareOnWhatsApp(
-					finalMessage,
-					pdfBlob,
-					fileName
-				);
-
-				if (shareResult.success) {
-					toast({
-						title: r2PublicUrl
-							? "✅ WhatsApp Opened with PDF Link!"
-							: "✅ WhatsApp Opened",
-						description: r2PublicUrl
-							? "PDF uploaded! WhatsApp opened with shareable PDF link. Link copied to clipboard."
-							: "WhatsApp opened. PDF is being uploaded in the background.",
-						duration: 3000,
-					});
-				} else {
-					toast({
-						title: "Failed to Open WhatsApp",
-						description:
-							"Please try opening WhatsApp manually or check your browser settings.",
-						variant: "destructive",
-						duration: 5000,
-					});
-				}
-			} catch (pdfError) {
-				console.warn(
-					"[WhatsAppShare] PDF generation failed, sharing text only:",
-					pdfError
-				);
-				await shareOnWhatsApp(baseMessage);
+			// Open WhatsApp immediately (non-blocking)
+			console.log(
+				"[WhatsAppShare] Opening WhatsApp immediately with invoice link..."
+			);
+			shareOnWhatsApp(whatsappMessage).catch((err) => {
+				console.error("[WhatsAppShare] Failed to open WhatsApp:", err);
 				toast({
-					title: "Opening WhatsApp",
+					title: "Failed to Open WhatsApp",
 					description:
-						"PDF generation failed. Opening WhatsApp with text message only.",
-					variant: "default",
-					duration: 3000,
+						"Please try opening WhatsApp manually or check your browser settings.",
+					variant: "destructive",
+					duration: 5000,
 				});
+			});
+
+			// Show success toast immediately
+			toast({
+				title: existingR2Url
+					? "✅ WhatsApp Opened with PDF Link!"
+					: "✅ WhatsApp Opened",
+				description: existingR2Url
+					? "PDF link found! WhatsApp opened. PDF is being refreshed in the background..."
+					: "WhatsApp opened. PDF is being prepared in the background...",
+				duration: 3000,
+			});
+
+			// Trigger background PDF generation and R2 upload (fire-and-forget)
+			// This happens asynchronously and does NOT block the UI
+			// Only trigger if we don't have a valid existing URL
+			if (!existingR2Url) {
+				fetch("/api/invoices/generate-pdf-and-upload", {
+					method: "POST",
+					headers: {
+						"Content-Type": "application/json",
+					},
+					body: JSON.stringify({ invoiceId: invoice.id }),
+				})
+					.then((response) => {
+						if (!response.ok) {
+							console.warn(
+								"[WhatsAppShare] Background PDF generation failed:",
+								response.statusText
+							);
+						} else {
+							console.log(
+								"[WhatsAppShare] Background PDF generation started successfully"
+							);
+							// Optionally poll for the new URL after a delay
+							setTimeout(() => {
+								getInvoiceStorage(invoice.id)
+									.then((storage) => {
+										if (storage?.public_url) {
+											setUploadedUrl(storage.public_url);
+										}
+									})
+									.catch(() => {
+										// Ignore errors
+									});
+							}, 5000); // Check after 5 seconds
+						}
+					})
+					.catch((err) => {
+						console.error(
+							"[WhatsAppShare] Failed to trigger background PDF generation:",
+							err
+						);
+						// Don't show error to user - this is background processing
+					});
 			}
 		} catch (error) {
 			console.error("[WhatsAppShare] Error:", error);
