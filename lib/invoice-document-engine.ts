@@ -297,6 +297,13 @@ export async function prepareInvoiceDocumentData(
 	const businessPhone = store?.phone || profile?.business_phone || "";
 	const businessEmail = profile?.business_email || "";
 	const logoUrl = profile?.logo_url || "";
+	
+	// Debug: Log logo URL for troubleshooting
+	if (logoUrl) {
+		console.log("[InvoiceDocumentEngine] Logo URL found:", logoUrl.substring(0, 50) + "...");
+	} else {
+		console.warn("[InvoiceDocumentEngine] No logo URL found in profile");
+	}
 
 	// Normalize items - SINGLE SOURCE OF TRUTH for item mapping
 	// This logic is NOT duplicated anywhere else
@@ -322,6 +329,7 @@ export async function prepareInvoiceDocumentData(
 			gstRate,
 			lineTotal: item.line_total || item.lineTotal || (calc.taxableAmount + calc.gstAmount),
 			gstAmount: item.gst_amount || item.gstAmount || calc.gstAmount,
+			hsnCode: item.hsn_code || item.hsnCode || "",
 		};
 	});
 
@@ -334,6 +342,13 @@ export async function prepareInvoiceDocumentData(
 
 	// Wait for served-by name
 	const servedBy = await servedByPromise;
+	
+	// Debug: Log served-by for troubleshooting
+	if (servedBy) {
+		console.log("[InvoiceDocumentEngine] Served-by name:", servedBy);
+	} else {
+		console.warn("[InvoiceDocumentEngine] No served-by name found");
+	}
 
 	return {
 		invoiceNumber,

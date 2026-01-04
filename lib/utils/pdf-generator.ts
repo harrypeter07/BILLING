@@ -18,6 +18,7 @@ export interface InvoiceData {
     gstRate: number
     lineTotal: number
     gstAmount: number
+    hsnCode?: string
   }>
   subtotal: number
   cgstAmount: number
