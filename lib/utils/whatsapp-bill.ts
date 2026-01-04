@@ -63,46 +63,18 @@ Thank you for your business! 🙏`
 }
 
 /**
- * Download PDF file
- */
-function downloadPDF(pdfBlob: Blob, fileName: string = 'invoice.pdf'): void {
-  if (typeof window === 'undefined') return
-
-  try {
-    const pdfUrl = URL.createObjectURL(pdfBlob)
-    const downloadLink = document.createElement('a')
-    downloadLink.href = pdfUrl
-    downloadLink.download = fileName
-    downloadLink.style.display = 'none'
-    document.body.appendChild(downloadLink)
-    
-    downloadLink.click()
-    
-    // Clean up
-    setTimeout(() => {
-      document.body.removeChild(downloadLink)
-      URL.revokeObjectURL(pdfUrl)
-    }, 100)
-    
-    console.log('[WhatsAppShare] PDF downloaded:', fileName)
-  } catch (error) {
-    console.error('[WhatsAppShare] Failed to download PDF:', error)
-  }
-}
-
-/**
  * Share invoice on WhatsApp - optimized version
  * 
  * Flow:
- * 1. Download PDF automatically (if provided)
- * 2. Open WhatsApp with message and link (reliable method)
+ * 1. Open WhatsApp with message and link immediately (non-blocking)
+ * 
+ * Note: PDF is NOT sent directly - only the link is included in the message.
+ * PDF generation and R2 upload happen in background.
  * 
  * @returns Object with success status
  */
 export async function shareOnWhatsApp(
-  message: string, 
-  pdfBlob?: Blob, 
-  pdfFileName?: string
+  message: string
 ): Promise<{ success: boolean }> {
   // Only run on client side
   if (typeof window === 'undefined') {
@@ -111,25 +83,13 @@ export async function shareOnWhatsApp(
   }
 
   const encodedMessage = encodeURIComponent(message)
-  const fileName = pdfFileName || 'invoice.pdf'
   const whatsappUrl = `https://wa.me/?text=${encodedMessage}`
 
-  console.log('[WhatsAppShare] Attempting to open WhatsApp:', whatsappUrl.substring(0, 100) + '...')
-
-  // Download PDF if available (non-blocking)
-  if (pdfBlob) {
-    // Use setTimeout to make it non-blocking
-    setTimeout(() => {
-      downloadPDF(pdfBlob, fileName)
-    }, 100)
-  }
-  
-  // Open WhatsApp using multiple methods for maximum reliability
-  // Use setTimeout to ensure it happens asynchronously and isn't blocked by page navigation
+  // Open WhatsApp immediately (non-blocking)
+  // Use requestAnimationFrame to ensure it happens in next event loop cycle
+  // This prevents page navigation from blocking the WhatsApp opening
   return new Promise((resolve) => {
-    // Use setTimeout(0) to ensure this runs in the next event loop cycle
-    // This prevents page navigation from blocking the WhatsApp opening
-    setTimeout(() => {
+    requestAnimationFrame(() => {
       try {
         // Method 1: Try window.open first (most reliable for new tabs)
         console.log('[WhatsAppShare] Trying window.open...')
@@ -179,6 +139,6 @@ export async function shareOnWhatsApp(
         console.error('[WhatsAppShare] Failed to open WhatsApp:', error)
         resolve({ success: false })
       }
-    }, 100) // Small delay to ensure it's not blocked
+    })
   })
 }

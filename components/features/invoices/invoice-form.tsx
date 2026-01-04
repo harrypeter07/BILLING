@@ -49,11 +49,7 @@ import {
 } from "@/components/ui/tooltip";
 import { db } from "@/lib/dexie-client";
 import { useInvalidateQueries } from "@/lib/hooks/use-cached-data";
-import {
-	generateWhatsAppBillMessage,
-	shareOnWhatsApp,
-} from "@/lib/utils/whatsapp-bill";
-import { getInvoiceStorage } from "@/lib/utils/save-invoice-storage";
+import { executeInvoiceAction } from "@/lib/invoice-document-engine";
 import {
 	ResizablePanelGroup,
 	ResizablePanel,
@@ -1248,54 +1244,26 @@ export function InvoiceForm({
 				await invalidateProducts();
 			}
 
-			// Generate invoice link (immediate - no blocking)
-			const invoiceLink = `${
-				typeof window !== "undefined" ? window.location.origin : ""
-			}/i/${invoiceId}`;
-
-			// Quick check for existing R2 URL (non-blocking, fire-and-forget)
-			// We check but don't wait - WhatsApp opens immediately with invoice link
-			let existingR2Url: string | undefined;
-			getInvoiceStorage(invoiceId)
-				.then((storage) => {
-					if (storage?.public_url) {
-						const expiresAt = new Date(storage.expires_at).getTime();
-						const now = Date.now();
-						if (expiresAt > now) {
-							existingR2Url = storage.public_url;
-							console.log(
-								"[InvoiceForm] Found existing R2 URL:",
-								existingR2Url
-							);
-						}
-					}
-				})
-				.catch((err) => {
-					console.warn("[InvoiceForm] Failed to check existing R2 URL:", err);
-				});
-
-			// Generate WhatsApp message immediately (with invoice link)
-			// PDF link will be added later if available
-			const whatsappMessage = generateWhatsAppBillMessage({
-				storeName: storeName || "Business",
-				invoiceNumber: invoiceNumber,
-				invoiceDate: invoiceDate,
-				items: items.map((item) => ({
-					name: item.description,
-					quantity: item.quantity,
-					unitPrice: item.unit_price,
-				})),
-				totalAmount: t.total,
-				invoiceLink: invoiceLink,
-				pdfR2Url: existingR2Url, // Use existing URL if found, otherwise invoice link
-			});
-
-			// Open WhatsApp immediately (non-blocking)
-			console.log(
-				"[InvoiceForm] Opening WhatsApp immediately with invoice link..."
+			// Prepare source data for unified engine
+			const selectedCustomer = localCustomers.find(
+				(c) => c.id === finalCustomerId
 			);
-			shareOnWhatsApp(whatsappMessage).catch((err) => {
-				console.error("[InvoiceForm] Failed to open WhatsApp:", err);
+			const source = {
+				invoice: invoiceData,
+				items,
+				customer: selectedCustomer || null,
+				storeName,
+			};
+
+			// Use unified document engine for WhatsApp sharing
+			// This handles WhatsApp opening, R2 URL checking, and background PDF generation
+			executeInvoiceAction({
+				invoiceId,
+				action: "whatsapp",
+				format: "slip",
+				source,
+			}).catch((err) => {
+				console.error("[InvoiceForm] Failed to share on WhatsApp:", err);
 				toast({
 					title: "WhatsApp Failed to Open",
 					description:
@@ -1312,38 +1280,6 @@ export function InvoiceForm({
 					"Invoice saved! WhatsApp opened. PDF is being prepared in the background...",
 				duration: 3000,
 			});
-
-			// Trigger background PDF generation and R2 upload (fire-and-forget)
-			// This happens asynchronously and does NOT block the UI
-			if (!isIndexedDb) {
-				// Only trigger for Supabase mode (server-side processing)
-				fetch("/api/invoices/generate-pdf-and-upload", {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({ invoiceId }),
-				})
-					.then((response) => {
-						if (!response.ok) {
-							console.warn(
-								"[InvoiceForm] Background PDF generation failed:",
-								response.statusText
-							);
-						} else {
-							console.log(
-								"[InvoiceForm] Background PDF generation started successfully"
-							);
-						}
-					})
-					.catch((err) => {
-						console.error(
-							"[InvoiceForm] Failed to trigger background PDF generation:",
-							err
-						);
-						// Don't show error to user - this is background processing
-					});
-			}
 
 			// Navigate to invoices page immediately (no artificial delays)
 			// WhatsApp is already opening, no need to wait

@@ -180,26 +180,29 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 			logoUrl: businessProfile?.logo_url || "",
 			servedBy: servedBy,
 			items: items.map((item) => {
-				// Calculate line totals (same logic as client)
+				// Use same calculation logic as unified engine (calculateLineItem)
 				const quantity = Number(item.quantity) || 0;
 				const unitPrice = Number(item.unit_price) || 0;
 				const discountPercent = Number(item.discount_percent || 0);
 				const gstRate = Number(item.gst_rate || 0);
-				const baseAmount =
-					quantity * unitPrice * (1 - discountPercent / 100);
+				
+				// Calculate using same formula as unified engine
+				const subtotal = quantity * unitPrice;
+				const discountAmount = (subtotal * discountPercent) / 100;
+				const taxableAmount = subtotal - discountAmount;
 				const gstAmount = invoice.is_gst_invoice
-					? (baseAmount * gstRate) / 100
+					? (taxableAmount * gstRate) / 100
 					: Number(item.gst_amount || 0);
-				const lineTotal = Number(item.line_total || baseAmount + gstAmount);
+				const lineTotal = taxableAmount + gstAmount;
 
 				return {
-					description: item.description,
-					quantity: quantity,
-					unitPrice: unitPrice,
-					discountPercent: discountPercent,
-					gstRate: gstRate,
-					lineTotal: lineTotal,
-					gstAmount: gstAmount,
+					description: item.description || "",
+					quantity,
+					unitPrice,
+					discountPercent,
+					gstRate,
+					lineTotal: Number(item.line_total || lineTotal),
+					gstAmount: Number(item.gst_amount || gstAmount),
 				};
 			}),
 			subtotal: Number(invoice.subtotal || invoice.total_amount) || 0,
@@ -278,7 +281,8 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 			pdfBuffer,
 			user.id,
 			invoiceId,
-			invoice.invoice_number
+			invoice.invoice_number,
+			invoice.store_id || undefined
 		);
 
 		if (!uploadResult.success || !uploadResult.publicUrl) {

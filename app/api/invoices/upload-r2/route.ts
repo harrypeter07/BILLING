@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { uploadInvoicePDFToR2 } from '@/lib/utils/r2-storage'
+import { createClient } from '@/lib/supabase/server'
 
 /**
  * R2 Upload API Route (OPTIMIZED)
@@ -63,12 +64,28 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await pdfFile.arrayBuffer()
     const pdfBuffer = Buffer.from(arrayBuffer)
 
+    // Fetch invoice to get store_id (for proper object key structure)
+    let storeId: string | undefined
+    try {
+      const supabase = await createClient()
+      const { data: invoice } = await supabase
+        .from('invoices')
+        .select('store_id')
+        .eq('id', invoiceId)
+        .single()
+      storeId = invoice?.store_id || undefined
+    } catch (err) {
+      // Non-critical - continue without store_id
+      console.warn('[R2Upload] Failed to fetch store_id:', err)
+    }
+
     // Upload to R2
     const result = await uploadInvoicePDFToR2(
       pdfBuffer,
       adminId,
       invoiceId,
-      invoiceNumber
+      invoiceNumber,
+      storeId
     )
 
     if (!result.success) {

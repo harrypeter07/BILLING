@@ -13,12 +13,11 @@ import { InvoiceActions } from "@/components/features/invoices/invoice-actions"
 import { InvoicePrint } from "@/components/features/invoices/invoice-print"
 import { WhatsAppShareButton } from "@/components/features/invoices/whatsapp-share-button"
 import { useToast } from "@/hooks/use-toast"
-import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf"
 import { useInvoice } from "@/lib/hooks/use-cached-data"
 import { db } from "@/lib/dexie-client"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
-import { createClient } from "@/lib/supabase/client"
-import { getServedByName } from "@/lib/utils/get-served-by"
+import { executeInvoiceAction, prepareInvoiceDocumentData } from "@/lib/invoice-document-engine"
+import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf"
 
 export default function InvoiceDetailPageClient() {
   const params = useParams()
@@ -180,95 +179,33 @@ export default function InvoiceDetailPageClient() {
         return
       }
 
-      // Fetch additional data from IndexedDB if needed
+      // Fetch additional data if needed
       let fullCustomer: any = customer
       let store: any = null
       const isIndexedDb = isIndexedDbMode()
 
-      // Fetch customer data if not already loaded
-      if (invoice.customer_id && !fullCustomer) {
-        if (isIndexedDb) {
-          fullCustomer = await db.customers.get(invoice.customer_id)
-        }
+      if (invoice.customer_id && !fullCustomer && isIndexedDb) {
+        fullCustomer = await db.customers.get(invoice.customer_id)
       }
 
-      // Fetch store data if needed
-      if (invoice.store_id) {
-        if (isIndexedDb) {
-          store = await db.stores.get(invoice.store_id)
-        }
+      if (invoice.store_id && isIndexedDb) {
+        store = await db.stores.get(invoice.store_id)
       }
 
-      // Get served by name
-      const servedBy = await getServedByName(invoice)
-
-      // Get profile/logo if not already loaded
-      let businessProfile = profile
-      if (!businessProfile) {
-        try {
-          const supabase = createClient()
-          const { data: { user } } = await supabase.auth.getUser()
-          if (user) {
-            const { data: prof } = await supabase
-              .from("user_profiles")
-              .select("*")
-              .eq("id", user.id)
-              .single()
-            if (prof) {
-              businessProfile = prof
-            }
-          }
-        } catch (err) {
-          console.warn("[SharePDF] Failed to fetch profile:", err)
-        }
+      // Use unified engine to prepare PDF data (eliminates duplication)
+      const source = {
+        invoice,
+        items,
+        customer: fullCustomer,
+        store,
+        profile,
+        storeName,
       }
 
-      // Prepare PDF data from IndexedDB
-      const pdfData = {
-        invoiceNumber: invoice.invoice_number || "N/A",
-        invoiceDate: invoice.invoice_date || new Date().toISOString(),
-        customerName: fullCustomer?.name || "",
-        customerEmail: fullCustomer?.email || "",
-        customerPhone: fullCustomer?.phone || "",
-        customerGSTIN: fullCustomer?.gstin || "",
-        businessName: store?.name || storeName || businessProfile?.business_name || "Business",
-        businessGSTIN: store?.gstin || businessProfile?.business_gstin || "",
-        businessAddress: store?.address || businessProfile?.business_address || "",
-        businessPhone: store?.phone || businessProfile?.business_phone || "",
-        businessEmail: businessProfile?.business_email || "",
-        logoUrl: businessProfile?.logo_url || "",
-        servedBy: servedBy,
-        items: items.map((item: any) => {
-          const quantity = Number(item.quantity) || 0
-          const unitPrice = Number(item.unit_price || item.unitPrice) || 0
-          const discountPercent = Number(item.discount_percent || item.discountPercent) || 0
-          const gstRate = Number(item.gst_rate || item.gstRate) || 0
-          const baseAmount = quantity * unitPrice * (1 - discountPercent / 100)
-          const gstAmount = (invoice.is_gst_invoice || invoice.isGstInvoice) 
-            ? (baseAmount * gstRate) / 100 
-            : 0
-          const lineTotal = baseAmount + gstAmount
-          
-          return {
-            description: item.description || "",
-            quantity: quantity,
-            unitPrice: unitPrice,
-            discountPercent: discountPercent,
-            gstRate: gstRate,
-            lineTotal: lineTotal,
-            gstAmount: gstAmount,
-          }
-        }),
-        subtotal: Number(invoice.subtotal) || 0,
-        cgstAmount: Number(invoice.cgst_amount || invoice.cgstAmount) || 0,
-        sgstAmount: Number(invoice.sgst_amount || invoice.sgstAmount) || 0,
-        igstAmount: Number(invoice.igst_amount || invoice.igstAmount) || 0,
-        totalAmount: Number(invoice.total_amount || invoice.totalAmount) || 0,
-        isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
-      }
+      const pdfData = await prepareInvoiceDocumentData(source)
 
-      // Generate PDF from IndexedDB data (slip format for sharing)
-      const pdfBlob = await generateInvoiceSlipPDF(pdfData)
+      // Generate PDF using unified engine (slip format for Web Share)
+      const pdfBlob = await generateInvoiceSlipPDF(pdfData, { useServerSide: false })
 
       // Get invoice number and business name for file naming and sharing
       const invoiceNumber = pdfData.invoiceNumber

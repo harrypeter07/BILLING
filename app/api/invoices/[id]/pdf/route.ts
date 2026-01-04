@@ -77,9 +77,9 @@ export async function GET(
     const { data: { user } } = await supabase.auth.getUser()
     if (user) {
       const { data: profileData } = await supabase
-        .from("profiles")
+        .from("user_profiles")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("id", user.id)
         .single()
       settings = profileData
     }
@@ -101,18 +101,29 @@ export async function GET(
       businessAddress: settings?.business_address || "",
       businessPhone: settings?.business_phone || "",
       items: items.map((item: any) => {
-        const lineTotal = (item.quantity || 0) * (item.unit_price || item.unitPrice || 0)
-        const gstAmount = invoice.is_gst_invoice || invoice.isGstInvoice
-          ? (lineTotal * (item.gst_rate || item.gstRate || 0)) / 100
-          : 0
+        // Use same calculation logic as unified engine (calculateLineItem)
+        const quantity = Number(item.quantity) || 0
+        const unitPrice = Number(item.unit_price || item.unitPrice) || 0
+        const discountPercent = Number(item.discount_percent || item.discountPercent) || 0
+        const gstRate = Number(item.gst_rate || item.gstRate) || 0
+        
+        // Calculate using same formula as unified engine
+        const subtotal = quantity * unitPrice
+        const discountAmount = (subtotal * discountPercent) / 100
+        const taxableAmount = subtotal - discountAmount
+        const gstAmount = (invoice.is_gst_invoice || invoice.isGstInvoice)
+          ? (taxableAmount * gstRate) / 100
+          : Number(item.gst_amount || item.gstAmount || 0)
+        const lineTotal = taxableAmount + gstAmount
+        
         return {
           description: item.description || "",
-          quantity: item.quantity || 0,
-          unitPrice: item.unit_price || item.unitPrice || 0,
-          discountPercent: item.discount_percent || item.discountPercent || 0,
-          gstRate: item.gst_rate || item.gstRate || 0,
-          lineTotal: lineTotal + gstAmount,
-          gstAmount: gstAmount,
+          quantity,
+          unitPrice,
+          discountPercent,
+          gstRate,
+          lineTotal: Number(item.line_total || item.lineTotal || lineTotal),
+          gstAmount: Number(item.gst_amount || item.gstAmount || gstAmount),
         }
       }),
       subtotal: invoice.subtotal || 0,

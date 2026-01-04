@@ -21,13 +21,8 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import {
-	generateWhatsAppBillMessage,
-	shareOnWhatsApp,
-	type MiniBillData,
-} from "@/lib/utils/whatsapp-bill";
 import { getInvoiceStorage } from "@/lib/utils/save-invoice-storage";
-import { createClient } from "@/lib/supabase/client";
+import { executeInvoiceAction } from "@/lib/invoice-document-engine";
 
 interface WhatsAppShareButtonProps {
 	invoice: {
@@ -126,118 +121,46 @@ export function WhatsAppShareButton({
 		setIsSharing(true);
 
 		try {
-			// Prepare mini bill data
-			const miniBillData: MiniBillData = {
-				storeName: storeName || "Business",
-				invoiceNumber: invoice.invoice_number,
-				invoiceDate: invoice.invoice_date,
-				items: items.map((item) => ({
-					name: item.description,
-					quantity: item.quantity,
-					unitPrice: item.unit_price,
-				})),
-				totalAmount: invoice.total_amount,
-				invoiceLink: invoiceLink,
+			// Prepare source data
+			const source = {
+				invoice,
+				items,
+				customer,
+				profile,
+				storeName,
 			};
 
-			// Quick check for existing R2 URL (non-blocking, fire-and-forget)
-			// We check but don't wait - WhatsApp opens immediately
-			let existingR2Url: string | undefined;
+			// Use unified document engine
+			await executeInvoiceAction({
+				invoiceId: invoice.id,
+				action: "whatsapp",
+				format: "slip",
+				source,
+				onProgress: (message) => {
+					console.log(`[WhatsAppShare] ${message}`);
+				},
+			});
+
+			// Check for existing R2 URL (non-blocking, for UI feedback)
 			getInvoiceStorage(invoice.id)
 				.then((storage) => {
 					if (storage?.public_url) {
 						const expiresAt = new Date(storage.expires_at).getTime();
 						const now = Date.now();
 						if (expiresAt > now) {
-							existingR2Url = storage.public_url;
 							setUploadedUrl(storage.public_url);
-							console.log(
-								"[WhatsAppShare] Found existing R2 URL:",
-								existingR2Url
-							);
 						}
 					}
 				})
-				.catch((err) => {
-					console.warn("[WhatsAppShare] Failed to check existing R2 URL:", err);
+				.catch(() => {
+					// Ignore errors
 				});
 
-			// Generate WhatsApp message immediately (with invoice link or existing R2 URL)
-			// PDF link will be updated later if background job completes
-			const whatsappMessage = generateWhatsAppBillMessage({
-				...miniBillData,
-				pdfR2Url: existingR2Url, // Use existing URL if found, otherwise invoice link
-			});
-
-			// Open WhatsApp immediately (non-blocking)
-			console.log(
-				"[WhatsAppShare] Opening WhatsApp immediately with invoice link..."
-			);
-			shareOnWhatsApp(whatsappMessage).catch((err) => {
-				console.error("[WhatsAppShare] Failed to open WhatsApp:", err);
-				toast({
-					title: "Failed to Open WhatsApp",
-					description:
-						"Please try opening WhatsApp manually or check your browser settings.",
-					variant: "destructive",
-					duration: 5000,
-				});
-			});
-
-			// Show success toast immediately
 			toast({
-				title: existingR2Url
-					? "✅ WhatsApp Opened with PDF Link!"
-					: "✅ WhatsApp Opened",
-				description: existingR2Url
-					? "PDF link found! WhatsApp opened. PDF is being refreshed in the background..."
-					: "WhatsApp opened. PDF is being prepared in the background...",
+				title: "✅ WhatsApp Opened",
+				description: "WhatsApp opened. PDF is being prepared in the background...",
 				duration: 3000,
 			});
-
-			// Trigger background PDF generation and R2 upload (fire-and-forget)
-			// This happens asynchronously and does NOT block the UI
-			// Only trigger if we don't have a valid existing URL
-			if (!existingR2Url) {
-				fetch("/api/invoices/generate-pdf-and-upload", {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({ invoiceId: invoice.id }),
-				})
-					.then((response) => {
-						if (!response.ok) {
-							console.warn(
-								"[WhatsAppShare] Background PDF generation failed:",
-								response.statusText
-							);
-						} else {
-							console.log(
-								"[WhatsAppShare] Background PDF generation started successfully"
-							);
-							// Optionally poll for the new URL after a delay
-							setTimeout(() => {
-								getInvoiceStorage(invoice.id)
-									.then((storage) => {
-										if (storage?.public_url) {
-											setUploadedUrl(storage.public_url);
-										}
-									})
-									.catch(() => {
-										// Ignore errors
-									});
-							}, 5000); // Check after 5 seconds
-						}
-					})
-					.catch((err) => {
-						console.error(
-							"[WhatsAppShare] Failed to trigger background PDF generation:",
-							err
-						);
-						// Don't show error to user - this is background processing
-					});
-			}
 		} catch (error) {
 			console.error("[WhatsAppShare] Error:", error);
 			toast({

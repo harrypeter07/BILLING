@@ -71,7 +71,8 @@ export async function uploadInvoicePDFToR2(
   pdfBuffer: Buffer,
   adminId: string,
   invoiceId: string,
-  invoiceNumber: string
+  invoiceNumber: string,
+  storeId?: string
 ): Promise<R2UploadResult> {
   try {
     const client = getR2Client()
@@ -98,20 +99,29 @@ export async function uploadInvoicePDFToR2(
       }
     }
 
-    // Generate deterministic object key: invoices/{adminId}/{invoiceNumber}.pdf
-    // Standardize adminId format - use consistent sanitization
-    // Example: invoices/3babf88a-89a9-4e4b-a844-cdce52b5e618/INV_2026_0042.pdf
-    // Keep UUIDs as-is, sanitize other formats
+    // Generate object key per requirements: includes store_id, invoice_id, and version
+    // Structure: invoices/{adminId}/{storeId}/{invoiceId}-{timestamp}.pdf
+    // This ensures proper isolation and includes all required fields
     let sanitizedAdminId: string
     if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(adminId)) {
-      // It's a UUID, keep it as-is
       sanitizedAdminId = adminId.toLowerCase()
     } else {
-      // Sanitize non-UUID adminIds
       sanitizedAdminId = adminId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
     }
-    const sanitizedInvoiceNumber = invoiceNumber.replace(/[^a-zA-Z0-9_-]/g, '_')
-    const objectKey = `invoices/${sanitizedAdminId}/${sanitizedInvoiceNumber}.pdf`
+    
+    // Sanitize store_id (use 'default' if not provided for backward compatibility)
+    const sanitizedStoreId = storeId 
+      ? storeId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
+      : 'default'
+    
+    // Sanitize invoice_id
+    const sanitizedInvoiceId = invoiceId.replace(/[^a-zA-Z0-9_-]/g, '_').toLowerCase()
+    
+    // Include timestamp for versioning (ensures unique keys even for same invoice)
+    const timestamp = Date.now()
+    
+    // Final object key: invoices/{adminId}/{storeId}/{invoiceId}-{timestamp}.pdf
+    const objectKey = `invoices/${sanitizedAdminId}/${sanitizedStoreId}/${sanitizedInvoiceId}-${timestamp}.pdf`
 
     // Upload to R2 with optimized settings
     const command = new PutObjectCommand({
