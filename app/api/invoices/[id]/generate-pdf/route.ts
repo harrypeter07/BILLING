@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import puppeteer from "puppeteer";
+import puppeteer from "puppeteer-core";
+import chromium from "@sparticuz/chromium";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -28,11 +29,26 @@ export async function GET(
       ? `${baseUrl}/api/invoices/${invoiceId}/slip-html`
       : `${baseUrl}/api/invoices/${invoiceId}/html`;
 
-    // Launch puppeteer
-    const browser = await puppeteer.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-    });
+    // Launch puppeteer with Vercel-compatible Chromium
+    // In production (Vercel), use @sparticuz/chromium
+    // In development, try to use local Chrome or fallback
+    const isProduction = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+    
+    const browser = await puppeteer.launch(
+      isProduction
+        ? {
+            args: chromium.args,
+            defaultViewport: chromium.defaultViewport,
+            executablePath: await chromium.executablePath(),
+            headless: chromium.headless,
+          }
+        : {
+            headless: true,
+            args: ["--no-sandbox", "--disable-setuid-sandbox"],
+            // In development, try to find Chrome in common locations
+            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+          }
+    );
 
     try {
       const page = await browser.newPage();
