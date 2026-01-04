@@ -35,8 +35,9 @@ export default function LicenseSeedPage() {
   const [error, setError] = useState<string | null>(null)
   const [isCheckingAuth, setIsCheckingAuth] = useState(true)
 
-  // Check for license seed admin authentication
+  // Check for license seed admin authentication (ONLY check - no session/auth required)
   useEffect(() => {
+    // Check PIN immediately - no async operations, no session checks
     const isAuthenticated = localStorage.getItem("licenseSeedAdminAuth") === "true"
     if (!isAuthenticated) {
       router.push("/admin/license-seed/login")

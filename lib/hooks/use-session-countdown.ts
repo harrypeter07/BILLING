@@ -46,6 +46,11 @@ export function useSessionCountdown(): SessionCountdown {
   }, [])
 
   const checkSession = useCallback(async () => {
+    // Don't check on public routes or license seed pages
+    if (pathname?.startsWith("/admin/license-seed")) {
+      return
+    }
+    
     // Don't check on public routes
     if (pathname && PUBLIC_ROUTES.includes(pathname)) {
       setHasSession(false)

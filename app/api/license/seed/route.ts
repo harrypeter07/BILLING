@@ -186,3 +186,17 @@ export async function POST(request: Request) {
   }
 }
 
+/**
+ * GET /api/license/seed
+ * Returns method not allowed - this endpoint only accepts POST
+ */
+export async function GET() {
+  return NextResponse.json(
+    {
+      error: "Method not allowed. This endpoint only accepts POST requests.",
+      message: "Use POST method to seed a license. Example: POST /api/license/seed with body { macAddress: 'AA:BB:CC:DD:EE:FF' }",
+    },
+    { status: 405 }
+  );
+}
+

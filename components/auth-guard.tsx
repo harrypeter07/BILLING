@@ -21,8 +21,9 @@ export function AuthGuard({ children }: AuthGuardProps) {
   const [isAuthorized, setIsAuthorized] = useState(false)
 
   // Public routes that don't require authentication
+  // License seed pages should bypass ALL auth checks - they only need PIN
   const publicRoutes = ["/auth/login", "/auth/signup", "/auth/employee-login", "/auth/customer-login", "/auth/session-expired", "/license", "/"]
-  const isPublicRoute = publicRoutes.includes(pathname || "") || (pathname?.startsWith("/i/") ?? false)
+  const isPublicRoute = publicRoutes.includes(pathname || "") || (pathname?.startsWith("/i/") ?? false) || (pathname?.startsWith("/admin/license-seed") ?? false)
 
   useEffect(() => {
     const checkAuth = async () => {

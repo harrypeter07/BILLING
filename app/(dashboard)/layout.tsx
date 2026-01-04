@@ -17,11 +17,17 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   
   // License seed pages should not use the dashboard layout (no sidebar/header)
   // This includes both the login and the main license seed page
+  // IMPORTANT: These pages should bypass ALL auth checks - they only need PIN authentication
   if (pathname?.startsWith("/admin/license-seed")) {
     return <>{children}</>
   }
   
   useEffect(() => {
+    // Skip auth check for license seed pages
+    if (pathname?.startsWith("/admin/license-seed")) {
+      return
+    }
+    
     const checkAuthAndStore = async () => {
       // Check auth on client side
       const authType = localStorage.getItem("authType")
