@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import puppeteer from "puppeteer-core";
-import chromium from "@sparticuz/chromium";
 import type { InvoicePDFData } from "@/lib/utils/invoice-pdf";
 import type { InvoiceSlipData } from "@/lib/utils/invoice-slip-pdf";
 import { generateInvoiceHTML } from "@/lib/utils/invoice-html-generator";
@@ -36,21 +35,25 @@ export async function POST(request: NextRequest) {
     // In development, try to use local Chrome or fallback
     const isProduction = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
     
-    const browser = await puppeteer.launch(
-      isProduction
-        ? {
-            args: chromium.args,
-            defaultViewport: chromium.defaultViewport,
-            executablePath: await chromium.executablePath(),
-            headless: chromium.headless,
-          }
-        : {
-            headless: true,
-            args: ["--no-sandbox", "--disable-setuid-sandbox"],
-            // In development, try to find Chrome in common locations
-            executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-          }
-    );
+    let browser;
+    if (isProduction) {
+      // Only import chromium in production (Vercel)
+      const chromium = await import("@sparticuz/chromium");
+      browser = await puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+      });
+    } else {
+      // Development: use local Chrome
+      browser = await puppeteer.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        // In development, try to find Chrome in common locations
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+      });
+    }
 
     try {
       const page = await browser.newPage();

@@ -155,109 +155,133 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
       const servedBy = await getServedByName(invoice)
 
       // Generate PDF based on format
-      try {
-        if (currentFormat === "invoice") {
-          const pdfBlob = await generateInvoicePDF({
-            invoiceNumber: invoice.invoice_number || invoiceNumber,
-            invoiceDate: invoice.invoice_date || invoice.invoiceDate || new Date().toISOString(),
-            dueDate: invoice.due_date || invoice.dueDate,
-            customerName: customer?.name,
-            customerEmail: customer?.email,
-            customerPhone: customer?.phone,
-            customerGSTIN: customer?.gstin,
-            businessName: profile?.business_name || "Business",
-            businessGSTIN: profile?.business_gstin,
-            businessAddress: profile?.business_address,
-            businessPhone: profile?.business_phone,
-            businessEmail: profile?.business_email,
-            logoUrl: profile?.logo_url,
-            servedBy: servedBy,
-            items: items || [],
-            subtotal: Number(invoice.subtotal) || 0,
-            cgstAmount: Number(invoice.cgst_amount || invoice.cgstAmount) || 0,
-            sgstAmount: Number(invoice.sgst_amount || invoice.sgstAmount) || 0,
-            igstAmount: Number(invoice.igst_amount || invoice.igstAmount) || 0,
-            totalAmount: Number(invoice.total_amount || invoice.totalAmount) || 0,
-            notes: invoice.notes,
-            terms: invoice.terms,
-            isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
-          })
-          
-          // Open PDF in new window for printing
-          const url = URL.createObjectURL(pdfBlob)
-          const printWindow = window.open(url, '_blank')
-          if (printWindow) {
-            printWindow.onload = () => {
-              printWindow.print()
-            }
-          } else {
-            // Fallback: download
-            const a = document.createElement('a')
-            a.href = url
-            a.download = `Invoice-${invoice.invoice_number || invoiceNumber}.pdf`
-            a.click()
-            URL.revokeObjectURL(url)
-          }
-        } else {
-          // Slip format - import dynamically
-          const { generateInvoiceSlipPDF } = await import("@/lib/utils/invoice-slip-pdf")
-          const pdfBlob = await generateInvoiceSlipPDF({
-            invoiceNumber: invoice.invoice_number || invoiceNumber,
-            invoiceDate: invoice.invoice_date || invoice.invoiceDate || new Date().toISOString(),
-            customerName: customer?.name,
-            customerEmail: customer?.email,
-            customerPhone: customer?.phone,
-            customerGSTIN: customer?.gstin,
-            businessName: profile?.business_name || "Business",
-            businessGSTIN: profile?.business_gstin,
-            businessAddress: profile?.business_address,
-            businessPhone: profile?.business_phone,
-            businessEmail: profile?.business_email,
-            logoUrl: profile?.logo_url,
-            servedBy: servedBy,
-            items: items || [],
-            subtotal: Number(invoice.subtotal) || 0,
-            cgstAmount: Number(invoice.cgst_amount || invoice.cgstAmount) || 0,
-            sgstAmount: Number(invoice.sgst_amount || invoice.sgstAmount) || 0,
-            igstAmount: Number(invoice.igst_amount || invoice.igstAmount) || 0,
-            totalAmount: Number(invoice.total_amount || invoice.totalAmount) || 0,
-            isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
-          })
-          
-          // Open PDF in new window for printing
-          const url = URL.createObjectURL(pdfBlob)
-          const printWindow = window.open(url, '_blank')
-          if (printWindow) {
-            printWindow.onload = () => {
-              printWindow.print()
-            }
-          } else {
-            // Fallback: download
-            const a = document.createElement('a')
-            a.href = url
-            a.download = `Invoice-${invoice.invoice_number || invoiceNumber}-Slip.pdf`
-            a.click()
-            URL.revokeObjectURL(url)
-          }
-        }
-      } catch (pdfError: any) {
-        console.error("[InvoicePrint] PDF generation error:", pdfError)
-        throw new Error(`PDF generation failed: ${pdfError?.message || pdfError}`)
+      let pdfBlob: Blob;
+      
+      if (currentFormat === "invoice") {
+        console.log("[InvoicePrint] Generating invoice PDF...")
+        pdfBlob = await generateInvoicePDF({
+          invoiceNumber: invoice.invoice_number || invoiceNumber,
+          invoiceDate: invoice.invoice_date || invoice.invoiceDate || new Date().toISOString(),
+          dueDate: invoice.due_date || invoice.dueDate,
+          customerName: customer?.name,
+          customerEmail: customer?.email,
+          customerPhone: customer?.phone,
+          customerGSTIN: customer?.gstin,
+          businessName: profile?.business_name || "Business",
+          businessGSTIN: profile?.business_gstin,
+          businessAddress: profile?.business_address,
+          businessPhone: profile?.business_phone,
+          businessEmail: profile?.business_email,
+          logoUrl: profile?.logo_url,
+          servedBy: servedBy,
+          items: items || [],
+          subtotal: Number(invoice.subtotal) || 0,
+          cgstAmount: Number(invoice.cgst_amount || invoice.cgstAmount) || 0,
+          sgstAmount: Number(invoice.sgst_amount || invoice.sgstAmount) || 0,
+          igstAmount: Number(invoice.igst_amount || invoice.igstAmount) || 0,
+          totalAmount: Number(invoice.total_amount || invoice.totalAmount) || 0,
+          notes: invoice.notes,
+          terms: invoice.terms,
+          isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
+        })
+      } else {
+        // Slip format
+        console.log("[InvoicePrint] Generating slip PDF...")
+        const { generateInvoiceSlipPDF } = await import("@/lib/utils/invoice-slip-pdf")
+        pdfBlob = await generateInvoiceSlipPDF({
+          invoiceNumber: invoice.invoice_number || invoiceNumber,
+          invoiceDate: invoice.invoice_date || invoice.invoiceDate || new Date().toISOString(),
+          customerName: customer?.name,
+          customerEmail: customer?.email,
+          customerPhone: customer?.phone,
+          customerGSTIN: customer?.gstin,
+          businessName: profile?.business_name || "Business",
+          businessGSTIN: profile?.business_gstin,
+          businessAddress: profile?.business_address,
+          businessPhone: profile?.business_phone,
+          businessEmail: profile?.business_email,
+          logoUrl: profile?.logo_url,
+          servedBy: servedBy,
+          items: items || [],
+          subtotal: Number(invoice.subtotal) || 0,
+          cgstAmount: Number(invoice.cgst_amount || invoice.cgstAmount) || 0,
+          sgstAmount: Number(invoice.sgst_amount || invoice.sgstAmount) || 0,
+          igstAmount: Number(invoice.igst_amount || invoice.igstAmount) || 0,
+          totalAmount: Number(invoice.total_amount || invoice.totalAmount) || 0,
+          isGstInvoice: invoice.is_gst_invoice || invoice.isGstInvoice || false,
+        })
       }
+      
+      if (!pdfBlob || !(pdfBlob instanceof Blob)) {
+        throw new Error("PDF generation returned invalid blob")
+      }
+      
+      console.log("[InvoicePrint] PDF generated successfully, size:", pdfBlob.size)
+      
+      // Create a hidden iframe to print the PDF without affecting the main page
+      const url = URL.createObjectURL(pdfBlob)
+      const iframe = document.createElement('iframe')
+      iframe.style.position = 'fixed'
+      iframe.style.top = '0'
+      iframe.style.left = '0'
+      iframe.style.width = '0'
+      iframe.style.height = '0'
+      iframe.style.border = 'none'
+      iframe.style.opacity = '0'
+      iframe.style.pointerEvents = 'none'
+      iframe.style.zIndex = '-9999'
+      
+      document.body.appendChild(iframe)
+      
+      iframe.onload = () => {
+        try {
+          // Wait a bit for PDF to fully load
+          setTimeout(() => {
+            if (iframe.contentWindow) {
+              iframe.contentWindow.focus()
+              iframe.contentWindow.print()
+            }
+            // Clean up after printing
+            setTimeout(() => {
+              document.body.removeChild(iframe)
+              URL.revokeObjectURL(url)
+            }, 1000)
+          }, 500)
+        } catch (error) {
+          console.error("[InvoicePrint] Print error:", error)
+          // Fallback: download if print fails
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `Invoice-${invoice.invoice_number || invoiceNumber}${currentFormat === "slip" ? "-Slip" : ""}.pdf`
+          a.click()
+          document.body.removeChild(iframe)
+          URL.revokeObjectURL(url)
+        }
+      }
+      
+      iframe.src = url
 
       toast({
         title: "Success",
         description: `Invoice PDF (${currentFormat.toUpperCase()}) generated. Opening print dialog...`,
       })
     } catch (error: any) {
-      console.error("[InvoicePrint] Print process error:", {
-        error: error,
-        message: error?.message,
-        stack: error?.stack
-      })
+      // Better error logging
+      const errorMessage = error?.message || String(error) || "Unknown error"
+      const errorDetails = {
+        message: errorMessage,
+        name: error?.name,
+        stack: error?.stack,
+        toString: String(error),
+        type: typeof error,
+      }
+      
+      console.error("[InvoicePrint] Print process error:", errorDetails)
+      console.error("[InvoicePrint] Full error object:", error)
+      
       toast({
         title: "Error",
-        description: error?.message || "Failed to generate invoice PDF. Check console for details.",
+        description: errorMessage || "Failed to generate invoice PDF. Check console for details.",
         variant: "destructive",
       })
     } finally {
