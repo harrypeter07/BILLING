@@ -1122,6 +1122,9 @@ export function InvoiceForm({
 		setIsSharing(true);
 		setIsLoading(true);
 
+		// Declare invoiceId outside try block so it's accessible in catch block
+		let invoiceId: string | undefined;
+
 		try {
 			const t = calculateTotals();
 
@@ -1138,7 +1141,7 @@ export function InvoiceForm({
 				return;
 			}
 
-			const invoiceId = crypto.randomUUID();
+			invoiceId = crypto.randomUUID();
 			const invoiceData = {
 				id: invoiceId,
 				customer_id: finalCustomerId,
@@ -1391,12 +1394,11 @@ Thank you for your business! 🙏`;
 					console.error('[InvoiceForm] Link method failed:', linkError);
 					toast({
 						title: "⚠️ WhatsApp Blocked",
-						description: "Please allow popups for this site, then try again.",
+						description: "Please allow popups for this site, then try again. Invoice has been saved.",
 						variant: "destructive",
 						duration: 5000,
 					});
-					router.push("/invoices");
-					router.refresh();
+					// Do NOT redirect - keep user on page so they can try again
 					return;
 				}
 			}

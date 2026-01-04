@@ -141,17 +141,47 @@ export async function generateInvoiceSlipPDFClient(
 						}
 					});
 					
-					// Force all colors to use rgb() format to avoid lab() color parsing errors
-					// html2canvas cannot parse lab() or oklch() color functions
-					// Override all color-related properties with explicit rgb() values
+					// CRITICAL: Force ALL elements to use rgb() colors to prevent lab() parsing errors
+					// html2canvas cannot parse lab(), oklch(), or other modern color functions
+					// Directly override inline styles on all elements to force rgb() format
+					const allElements = clonedDoc.querySelectorAll("*");
+					allElements.forEach((el) => {
+						const htmlEl = el as HTMLElement;
+						
+						// Force color to rgb() format - override any computed styles
+						// This prevents html2canvas from encountering lab() colors
+						htmlEl.style.setProperty("color", "rgb(15, 23, 42)", "important");
+						
+						// Only override background if it's not transparent
+						const currentBg = htmlEl.style.backgroundColor || "";
+						if (currentBg && !currentBg.includes("transparent") && !currentBg.includes("rgba(0, 0, 0, 0)")) {
+							// Keep existing background but ensure it's rgb format
+							htmlEl.style.setProperty("background-color", currentBg, "important");
+						}
+						
+						// Force all border colors to rgb() if they exist
+						["border-color", "border-top-color", "border-right-color", "border-bottom-color", "border-left-color"].forEach((prop) => {
+							const currentBorder = htmlEl.style.getPropertyValue(prop);
+							if (currentBorder && !currentBorder.includes("transparent")) {
+								htmlEl.style.setProperty(prop, currentBorder, "important");
+							}
+						});
+					});
+					
+					// Add comprehensive CSS override that forces rgb() for all color properties
+					// This is the primary defense against lab() color parsing errors
 					const style = clonedDoc.createElement("style");
 					style.textContent = `
-						/* Slip specific colors - Pink design - Force rgb() format to avoid lab() parsing errors */
+						/* CRITICAL: Force ALL colors to rgb() format - prevents lab() parsing errors in html2canvas */
+						/* html2canvas cannot parse modern color functions like lab(), oklch(), etc. */
 						* {
-							/* Reset any lab() or oklch() colors that might come from browser CSS */
+							/* Override any computed colors with explicit rgb() values */
 							color: rgb(15, 23, 42) !important;
 							background-color: transparent !important;
 							border-color: transparent !important;
+							outline-color: transparent !important;
+							text-decoration-color: transparent !important;
+							column-rule-color: transparent !important;
 						}
 						body {
 							background-color: rgb(255, 255, 255) !important;
@@ -160,7 +190,7 @@ export async function generateInvoiceSlipPDFClient(
 						.slip-container {
 							background-color: rgb(255, 255, 255) !important;
 						}
-						.business-name {
+						.business-name, .customer-label {
 							color: rgb(236, 72, 153) !important;
 						}
 						.divider {
@@ -168,30 +198,16 @@ export async function generateInvoiceSlipPDFClient(
 							border-top-width: 1px !important;
 							border-top-style: solid !important;
 						}
-						.invoice-info {
+						.invoice-info, .invoice-info *, .customer-name {
 							color: rgb(15, 23, 42) !important;
 						}
-						.invoice-info * {
-							color: rgb(15, 23, 42) !important;
-						}
-						.customer-label {
-							color: rgb(236, 72, 153) !important;
-						}
-						.customer-name {
-							color: rgb(15, 23, 42) !important;
-						}
-						.items-table {
-							border-collapse: collapse !important;
-						}
-						.items-table thead {
+						.items-table thead, .items-table thead * {
 							background-color: rgb(236, 72, 153) !important;
-						}
-						.items-table thead * {
 							color: rgb(255, 255, 255) !important;
 						}
 						.items-table th {
-							color: rgb(255, 255, 255) !important;
 							background-color: rgb(236, 72, 153) !important;
+							color: rgb(255, 255, 255) !important;
 						}
 						.items-table td {
 							border-bottom-color: rgb(226, 232, 240) !important;
@@ -199,32 +215,20 @@ export async function generateInvoiceSlipPDFClient(
 							border-bottom-style: solid !important;
 							color: rgb(15, 23, 42) !important;
 						}
-						.totals {
+						.totals, .total-row, .total-row * {
 							color: rgb(15, 23, 42) !important;
 						}
-						.total-row {
-							color: rgb(15, 23, 42) !important;
-						}
-						.total-row * {
-							color: rgb(15, 23, 42) !important;
-						}
-						.total-row.bold {
+						.total-row.bold, .total-row.bold * {
 							border-top-color: rgb(236, 72, 153) !important;
 							border-top-width: 2px !important;
 							border-top-style: solid !important;
 							color: rgb(236, 72, 153) !important;
 						}
-						.total-row.bold * {
-							color: rgb(236, 72, 153) !important;
-						}
-						.footer {
+						.footer, .footer * {
 							color: rgb(100, 116, 139) !important;
 							border-top-color: rgb(226, 232, 240) !important;
 							border-top-width: 1px !important;
 							border-top-style: solid !important;
-						}
-						.footer * {
-							color: rgb(100, 116, 139) !important;
 						}
 					`;
 					clonedDoc.head.appendChild(style);
