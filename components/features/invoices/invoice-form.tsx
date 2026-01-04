@@ -1387,36 +1387,36 @@ export function InvoiceForm({
 				
 				// If no existing valid URL, upload new one
 				if (!r2PublicUrl) {
-					toast({
-						title: "Uploading PDF...",
+				toast({
+					title: "Uploading PDF...",
 						description: "Uploading to cloud storage, then opening WhatsApp...",
 						duration: 2000,
-					});
+				});
 
 					// Wait for upload to complete (no timeout - we need the R2 link)
 					console.log("[InvoiceForm] Uploading PDF to R2...");
 					const uploadResult = await uploadInvoicePDFToR2Client(
-						pdfBlob,
-						adminId,
-						invoiceId,
-						invoiceNumber
-					);
-					
+					pdfBlob,
+					adminId,
+					invoiceId,
+					invoiceNumber
+				);
+
 					if (uploadResult.success && uploadResult.publicUrl) {
 						r2PublicUrl = uploadResult.publicUrl;
 						console.log("[InvoiceForm] R2 upload successful:", r2PublicUrl);
 
 						// Save metadata to database (non-blocking)
 						if (uploadResult.expiresAt) {
-							saveInvoiceStorage({
-								invoice_id: invoiceId,
+						saveInvoiceStorage({
+							invoice_id: invoiceId,
 								r2_object_key: uploadResult.objectKey || "",
 								public_url: uploadResult.publicUrl,
 								expires_at: uploadResult.expiresAt,
-							}).catch((err) => {
-								console.warn("[InvoiceForm] Failed to save storage metadata (non-critical):", err);
-							});
-						}
+						}).catch((err) => {
+							console.warn("[InvoiceForm] Failed to save storage metadata (non-critical):", err);
+						});
+					}
 
 						// Auto-copy link to clipboard
 						try {
@@ -1424,14 +1424,14 @@ export function InvoiceForm({
 						} catch (clipboardError) {
 							// Clipboard failed, continue anyway
 						}
-					} else {
+				} else {
 						console.error("[InvoiceForm] R2 upload failed:", uploadResult.error);
-						toast({
+					toast({
 							title: "Upload Failed",
 							description: "Failed to upload PDF. Opening WhatsApp with invoice link instead.",
 							variant: "destructive",
 							duration: 3000,
-						});
+					});
 					}
 				}
 			}
@@ -1459,14 +1459,14 @@ export function InvoiceForm({
 			const shareResult = await shareOnWhatsApp(whatsappMessage, pdfBlob, fileName);
 			
 			if (shareResult.success) {
-				toast({
+			toast({
 					title: r2PublicUrl ? "✅ Invoice Created & Shared!" : "✅ Invoice Created & Shared!",
-					description: r2PublicUrl
+				description: r2PublicUrl
 						? "Invoice saved and PDF uploaded! WhatsApp opened with shareable PDF link. Link copied to clipboard."
 						: "Invoice saved. WhatsApp opened. PDF is being uploaded in the background.",
-					duration: 3000,
-				});
-				
+				duration: 3000,
+			});
+
 				// Wait to ensure WhatsApp fully opens before redirecting
 				// Use the same delay as invoice details page (which works)
 				await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
@@ -1486,8 +1486,8 @@ export function InvoiceForm({
 			setTimeout(() => {
 				// Only redirect if we're still on the invoice creation page
 				if (window.location.pathname.includes('/invoices/new')) {
-					router.push("/invoices");
-					router.refresh();
+			router.push("/invoices");
+			router.refresh();
 				}
 			}, 1000); // Additional 1 second delay before redirect
 		} catch (error) {
