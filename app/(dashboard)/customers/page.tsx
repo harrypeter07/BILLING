@@ -1,7 +1,7 @@
 "use client"
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Button } from "@/components/ui/button"
-import { Plus, Sparkles } from "lucide-react"
+import { Plus } from "lucide-react"
 import Link from "next/link"
 import { CustomersTable } from "@/components/features/customers/customers-table"
 import { toast } from "sonner"
@@ -14,7 +14,6 @@ import { useCustomers, useInvalidateQueries } from "@/lib/hooks/use-cached-data"
 export default function CustomersPage() {
   const { data: customers = [], isLoading } = useCustomers()
   const { invalidateCustomers } = useInvalidateQueries()
-  const [isAddingMock, setIsAddingMock] = useState(false)
 
   // Listen for customer creation events
   useEffect(() => {
@@ -30,99 +29,6 @@ export default function CustomersPage() {
     }
   }, [invalidateCustomers])
 
-  const handleAddMockCustomer = async () => {
-    try {
-      setIsAddingMock(true)
-      const rand = Math.floor(Math.random() * 10000)
-      const isIndexedDb = isIndexedDbMode()
-
-      const mockCustomer = {
-        id: crypto.randomUUID(),
-        name: `Mock Customer ${rand}`,
-        email: `user${rand}@example.com`,
-        phone: `9${Math.floor(100000000 + Math.random() * 899999999)}`,
-        gstin: `29${Math.floor(1000000000 + Math.random() * 8999999999)}${Math.floor(10 + Math.random() * 90)}`,
-        billing_address: `${rand} Street, Sector ${Math.floor(1 + Math.random() * 50)}, City`,
-        shipping_address: `${rand + 1} Street, Sector ${Math.floor(1 + Math.random() * 50)}, City`,
-        notes: `Mock customer generated at ${new Date().toLocaleString()}`,
-      }
-
-      if (isIndexedDb) {
-        // Save to Dexie
-        await storageManager.addCustomer(mockCustomer as any)
-        // Refresh customer list via cache invalidation
-        await invalidateCustomers()
-        toast.success(`Mock customer "${mockCustomer.name}" added!`)
-      } else {
-        // Save to Supabase
-        const supabase = createClient()
-        const authType = localStorage.getItem("authType")
-        let userId: string | null = null
-
-        // For employees, get admin_user_id from store
-        if (authType === "employee") {
-          const empSession = localStorage.getItem("employeeSession")
-          if (empSession) {
-            try {
-              const session = JSON.parse(empSession)
-              const storeId = session.storeId
-
-              if (storeId) {
-                const { data: store } = await supabase
-                  .from('stores')
-                  .select('admin_user_id')
-                  .eq('id', storeId)
-                  .single()
-
-                if (store?.admin_user_id) {
-                  userId = store.admin_user_id
-                } else {
-                  toast.error("Store not found")
-                  return
-                }
-              } else {
-                toast.error("No store assigned")
-                return
-              }
-            } catch (e: any) {
-              toast.error("Failed to get employee store: " + (e.message || "Unknown error"))
-              return
-            }
-          } else {
-            toast.error("Employee session not found")
-            return
-          }
-        } else {
-          // For admin users
-          const { data: { user } } = await supabase.auth.getUser()
-          if (!user) {
-            toast.error("Not authenticated")
-            return
-          }
-          userId = user.id
-        }
-
-        if (!userId) {
-          toast.error("Unable to determine user ID")
-          return
-        }
-
-        const { error } = await supabase.from("customers").insert({
-          ...mockCustomer,
-          user_id: userId,
-        })
-        if (error) throw error
-        toast.success(`Mock customer "${mockCustomer.name}" added!`)
-        // Refresh data using cache invalidation
-        await invalidateCustomers()
-      }
-    } catch (error: any) {
-      toast.error("Failed to add mock customer: " + (error.message || error.toString()))
-    } finally {
-      setIsAddingMock(false)
-    }
-  }
-
   return (
     <div className="space-y-4 md:space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -131,28 +37,6 @@ export default function CustomersPage() {
           <p className="text-sm sm:text-base text-muted-foreground">Manage your customer database</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleAddMockCustomer}
-            disabled={isAddingMock}
-            title="Add a mock customer with random data"
-            className="text-xs sm:text-sm"
-          >
-            {isAddingMock ? (
-              <>
-                <div className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                <span className="hidden sm:inline">Adding...</span>
-                <span className="sm:hidden">...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />
-                <span className="hidden sm:inline">Add Mock Customer</span>
-                <span className="sm:hidden">Mock</span>
-              </>
-            )}
-          </Button>
           <Button asChild className="text-xs sm:text-sm">
             <Link href="/customers/new">
               <Plus className="mr-1 sm:mr-2 h-3 w-3 sm:h-4 sm:w-4" />

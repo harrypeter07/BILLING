@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Generate a compact invoice slip PDF using HTML-to-PDF conversion
  * Uses server-side puppeteer when online, client-side jsPDF/html2canvas when offline

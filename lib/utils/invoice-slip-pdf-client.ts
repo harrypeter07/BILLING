@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Client-side HTML to PDF generation for offline mode (Slip)
  * Uses jsPDF + html2canvas to convert HTML to PDF
@@ -8,14 +10,31 @@ import { generateSlipHTML } from "./invoice-slip-html-generator";
 export async function generateInvoiceSlipPDFClient(
 	data: InvoiceSlipData
 ): Promise<Blob> {
-	// Dynamically import to avoid SSR issues
-	const [jsPDFModule, html2canvasModule] = await Promise.all([
-		import("jspdf"),
-		import("html2canvas"),
-	]);
+	// Dynamically import to avoid SSR issues and HMR conflicts
+	let jsPDF: any;
+	let html2canvas: any;
 
-	const jsPDF = jsPDFModule.default || (jsPDFModule as any);
-	const html2canvas = html2canvasModule.default || html2canvasModule;
+	try {
+		const [jsPDFModule, html2canvasModule] = await Promise.all([
+			import("jspdf"),
+			import("html2canvas"),
+		]);
+		jsPDF = jsPDFModule.default || (jsPDFModule as any);
+		html2canvas = html2canvasModule.default || html2canvasModule;
+	} catch (importError) {
+		// Handle HMR issues - retry once
+		console.warn(
+			"[InvoiceSlipPDFClient] Import failed, retrying...",
+			importError
+		);
+		await new Promise((resolve) => setTimeout(resolve, 100));
+		const [jsPDFModule, html2canvasModule] = await Promise.all([
+			import("jspdf"),
+			import("html2canvas"),
+		]);
+		jsPDF = jsPDFModule.default || (jsPDFModule as any);
+		html2canvas = html2canvasModule.default || html2canvasModule;
+	}
 
 	// Create a temporary container for the HTML
 	const container = document.createElement("div");
