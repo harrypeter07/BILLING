@@ -140,7 +140,8 @@ export function WhatsAppShareButton({
         }
       }
 
-      // Generate mini invoice PDF
+      // Generate invoice slip PDF using new HTML-to-PDF design
+      // This uses the modern client-side HTML-to-PDF generation (html2canvas + jsPDF)
       try {
         const pdfData = {
           invoiceNumber: invoice.invoice_number,

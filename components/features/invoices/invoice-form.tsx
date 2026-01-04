@@ -1285,7 +1285,8 @@ export function InvoiceForm({
 				employee_id: employeeId,
 			});
 
-			// Generate mini invoice PDF with all business data
+			// Generate invoice slip PDF using new HTML-to-PDF design
+			// This uses the modern client-side HTML-to-PDF generation (html2canvas + jsPDF)
 			const pdfData = {
 				invoiceNumber: invoiceNumber,
 				invoiceDate: invoiceDate,
@@ -1325,7 +1326,22 @@ export function InvoiceForm({
 				isGstInvoice: isGstInvoice,
 			};
 
-			const pdfBlob = await generateInvoiceSlipPDF(pdfData);
+			// Generate invoice slip PDF using new HTML-to-PDF design
+			let pdfBlob: Blob;
+			try {
+				pdfBlob = await generateInvoiceSlipPDF(pdfData);
+			} catch (pdfError) {
+				console.error("[InvoiceForm] PDF generation failed:", pdfError);
+				toast({
+					title: "PDF Generation Failed",
+					description: "Failed to generate PDF. Invoice will be saved but PDF sharing is unavailable.",
+					variant: "destructive",
+					duration: 5000,
+				});
+				// Continue without PDF - invoice will still be saved
+				pdfBlob = new Blob([], { type: "application/pdf" });
+			}
+			
 			const fileName = `Invoice-${invoiceNumber}.pdf`;
 
 			// Generate invoice link
