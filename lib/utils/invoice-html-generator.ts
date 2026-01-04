@@ -201,7 +201,7 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
   <div class="invoice-container">
     <div class="header">
       <div class="logo-section">
-        <img src="${data.logoUrl || "https://via.placeholder.com/120x60/3b82f6/ffffff?text=LOGO"}" alt="Logo" class="logo" />
+        <img src="${data.logoUrl || "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjYwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIxMjAiIGhlaWdodD0iNjAiIGZpbGw9IiMzYjgyZjYiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjE0IiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+TE9HTzwvdGV4dD48L3N2Zz4="}" alt="Logo" class="logo" onerror="this.style.display='none'" />
       </div>
       <div class="business-info">
         <div class="business-name">${data.businessName}</div>

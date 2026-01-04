@@ -142,7 +142,7 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
 <body>
   <div class="slip-container">
     <div class="logo-section">
-      <img src="${data.logoUrl || "https://via.placeholder.com/80x80/ec4899/ffffff?text=LOGO"}" alt="Logo" class="logo" />
+      <img src="${data.logoUrl || "data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAiIGhlaWdodD0iODAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHJlY3Qgd2lkdGg9IjgwIiBoZWlnaHQ9IjgwIiBmaWxsPSIjZWM0ODk5Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCwgc2Fucy1zZXJpZiIgZm9udC1zaXplPSIxMiIgZmlsbD0iI2ZmZiIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iPkxPR088L3RleHQ+PC9zdmc+"}" alt="Logo" class="logo" onerror="this.style.display='none'" />
     </div>
     
     <div class="business-name">${data.businessName}</div>

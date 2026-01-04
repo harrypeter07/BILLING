@@ -17,18 +17,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invoice data is required" }, { status: 400 });
     }
 
-    // Ensure logoUrl is always present, use a placeholder if not provided
+    // Ensure logoUrl is always present, use Unsplash image if not provided
     const dataWithLogo = {
       ...data,
       logoUrl: data.logoUrl || (type === "slip" 
-        ? "https://via.placeholder.com/80x40/EC4899/FFFFFF?text=Logo" // Pink placeholder for slip
-        : "https://via.placeholder.com/120x60/0000FF/FFFFFF?text=Logo") // Blue placeholder for invoice
+        ? "https://images.unsplash.com/photo-1560179707-f14e90ef3623?w=80&h=40&fit=crop&auto=format" // Business image for slip
+        : "https://images.unsplash.com/photo-1560179707-f14e90ef3623?w=120&h=60&fit=crop&auto=format") // Business image for invoice
     };
 
     // Generate HTML based on type using shared HTML generators
+    // Slip uses pink design (#ec4899), Invoice uses blue design (#3b82f6)
     const html = type === "slip" 
       ? generateSlipHTML(dataWithLogo as InvoiceSlipData)
       : generateInvoiceHTML(dataWithLogo as InvoicePDFData);
+    
+    console.log(`[PDF Generation] Type: ${type}, Using ${type === "slip" ? "PINK" : "BLUE"} design`);
 
     // Launch puppeteer with Vercel-compatible Chromium
     // In production (Vercel), use @sparticuz/chromium

@@ -72,47 +72,79 @@ export async function generateInvoiceSlipPDFClient(
 		}
 
 		// Create a completely isolated container that won't affect the main page
-		// Use fixed positioning with high z-index and make it invisible
+		// Use absolute positioning off-screen but visible for html2canvas
 		const container = document.createElement("div");
-		container.style.position = "fixed";
+		container.style.position = "absolute";
 		container.style.top = "0";
-		container.style.left = "0";
+		container.style.left = "-9999px";
 		container.style.width = "80mm";
-		container.style.height = "200mm"; // Slip height
+		container.style.height = "auto"; // Let height adjust to content
 		container.style.zIndex = "-9999";
-		container.style.opacity = "0";
 		container.style.pointerEvents = "none";
-		container.style.overflow = "hidden";
-		container.style.isolation = "isolate"; // Create new stacking context
+		container.style.overflow = "visible";
+		container.style.backgroundColor = "white";
+		container.style.visibility = "visible"; // Must be visible for html2canvas
+		container.style.opacity = "1"; // Must be fully opaque
 		container.innerHTML = generateSlipHTML(data);
 		document.body.appendChild(container);
 
 		try {
+			// Wait longer for the container to fully render and images to load
+			await new Promise((resolve) => setTimeout(resolve, 500));
+
+			// Verify container has content
+			if (!container.innerHTML || container.innerHTML.trim().length === 0) {
+				throw new Error("Container is empty - HTML generation failed");
+			}
+
+			console.log(
+				"[InvoiceSlipPDFClient] Container ready, generating canvas..."
+			);
+
 			// Convert HTML to canvas
 			// Configure html2canvas to handle color parsing issues
 			const canvas = await html2canvas(container, {
-				scale: 2,
+				scale: 1.5, // Reduced from 2 to reduce PDF size
 				useCORS: true,
+				allowTaint: false, // Prevent tainted canvas
 				logging: false,
 				width: 302, // 80mm in pixels at 96 DPI
 				windowWidth: 302,
+				backgroundColor: "#ffffff", // Ensure white background
+				imageTimeout: 3000, // 3 second timeout for images
+				removeContainer: false, // Keep container for cleanup
 				ignoreElements: (element: HTMLElement) => {
-					// Ignore elements that might cause color parsing issues
+					// Ignore broken or loading images
+					if (element.tagName === "IMG") {
+						const img = element as HTMLImageElement;
+						if (
+							!img.complete ||
+							img.naturalWidth === 0 ||
+							img.naturalHeight === 0
+						) {
+							return true;
+						}
+					}
 					return false;
 				},
 				onclone: (clonedDoc: Document) => {
-					// Force all colors to use hex/rgb format to avoid lab() color issues
-					// This converts any lab(), oklch(), or other unsupported color formats to rgb()
+					// Hide broken images in cloned document
+					const images = clonedDoc.querySelectorAll("img");
+					images.forEach((img) => {
+						const imgEl = img as HTMLImageElement;
+						if (
+							!imgEl.complete ||
+							imgEl.naturalWidth === 0 ||
+							imgEl.naturalHeight === 0
+						) {
+							(imgEl as HTMLElement).style.display = "none";
+						}
+					});
+					// Force all colors to use rgb() format to avoid lab() color issues
+					// Ensure pink colors are preserved for slip design
 					const style = clonedDoc.createElement("style");
 					style.textContent = `
-						/* Convert all color properties to rgb() format to avoid lab() parsing errors */
-						* {
-							/* Reset all color-related properties to use rgb() */
-							color: rgb(15, 23, 42) !important;
-							background-color: transparent !important;
-							border-color: transparent !important;
-						}
-						/* Slip specific colors */
+						/* Slip specific colors - Pink design */
 						body {
 							background-color: rgb(255, 255, 255) !important;
 							color: rgb(15, 23, 42) !important;
@@ -163,6 +195,18 @@ export async function generateInvoiceSlipPDFClient(
 				throw new Error("html2canvas failed to generate canvas");
 			}
 
+			// Verify canvas has content
+			if (canvas.width === 0 || canvas.height === 0) {
+				throw new Error("Canvas is empty - html2canvas captured nothing");
+			}
+
+			console.log(
+				"[InvoiceSlipPDFClient] Canvas generated:",
+				canvas.width,
+				"x",
+				canvas.height
+			);
+
 			// Create PDF from canvas
 			const pdf = new jsPDF({
 				orientation: "portrait",
@@ -171,9 +215,16 @@ export async function generateInvoiceSlipPDFClient(
 			});
 
 			const imgData = canvas.toDataURL("image/png", 1.0);
-			if (!imgData || imgData === "data:,") {
-				throw new Error("Failed to convert canvas to image data");
+			if (!imgData || imgData === "data:," || imgData.length < 100) {
+				throw new Error(
+					"Failed to convert canvas to image data - canvas may be blank"
+				);
 			}
+
+			console.log(
+				"[InvoiceSlipPDFClient] Image data generated, size:",
+				imgData.length
+			);
 
 			const imgWidth = 80; // Slip width in mm
 			const imgHeight = (canvas.height * imgWidth) / canvas.width;

@@ -13,7 +13,7 @@ export async function GET(
     // Use mock data for HTML preview (no API calls)
     // This allows real-time editing of the HTML template
     // You can replace this with your actual logo URL from customer uploads
-    const mockLogoUrl = "https://via.placeholder.com/80x80/ec4899/ffffff?text=LOGO";
+    const mockLogoUrl = "https://images.unsplash.com/photo-1560179707-f14e90ef3623?w=80&h=80&fit=crop&auto=format";
     
     const invoiceData: InvoiceSlipData = {
       invoiceNumber: "INV-2024-001",

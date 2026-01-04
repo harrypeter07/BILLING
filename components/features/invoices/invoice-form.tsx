@@ -1327,9 +1327,15 @@ export function InvoiceForm({
 			};
 
 			// Generate invoice slip PDF using new HTML-to-PDF design
+			// Use server-side by default for faster WhatsApp sharing
 			let pdfBlob: Blob;
 			try {
-				pdfBlob = await generateInvoiceSlipPDF(pdfData);
+				// Check user preference, default to server-side (faster)
+				const useServerSide = typeof window !== "undefined" 
+					? localStorage.getItem("whatsapp-pdf-use-server-side") !== "false"
+					: true;
+				
+				pdfBlob = await generateInvoiceSlipPDF(pdfData, { useServerSide });
 			} catch (pdfError) {
 				console.error("[InvoiceForm] PDF generation failed:", pdfError);
 				toast({
@@ -1375,7 +1381,8 @@ export function InvoiceForm({
 			// ALWAYS use Cloudflare R2 link - check for existing URL first, then upload if needed
 			let r2PublicUrl: string | undefined;
 			
-			if (adminId) {
+			// Only upload if PDF was generated successfully
+			if (adminId && pdfBlob && pdfBlob.size > 0) {
 				// First, check if we already have an R2 URL for this invoice
 				console.log("[InvoiceForm] Checking for existing R2 URL...");
 				const existingStorage = await getInvoiceStorage(invoiceId);

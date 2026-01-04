@@ -218,52 +218,44 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
       
       console.log("[InvoicePrint] PDF generated successfully, size:", pdfBlob.size)
       
-      // Create a hidden iframe to print the PDF without affecting the main page
+      // Open PDF in new window for printing (reverted from iframe approach)
       const url = URL.createObjectURL(pdfBlob)
-      const iframe = document.createElement('iframe')
-      iframe.style.position = 'fixed'
-      iframe.style.top = '0'
-      iframe.style.left = '0'
-      iframe.style.width = '0'
-      iframe.style.height = '0'
-      iframe.style.border = 'none'
-      iframe.style.opacity = '0'
-      iframe.style.pointerEvents = 'none'
-      iframe.style.zIndex = '-9999'
+      const printWindow = window.open(url, '_blank')
       
-      document.body.appendChild(iframe)
-      
-      iframe.onload = () => {
-        try {
-          // Wait a bit for PDF to fully load
-          setTimeout(() => {
-            if (iframe.contentWindow) {
-              iframe.contentWindow.focus()
-              iframe.contentWindow.print()
-            }
-            // Clean up after printing
-            setTimeout(() => {
-              document.body.removeChild(iframe)
-              URL.revokeObjectURL(url)
-            }, 1000)
-          }, 500)
-        } catch (error) {
-          console.error("[InvoicePrint] Print error:", error)
-          // Fallback: download if print fails
-          const a = document.createElement('a')
-          a.href = url
-          a.download = `Invoice-${invoice.invoice_number || invoiceNumber}${currentFormat === "slip" ? "-Slip" : ""}.pdf`
-          a.click()
-          document.body.removeChild(iframe)
-          URL.revokeObjectURL(url)
-        }
+      if (!printWindow) {
+        // Popup blocked - fallback to download
+        toast({
+          title: "Popup Blocked",
+          description: "Please allow popups and try again, or download the PDF instead.",
+          variant: "destructive",
+        })
+        // Download as fallback
+        const downloadLink = document.createElement('a')
+        downloadLink.href = url
+        downloadLink.download = currentFormat === "invoice" 
+          ? `Invoice-${invoice.invoice_number || invoiceNumber}.pdf`
+          : `Invoice-Slip-${invoice.invoice_number || invoiceNumber}.pdf`
+        document.body.appendChild(downloadLink)
+        downloadLink.click()
+        document.body.removeChild(downloadLink)
+        URL.revokeObjectURL(url)
+        return
       }
       
-      iframe.src = url
+      // Wait for window to load, then trigger print
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.print()
+          // Clean up URL after a delay
+          setTimeout(() => {
+            URL.revokeObjectURL(url)
+          }, 1000)
+        }, 500)
+      }
 
       toast({
         title: "Success",
-        description: `Invoice PDF (${currentFormat.toUpperCase()}) generated. Opening print dialog...`,
+        description: `Invoice PDF (${currentFormat.toUpperCase()}) generated. Opening in new window...`,
       })
     } catch (error: any) {
       // Better error logging

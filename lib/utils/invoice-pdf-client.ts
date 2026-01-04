@@ -72,35 +72,64 @@ export async function generateInvoicePDFClient(
 		}
 
 		// Create a completely isolated container that won't affect the main page
-		// Use fixed positioning with high z-index and make it invisible
+		// Use absolute positioning off-screen but visible for html2canvas
 		const container = document.createElement("div");
-		container.style.position = "fixed";
+		container.style.position = "absolute";
 		container.style.top = "0";
-		container.style.left = "0";
+		container.style.left = "-9999px";
 		container.style.width = "210mm";
-		container.style.height = "297mm"; // A4 height
+		container.style.height = "auto"; // Let height adjust to content
 		container.style.zIndex = "-9999";
-		container.style.opacity = "0";
 		container.style.pointerEvents = "none";
-		container.style.overflow = "hidden";
-		container.style.isolation = "isolate"; // Create new stacking context
+		container.style.overflow = "visible";
+		container.style.backgroundColor = "white";
+		container.style.visibility = "visible"; // Must be visible for html2canvas
+		container.style.opacity = "1"; // Must be fully opaque
 		container.innerHTML = generateInvoiceHTML(data);
 		document.body.appendChild(container);
 
 		try {
+			// Wait longer for the container to fully render and images to load
+			await new Promise((resolve) => setTimeout(resolve, 500));
+			
+			// Verify container has content
+			if (!container.innerHTML || container.innerHTML.trim().length === 0) {
+				throw new Error("Container is empty - HTML generation failed");
+			}
+			
+			console.log("[InvoicePDFClient] Container ready, generating canvas...");
+			
 			// Convert HTML to canvas
 			// Configure html2canvas to handle color parsing issues
 			const canvas = await html2canvas(container, {
-				scale: 2,
+				scale: 1.5, // Reduced from 2 to reduce PDF size
 				useCORS: true,
+				allowTaint: false, // Prevent tainted canvas
 				logging: false,
 				width: 794, // A4 width in pixels at 96 DPI
 				windowWidth: 794,
+				backgroundColor: "#ffffff", // Ensure white background
+				imageTimeout: 3000, // 3 second timeout for images
+				removeContainer: false, // Keep container for cleanup
 				ignoreElements: (element: HTMLElement) => {
-					// Ignore elements that might cause color parsing issues
+					// Ignore broken or loading images
+					if (element.tagName === "IMG") {
+						const img = element as HTMLImageElement;
+						if (!img.complete || img.naturalWidth === 0 || img.naturalHeight === 0) {
+							return true;
+						}
+					}
 					return false;
 				},
 				onclone: (clonedDoc: Document) => {
+					// Hide broken images in cloned document
+					const images = clonedDoc.querySelectorAll("img");
+					images.forEach((img) => {
+						const imgEl = img as HTMLImageElement;
+						if (!imgEl.complete || imgEl.naturalWidth === 0 || imgEl.naturalHeight === 0) {
+							(imgEl as HTMLElement).style.display = "none";
+						}
+					});
 					// Force all colors to use hex/rgb format to avoid lab() color issues
 					// This converts any lab(), oklch(), or other unsupported color formats to rgb()
 					const style = clonedDoc.createElement('style');
