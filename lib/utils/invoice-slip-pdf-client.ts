@@ -140,11 +140,19 @@ export async function generateInvoiceSlipPDFClient(
 							(imgEl as HTMLElement).style.display = "none";
 						}
 					});
-					// Force all colors to use rgb() format to avoid lab() color issues
-					// Ensure pink colors are preserved for slip design
+					
+					// Force all colors to use rgb() format to avoid lab() color parsing errors
+					// html2canvas cannot parse lab() or oklch() color functions
+					// Override all color-related properties with explicit rgb() values
 					const style = clonedDoc.createElement("style");
 					style.textContent = `
-						/* Slip specific colors - Pink design */
+						/* Slip specific colors - Pink design - Force rgb() format to avoid lab() parsing errors */
+						* {
+							/* Reset any lab() or oklch() colors that might come from browser CSS */
+							color: rgb(15, 23, 42) !important;
+							background-color: transparent !important;
+							border-color: transparent !important;
+						}
 						body {
 							background-color: rgb(255, 255, 255) !important;
 							color: rgb(15, 23, 42) !important;
@@ -157,8 +165,13 @@ export async function generateInvoiceSlipPDFClient(
 						}
 						.divider {
 							border-top-color: rgb(249, 168, 212) !important;
+							border-top-width: 1px !important;
+							border-top-style: solid !important;
 						}
 						.invoice-info {
+							color: rgb(15, 23, 42) !important;
+						}
+						.invoice-info * {
 							color: rgb(15, 23, 42) !important;
 						}
 						.customer-label {
@@ -167,24 +180,51 @@ export async function generateInvoiceSlipPDFClient(
 						.customer-name {
 							color: rgb(15, 23, 42) !important;
 						}
+						.items-table {
+							border-collapse: collapse !important;
+						}
 						.items-table thead {
 							background-color: rgb(236, 72, 153) !important;
+						}
+						.items-table thead * {
 							color: rgb(255, 255, 255) !important;
+						}
+						.items-table th {
+							color: rgb(255, 255, 255) !important;
+							background-color: rgb(236, 72, 153) !important;
 						}
 						.items-table td {
 							border-bottom-color: rgb(226, 232, 240) !important;
+							border-bottom-width: 0.5px !important;
+							border-bottom-style: solid !important;
+							color: rgb(15, 23, 42) !important;
+						}
+						.totals {
 							color: rgb(15, 23, 42) !important;
 						}
 						.total-row {
 							color: rgb(15, 23, 42) !important;
 						}
+						.total-row * {
+							color: rgb(15, 23, 42) !important;
+						}
 						.total-row.bold {
 							border-top-color: rgb(236, 72, 153) !important;
+							border-top-width: 2px !important;
+							border-top-style: solid !important;
+							color: rgb(236, 72, 153) !important;
+						}
+						.total-row.bold * {
 							color: rgb(236, 72, 153) !important;
 						}
 						.footer {
 							color: rgb(100, 116, 139) !important;
 							border-top-color: rgb(226, 232, 240) !important;
+							border-top-width: 1px !important;
+							border-top-style: solid !important;
+						}
+						.footer * {
+							color: rgb(100, 116, 139) !important;
 						}
 					`;
 					clonedDoc.head.appendChild(style);

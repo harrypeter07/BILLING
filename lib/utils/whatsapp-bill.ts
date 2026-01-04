@@ -11,12 +11,16 @@ export interface MiniBillData {
     unitPrice: number
   }>
   totalAmount: number
-  invoiceLink: string
-  pdfR2Url?: string // Optional Cloudflare R2 URL for PDF
+  pdfR2Url: string // REQUIRED: Cloudflare R2 URL for PDF (no fallback)
 }
 
 export function generateWhatsAppBillMessage(data: MiniBillData): string {
-  const { storeName, invoiceNumber, invoiceDate, items, totalAmount, invoiceLink } = data
+  const { storeName, invoiceNumber, invoiceDate, items, totalAmount, pdfR2Url } = data
+
+  // Validate that pdfR2Url is provided (required)
+  if (!pdfR2Url || pdfR2Url.trim() === '') {
+    throw new Error('pdfR2Url is required for WhatsApp message generation')
+  }
 
   // Format date
   const date = new Date(invoiceDate)
@@ -34,10 +38,7 @@ export function generateWhatsAppBillMessage(data: MiniBillData): string {
     })
     .join('\n\n')
 
-  // Build message - use R2 link if available, otherwise use invoice link
-  const viewLink = data.pdfR2Url || invoiceLink
-  const linkLabel = data.pdfR2Url ? '📄 Download Invoice PDF' : '📱 View full invoice'
-
+  // Build message - ALWAYS use R2 URL (no fallback)
   const message = `📋 *Invoice Receipt*
 
 🏪 *${storeName}*
@@ -54,8 +55,8 @@ ${itemsList}
 💰 *Total: ₹${totalAmount.toFixed(2)}*
 ━━━━━━━━━━━━━━━━━━━━
 
-${linkLabel}:
-${viewLink}
+📄 Download Invoice PDF:
+${pdfR2Url}
 
 Thank you for your business! 🙏`
 
@@ -63,13 +64,13 @@ Thank you for your business! 🙏`
 }
 
 /**
- * Share invoice on WhatsApp - optimized version
+ * Share invoice on WhatsApp - CRITICAL: Must preserve user gesture even after async operations
  * 
- * Flow:
- * 1. Open WhatsApp with message and link immediately (non-blocking)
+ * ROOT CAUSE: When called after async operations (PDF generation, R2 upload), the user gesture
+ * context is lost, causing window.open() to be blocked.
  * 
- * Note: PDF is NOT sent directly - only the link is included in the message.
- * PDF generation and R2 upload happen in background.
+ * SOLUTION: Use queueMicrotask to ensure window.open() runs in the next microtask,
+ * which preserves the user gesture context even after await boundaries.
  * 
  * @returns Object with success status
  */
@@ -85,55 +86,46 @@ export async function shareOnWhatsApp(
   const encodedMessage = encodeURIComponent(message)
   const whatsappUrl = `https://wa.me/?text=${encodedMessage}`
 
-  // Open WhatsApp immediately (non-blocking)
-  // Use requestAnimationFrame to ensure it happens in next event loop cycle
-  // This prevents page navigation from blocking the WhatsApp opening
+  // CRITICAL FIX: Use queueMicrotask to preserve user gesture context
+  // This ensures window.open() runs in the next microtask, which maintains
+  // the user gesture chain even after async operations (await boundaries)
   return new Promise((resolve) => {
-    requestAnimationFrame(() => {
+    queueMicrotask(() => {
       try {
-        // Method 1: Try window.open first (most reliable for new tabs)
-        console.log('[WhatsAppShare] Trying window.open...')
+        // Method 1: PRIMARY - window.open (most reliable)
+        // queueMicrotask preserves user gesture even after async operations
         const whatsappWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
         
-        // Check if popup was blocked
-        if (!whatsappWindow || whatsappWindow.closed || typeof whatsappWindow.closed === 'undefined') {
-          console.warn('[WhatsAppShare] window.open was blocked, trying link method...')
-          // Method 2: Create and click a link
-          try {
-            const link = document.createElement('a')
-            link.href = whatsappUrl
-            link.target = '_blank'
-            link.rel = 'noopener noreferrer'
-            link.style.display = 'none'
-            document.body.appendChild(link)
-            link.click()
-            console.log('[WhatsAppShare] Link clicked successfully')
-            
-            // Clean up after a short delay
-            setTimeout(() => {
-              if (document.body.contains(link)) {
-                document.body.removeChild(link)
-              }
-            }, 1000)
-            resolve({ success: true })
-          } catch (linkError) {
-            console.warn('[WhatsAppShare] Link method failed, trying location:', linkError)
-            // Method 3: Fallback - store in sessionStorage and open after navigation
-            // This ensures WhatsApp opens even if page redirects
-            try {
-              sessionStorage.setItem('pendingWhatsAppUrl', whatsappUrl)
-              // Try to open immediately
-              window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
-              console.log('[WhatsAppShare] Stored URL and attempted open')
-              resolve({ success: true })
-            } catch (storageError) {
-              console.error('[WhatsAppShare] All methods failed:', storageError)
-              resolve({ success: false })
-            }
-          }
-        } else {
-          console.log('[WhatsAppShare] window.open succeeded')
+        // Validate immediately: window.open succeeded if win !== null && win.closed === false
+        if (whatsappWindow !== null && whatsappWindow.closed === false) {
+          console.log('[WhatsAppShare] window.open succeeded - WhatsApp opened')
           resolve({ success: true })
+          return
+        }
+        
+        // Method 2: FALLBACK - Create and click link (if popup was blocked)
+        console.warn('[WhatsAppShare] window.open was blocked, trying link method...')
+        try {
+          const link = document.createElement('a')
+          link.href = whatsappUrl
+          link.target = '_blank'
+          link.rel = 'noopener noreferrer'
+          link.style.display = 'none'
+          document.body.appendChild(link)
+          link.click()
+          console.log('[WhatsAppShare] Link clicked successfully')
+          
+          // Clean up after a short delay (non-blocking)
+          setTimeout(() => {
+            if (document.body.contains(link)) {
+              document.body.removeChild(link)
+            }
+          }, 1000)
+          
+          resolve({ success: true })
+        } catch (linkError) {
+          console.error('[WhatsAppShare] Link method failed:', linkError)
+          resolve({ success: false })
         }
       } catch (error) {
         console.error('[WhatsAppShare] Failed to open WhatsApp:', error)

@@ -1255,46 +1255,188 @@ export function InvoiceForm({
 				storeName,
 			};
 
-			// Use unified document engine for WhatsApp sharing
-			// This handles WhatsApp opening, R2 URL checking, and background PDF generation
-			executeInvoiceAction({
+			// NEW APPROACH: Wait for R2 URL, then open WhatsApp with complete message
+			// This ensures the WhatsApp message always contains the R2 URL
+			// We'll wait up to 5 seconds, then 3 more seconds if needed (total 8 seconds max)
+			
+			toast({
+				title: "Preparing PDF...",
+				description: "Generating PDF and uploading to cloud. Please wait...",
+				duration: 3000,
+			});
+
+			// Start PDF generation and R2 upload
+			const pdfPromise = executeInvoiceAction({
 				invoiceId,
 				action: "whatsapp",
 				format: "slip",
 				source,
-			}).catch((err) => {
-				console.error("[InvoiceForm] Failed to share on WhatsApp:", err);
+				onProgress: (message) => {
+					toast({
+						title: "Processing...",
+						description: message,
+						duration: 2000,
+					});
+				},
+			});
+
+			// Wait for R2 URL with timeout
+			let r2Url: string | null = null;
+			const { getInvoiceStorage } = await import('@/lib/utils/save-invoice-storage');
+			
+			// Wait up to 5 seconds for R2 URL
+			const waitForR2Url = async (timeoutMs: number): Promise<string | null> => {
+				const startTime = Date.now();
+				while (Date.now() - startTime < timeoutMs) {
+					try {
+						const storage = await getInvoiceStorage(invoiceId);
+						if (storage?.public_url) {
+							const expiresAt = new Date(storage.expires_at).getTime();
+							const now = Date.now();
+							if (expiresAt > now) {
+								return storage.public_url;
+							}
+						}
+					} catch (err) {
+						console.warn('[InvoiceForm] Error checking for R2 URL:', err);
+					}
+					// Wait 500ms before checking again
+					await new Promise(resolve => setTimeout(resolve, 500));
+				}
+				return null;
+			};
+
+			// Wait 5 seconds first
+			r2Url = await waitForR2Url(5000);
+			
+			if (!r2Url) {
+				// Wait 3 more seconds (total 8 seconds)
 				toast({
-					title: "WhatsApp Failed to Open",
-					description:
-						"Invoice saved. Please try opening WhatsApp manually with the invoice link.",
-					variant: "default",
-					duration: 5000,
+					title: "Still uploading...",
+					description: "PDF is taking a bit longer. Waiting a bit more...",
+					duration: 3000,
 				});
-			});
+				r2Url = await waitForR2Url(3000);
+			}
 
-			// Show success toast immediately
-			toast({
-				title: "✅ Invoice Created & Shared!",
-				description:
-					"Invoice saved! WhatsApp opened. PDF is being prepared in the background...",
-				duration: 3000,
-			});
+			// If still no R2 URL, wait for the PDF promise to complete
+			if (!r2Url) {
+				try {
+					await pdfPromise;
+					// Check one more time after promise completes
+					r2Url = await waitForR2Url(2000);
+				} catch (error) {
+					console.error('[InvoiceForm] PDF generation failed:', error);
+				}
+			}
 
-			// Navigate to invoices page immediately (no artificial delays)
-			// WhatsApp is already opening, no need to wait
-			router.push("/invoices");
-			router.refresh();
+			// Generate WhatsApp message with R2 URL (or fallback to invoice link if R2 not ready)
+			const formatDate = (dateStr: string) => {
+				return new Date(dateStr).toLocaleDateString('en-IN', {
+					day: '2-digit',
+					month: '2-digit',
+					year: 'numeric'
+				});
+			};
+			
+			const itemsList = items
+				.map((item, index) => {
+					const lineTotal = item.quantity * item.unit_price;
+					return `${index + 1}. ${item.description}\n   Qty: ${item.quantity} × ₹${item.unit_price.toFixed(2)} = ₹${lineTotal.toFixed(2)}`;
+				})
+				.join('\n\n');
+			
+			const invoiceLink = `${window.location.origin}/i/${invoiceId}`;
+			const pdfLink = r2Url || invoiceLink;
+			const linkLabel = r2Url ? '📄 Download Invoice PDF' : '📱 View Invoice';
+			
+			const whatsappMessage = `📋 *Invoice Receipt*
+
+🏪 *${storeName}*
+
+━━━━━━━━━━━━━━━━━━━━
+📄 Invoice #${invoiceData.invoice_number}
+📅 Date: ${formatDate(invoiceData.invoice_date)}
+━━━━━━━━━━━━━━━━━━━━
+
+*Items:*
+${itemsList}
+
+━━━━━━━━━━━━━━━━━━━━
+💰 *Total: ₹${invoiceData.total_amount.toFixed(2)}*
+━━━━━━━━━━━━━━━━━━━━
+
+${linkLabel}:
+${pdfLink}
+
+Thank you for your business! 🙏`;
+
+			// Now open WhatsApp with the complete message
+			const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`;
+			const whatsappWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
+			
+			// Verify WhatsApp opened
+			if (!whatsappWindow || whatsappWindow.closed) {
+				// Popup blocked - try link method
+				try {
+					const link = document.createElement('a');
+					link.href = whatsappUrl;
+					link.target = '_blank';
+					link.rel = 'noopener noreferrer';
+					link.style.display = 'none';
+					document.body.appendChild(link);
+					link.click();
+					setTimeout(() => document.body.removeChild(link), 1000);
+				} catch (linkError) {
+					console.error('[InvoiceForm] Link method failed:', linkError);
+					toast({
+						title: "⚠️ WhatsApp Blocked",
+						description: "Please allow popups for this site, then try again.",
+						variant: "destructive",
+						duration: 5000,
+					});
+					router.push("/invoices");
+					router.refresh();
+					return;
+				}
+			}
+
+			// Show success toast
+			if (r2Url) {
+				toast({
+					title: "✅ Invoice Created & Shared!",
+					description: "PDF uploaded and WhatsApp opened with PDF link.",
+					duration: 3000,
+				});
+			} else {
+				toast({
+					title: "✅ Invoice Created & Shared!",
+					description: "WhatsApp opened. PDF is still uploading - link will be available shortly.",
+					duration: 4000,
+				});
+			}
+
+			// CRITICAL: Do NOT redirect - keep user on this page
+			// Navigation/redirect causes loss of user gesture context and blocks WhatsApp popup
+			// User can manually navigate away after WhatsApp is opened
 		} catch (error) {
 			console.error("[InvoiceForm] Error saving and sharing invoice:", error);
+			const errorMessage =
+				error instanceof Error
+					? error.message
+					: "Failed to save and share invoice";
+			
+			// Show specific error message
 			toast({
 				title: "Error",
-				description:
-					error instanceof Error
-						? error.message
-						: "Failed to save and share invoice",
+				description: errorMessage,
 				variant: "destructive",
+				duration: 5000,
 			});
+			
+			// If invoice was saved but WhatsApp failed, keep user on page
+			// (invoice is already saved at this point)
+			// Do NOT redirect - user can try sharing again or navigate manually
 		} finally {
 			setIsSharing(false);
 			setIsLoading(false);

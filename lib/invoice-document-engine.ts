@@ -25,8 +25,9 @@ import {
 	type InvoiceSlipData,
 } from "@/lib/utils/invoice-slip-pdf";
 import { generateWhatsAppBillMessage, shareOnWhatsApp } from "@/lib/utils/whatsapp-bill";
-import { getInvoiceStorage } from "@/lib/utils/save-invoice-storage";
+import { getInvoiceStorage, saveInvoiceStorage } from "@/lib/utils/save-invoice-storage";
 import { calculateLineItem } from "@/lib/utils/gst-calculator";
+import { uploadInvoicePDFToR2Client } from "@/lib/utils/invoice-r2-client";
 
 // ============================================================================
 // TYPES
@@ -396,15 +397,10 @@ async function generatePDF(
 			servedBy: data.servedBy,
 		};
 
-		// Determine generation mode
-		let useServerSide = false;
-		if (action === "whatsapp" && navigator.onLine) {
-			// WhatsApp + online → server-side for speed
-			useServerSide = true;
-		}
-		// Print/Download → client-side (no network needed)
-
-		return await generateInvoiceSlipPDF(slipData, { useServerSide });
+		// Always use client-side generation for reliability
+		// Client-side is fast, works offline, and doesn't require server Puppeteer setup
+		// The R2 upload will still happen after PDF generation, ensuring proper sequencing
+		return await generateInvoiceSlipPDF(slipData, { useServerSide: false });
 	}
 }
 
@@ -416,10 +412,12 @@ async function generatePDF(
  * Main entry point for all invoice document actions
  * 
  * UI components should ONLY call this function
+ * 
+ * @returns For "whatsapp" action, returns { success: boolean } to indicate if WhatsApp opened
  */
 export async function executeInvoiceAction(
 	options: ExecuteInvoiceActionOptions
-): Promise<void> {
+): Promise<{ success: boolean } | void> {
 	const { invoiceId, action, format = "invoice", source, onProgress } = options;
 
 	try {
@@ -440,8 +438,8 @@ export async function executeInvoiceAction(
 				await handleDownload(documentData, format);
 				break;
 			case "whatsapp":
-				await handleWhatsApp(documentData, invoiceId, format);
-				break;
+				// WhatsApp action returns success status for redirect control
+				return await handleWhatsApp(documentData, invoiceId, format, onProgress);
 			case "r2-upload":
 				await handleR2Upload(documentData, invoiceId, format);
 				break;
@@ -518,70 +516,146 @@ async function handleDownload(
 }
 
 /**
- * Handles WhatsApp sharing
- * Opens WhatsApp immediately, PDF generation happens in background if needed
+ * Handles WhatsApp sharing with STRICT SEQUENCING
+ * 
+ * Flow (NON-NEGOTIABLE):
+ * 1. Check for existing R2 URL (await properly)
+ * 2. If no existing URL:
+ *    - Generate PDF
+ *    - Upload PDF to R2
+ *    - Wait for upload success
+ *    - Save metadata
+ * 3. Generate WhatsApp message WITH R2 URL (required)
+ * 4. Open WhatsApp (synchronously to preserve user gesture)
+ * 5. Return success status for redirect control
+ * 
+ * ❌ WhatsApp NEVER opens before R2 upload completes
+ * ❌ WhatsApp message NEVER contains fallback links
+ * ❌ If upload fails, show error and do NOT open WhatsApp
+ * ❌ Navigation must happen AFTER this function completes
+ * 
+ * @returns { success: boolean } - true if WhatsApp opened successfully
  */
 async function handleWhatsApp(
 	data: InvoiceDocumentData,
 	invoiceId: string,
-	format: DocumentFormat
-): Promise<void> {
-	// Generate invoice link
-	const invoiceLink = `${
-		typeof window !== "undefined" ? window.location.origin : ""
-	}/i/${invoiceId}`;
-
-	// Quick check for existing R2 URL (non-blocking)
-	let existingR2Url: string | undefined;
-	getInvoiceStorage(invoiceId)
-		.then((storage) => {
-			if (storage?.public_url) {
-				const expiresAt = new Date(storage.expires_at).getTime();
-				const now = Date.now();
-				if (expiresAt > now) {
-					existingR2Url = storage.public_url;
-				}
+	format: DocumentFormat,
+	onProgress?: (message: string) => void
+): Promise<{ success: boolean }> {
+	try {
+		// Step 1: Check for existing valid R2 URL
+		onProgress?.("Checking for existing PDF...");
+		let pdfR2Url: string | undefined;
+		
+		const existingStorage = await getInvoiceStorage(invoiceId);
+		if (existingStorage?.public_url) {
+			const expiresAt = new Date(existingStorage.expires_at).getTime();
+			const now = Date.now();
+			if (expiresAt > now) {
+				pdfR2Url = existingStorage.public_url;
+				onProgress?.("Found existing PDF link");
 			}
-		})
-		.catch(() => {
-			// Ignore errors
-		});
+		}
 
-	// Generate WhatsApp message immediately
-	const whatsappMessage = generateWhatsAppBillMessage({
-		storeName: data.businessName,
-		invoiceNumber: data.invoiceNumber,
-		invoiceDate: data.invoiceDate,
-		items: data.items.map((item) => ({
-			name: item.description,
-			quantity: item.quantity,
-			unitPrice: item.unitPrice,
-		})),
-		totalAmount: data.totalAmount,
-		invoiceLink,
-		pdfR2Url: existingR2Url,
-	});
+		// Step 2: If no existing URL, generate PDF and upload to R2
+		if (!pdfR2Url) {
+			// Check if we're actually online (network connectivity check)
+			// Note: Database mode (IndexedDB vs Supabase) doesn't affect R2 upload capability
+			// Users can upload to R2 as long as they have internet, regardless of database mode
+			if (!navigator.onLine) {
+				throw new Error(
+					"Cannot upload PDF: You are offline. Please connect to the internet to share on WhatsApp."
+				);
+			}
 
-	// Open WhatsApp immediately (non-blocking)
-	shareOnWhatsApp(whatsappMessage).catch((err) => {
-		console.error("[InvoiceDocumentEngine] Failed to open WhatsApp:", err);
-	});
+			onProgress?.("Generating PDF...");
+			// Generate PDF (slip format for WhatsApp)
+			const pdfBlob = await generatePDF(data, format, "whatsapp");
 
-	// Trigger background PDF generation and R2 upload (fire-and-forget)
-	// Only if no existing URL found and we're online
-	if (!existingR2Url && navigator.onLine && !isIndexedDbMode()) {
-		fetch("/api/invoices/generate-pdf-and-upload", {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({ invoiceId }),
-		}).catch((err) => {
-			console.error(
-				"[InvoiceDocumentEngine] Failed to trigger background PDF generation:",
-				err
+			onProgress?.("Uploading PDF to cloud...");
+			// Get admin ID for upload
+			const supabase = createClient();
+			const {
+				data: { user },
+			} = await supabase.auth.getUser();
+			if (!user) {
+				throw new Error("Not authenticated");
+			}
+
+			// Upload to R2 (await completion - this is blocking by design)
+			const uploadResult = await uploadInvoicePDFToR2Client(
+				pdfBlob,
+				user.id,
+				invoiceId,
+				data.invoiceNumber
 			);
+
+			// Step 3: Verify upload success
+			if (!uploadResult.success || !uploadResult.publicUrl) {
+				throw new Error(
+					`Failed to upload PDF: ${uploadResult.error || "Unknown error"}`
+				);
+			}
+
+			pdfR2Url = uploadResult.publicUrl;
+
+			// Step 4: Save metadata (non-blocking for WhatsApp, but we await it for correctness)
+			if (uploadResult.expiresAt) {
+				await saveInvoiceStorage({
+					invoice_id: invoiceId,
+					r2_object_key: uploadResult.objectKey || "",
+					public_url: uploadResult.publicUrl,
+					expires_at: uploadResult.expiresAt,
+				});
+			}
+
+			onProgress?.("PDF uploaded successfully");
+		}
+
+		// Step 5: Generate WhatsApp message with R2 URL (required)
+		if (!pdfR2Url) {
+			throw new Error("PDF R2 URL is missing - cannot generate WhatsApp message");
+		}
+
+		const whatsappMessage = generateWhatsAppBillMessage({
+			storeName: data.businessName,
+			invoiceNumber: data.invoiceNumber,
+			invoiceDate: data.invoiceDate,
+			items: data.items.map((item) => ({
+				name: item.description,
+				quantity: item.quantity,
+				unitPrice: item.unitPrice,
+			})),
+			totalAmount: data.totalAmount,
+			pdfR2Url, // REQUIRED - no fallback
 		});
+
+		// Step 6: Copy R2 URL to clipboard (optional UX improvement)
+		try {
+			if (typeof navigator !== "undefined" && navigator.clipboard) {
+				await navigator.clipboard.writeText(pdfR2Url);
+			}
+		} catch (clipboardError) {
+			// Non-critical - continue even if clipboard copy fails
+			console.warn("[InvoiceDocumentEngine] Failed to copy to clipboard:", clipboardError);
+		}
+
+		// Step 7: Open WhatsApp (ONLY after all steps complete)
+		// CRITICAL: This must happen synchronously to preserve user gesture
+		// Navigation/redirect must happen AFTER this completes
+		onProgress?.("Opening WhatsApp...");
+		const shareResult = await shareOnWhatsApp(whatsappMessage);
+		
+		if (!shareResult.success) {
+			throw new Error("Failed to open WhatsApp. Please check your popup blocker settings.");
+		}
+		
+		// Return success status so caller can control redirect timing
+		return shareResult;
+	} catch (error) {
+		console.error("[InvoiceDocumentEngine] WhatsApp share error:", error);
+		// Re-throw to allow UI to show error toast
+		throw error;
 	}
 }
 

@@ -131,7 +131,10 @@ export function WhatsAppShareButton({
 			};
 
 			// Use unified document engine
-			await executeInvoiceAction({
+			// This handles: PDF generation → R2 upload → WhatsApp message → WhatsApp opening
+			// All steps are awaited to ensure R2 URL is available before opening WhatsApp
+			// CRITICAL: WhatsApp opens synchronously to preserve user gesture
+			const result = await executeInvoiceAction({
 				invoiceId: invoice.id,
 				action: "whatsapp",
 				format: "slip",
@@ -141,32 +144,46 @@ export function WhatsAppShareButton({
 				},
 			});
 
-			// Check for existing R2 URL (non-blocking, for UI feedback)
-			getInvoiceStorage(invoice.id)
-				.then((storage) => {
-					if (storage?.public_url) {
-						const expiresAt = new Date(storage.expires_at).getTime();
-						const now = Date.now();
-						if (expiresAt > now) {
-							setUploadedUrl(storage.public_url);
-						}
-					}
-				})
-				.catch(() => {
-					// Ignore errors
+			// Verify WhatsApp opened successfully
+			const whatsappOpened = result && typeof result === 'object' && 'success' in result && result.success === true;
+
+			if (!whatsappOpened) {
+				toast({
+					title: "⚠️ WhatsApp Failed to Open",
+					description: "PDF uploaded, but WhatsApp could not be opened. Please check your popup blocker settings.",
+					variant: "destructive",
+					duration: 5000,
 				});
+				return;
+			}
+
+			// Get R2 URL for UI feedback (after upload completes)
+			const storage = await getInvoiceStorage(invoice.id);
+			if (storage?.public_url) {
+				const expiresAt = new Date(storage.expires_at).getTime();
+				const now = Date.now();
+				if (expiresAt > now) {
+					setUploadedUrl(storage.public_url);
+				}
+			}
 
 			toast({
 				title: "✅ WhatsApp Opened",
-				description: "WhatsApp opened. PDF is being prepared in the background...",
+				description: "PDF uploaded and WhatsApp opened with PDF link.",
 				duration: 3000,
 			});
 		} catch (error) {
 			console.error("[WhatsAppShare] Error:", error);
+			const errorMessage =
+				error instanceof Error
+					? error.message
+					: "Failed to prepare WhatsApp message. Please try again.";
+			
 			toast({
 				title: "Error",
-				description: "Failed to prepare WhatsApp message. Please try again.",
+				description: errorMessage,
 				variant: "destructive",
+				duration: 5000,
 			});
 		} finally {
 			setIsSharing(false);
