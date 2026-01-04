@@ -288,8 +288,8 @@ export function WhatsAppShareButton({
           }
         }
 
+        // Upload is already awaited above, so r2PublicUrl is ready
         // ALWAYS use R2 link if available - never fall back to invoice link for WhatsApp share
-        // If R2 upload failed, we still try to use R2 URL (it might be in background)
         const finalMessage = generateWhatsAppBillMessage({
           ...miniBillData,
           pdfR2Url: r2PublicUrl, // Always use R2 URL if we have it
@@ -298,7 +298,7 @@ export function WhatsAppShareButton({
         console.log("[WhatsAppShare] Opening WhatsApp with message:", finalMessage.substring(0, 100) + "...")
         console.log("[WhatsAppShare] R2 URL:", r2PublicUrl || "Not available")
 
-        // Open WhatsApp with the message (includes R2 link if upload succeeded quickly)
+        // Open WhatsApp with the message (includes R2 link if upload succeeded)
         const shareResult = await shareOnWhatsApp(finalMessage, pdfBlob, fileName)
         
         if (shareResult.success) {

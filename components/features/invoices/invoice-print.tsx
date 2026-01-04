@@ -24,7 +24,8 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
   const [isGenerating, setIsGenerating] = useState(false)
   const [format, setFormat] = useState<"invoice" | "slip">("invoice")
 
-  const handlePrint = async () => {
+  const handlePrint = async (selectedFormat?: "invoice" | "slip") => {
+    const currentFormat = selectedFormat || format;
     setIsGenerating(true)
     try {
 
@@ -155,7 +156,7 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
 
       // Generate PDF based on format
       try {
-        if (format === "invoice") {
+        if (currentFormat === "invoice") {
           const pdfBlob = await generateInvoicePDF({
             invoiceNumber: invoice.invoice_number || invoiceNumber,
             invoiceDate: invoice.invoice_date || invoice.invoiceDate || new Date().toISOString(),
@@ -246,7 +247,7 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
 
       toast({
         title: "Success",
-        description: `Invoice PDF (${format.toUpperCase()}) generated. Opening print dialog...`,
+        description: `Invoice PDF (${currentFormat.toUpperCase()}) generated. Opening print dialog...`,
       })
     } catch (error: any) {
       console.error("[InvoicePrint] Print process error:", {
@@ -279,16 +280,14 @@ export function InvoicePrint({ invoiceId, invoiceNumber, invoiceData }: InvoiceP
       <DropdownMenuContent align="end">
         <DropdownMenuItem 
           onClick={() => {
-            setFormat("invoice")
-            handlePrint()
+            handlePrint("invoice")
           }}
         >
           Print Invoice
         </DropdownMenuItem>
         <DropdownMenuItem 
           onClick={() => {
-            setFormat("slip")
-            handlePrint()
+            handlePrint("slip")
           }}
         >
           Print Slip
