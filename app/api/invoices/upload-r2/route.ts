@@ -89,6 +89,20 @@ export async function POST(request: NextRequest) {
     )
 
     if (!result.success) {
+      // Log detailed error for debugging in production
+      console.error('[R2Upload API] Upload failed:', {
+        error: result.error,
+        invoiceId,
+        invoiceNumber,
+        adminId,
+        pdfSize: pdfBuffer.length,
+        hasStoreId: !!storeId,
+        // Don't log sensitive env vars, but check if they exist
+        hasR2Config: !!(process.env.R2_ACCOUNT_ID && process.env.R2_ACCESS_KEY_ID && process.env.R2_SECRET_ACCESS_KEY),
+        hasBucketName: !!process.env.R2_BUCKET_NAME,
+        hasPublicUrl: !!process.env.R2_PUBLIC_BASE_URL,
+      })
+      
       return NextResponse.json(
         {
           success: false,

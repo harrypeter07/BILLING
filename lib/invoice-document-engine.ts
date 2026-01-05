@@ -600,14 +600,22 @@ async function handleWhatsApp(
 				throw new Error("Not authenticated");
 			}
 
-			// OPTIMIZATION: Start upload but don't wait for it - open WhatsApp immediately
-			// For small files (26KB), upload is fast, but we don't want to block WhatsApp opening
+			// Start upload and wait for completion (with extended timeout for production)
+			// Production environments (Vercel) may have cold starts, so we allow more time
 			const uploadPromise = uploadInvoicePDFToR2Client(
 				pdfBlob,
 				user.id,
 				invoiceId,
 				data.invoiceNumber
 			).then((uploadResult) => {
+				// Log upload result for debugging
+				console.log("[InvoiceDocumentEngine] R2 Upload Result:", {
+					success: uploadResult.success,
+					hasPublicUrl: !!uploadResult.publicUrl,
+					error: uploadResult.error,
+					objectKey: uploadResult.objectKey,
+				});
+
 				if (uploadResult.success && uploadResult.publicUrl) {
 					// Save metadata in background
 					if (uploadResult.expiresAt) {
@@ -617,35 +625,60 @@ async function handleWhatsApp(
 							public_url: uploadResult.publicUrl,
 							expires_at: uploadResult.expiresAt,
 						}).catch(err => {
-							console.warn("[InvoiceDocumentEngine] Failed to save metadata:", err);
+							console.error("[InvoiceDocumentEngine] Failed to save metadata:", err);
 						});
 					}
 					return uploadResult.publicUrl;
+				} else {
+					// Log the error for debugging
+					console.error("[InvoiceDocumentEngine] R2 Upload failed:", {
+						error: uploadResult.error,
+						invoiceId,
+						invoiceNumber: data.invoiceNumber,
+					});
+					throw new Error(uploadResult.error || "R2 upload failed");
 				}
-				return null;
 			}).catch(err => {
-				console.error("[InvoiceDocumentEngine] Upload failed:", err);
-				return null;
+				console.error("[InvoiceDocumentEngine] Upload promise rejected:", err);
+				throw err; // Re-throw to be caught by outer try-catch
 			});
 
-			// For small files, wait max 2 seconds for upload to complete
-			// If it takes longer, proceed with invoice link as fallback
+			// Wait for upload with extended timeout (8 seconds total: 5s initial + 3s extra)
+			// This accounts for Vercel cold starts and network latency
 			try {
-				const timeoutPromise = new Promise<string | null>((resolve) => {
-					setTimeout(() => resolve(null), 2000); // 2 second timeout
+				const initialTimeout = 5000; // 5 seconds initial wait
+				const extendedTimeout = 3000; // 3 more seconds if needed
+				
+				// First attempt: wait 5 seconds
+				const initialTimeoutPromise = new Promise<string | null>((resolve) => {
+					setTimeout(() => resolve(null), initialTimeout);
 				});
 				
-				pdfR2Url = await Promise.race([uploadPromise, timeoutPromise]);
+				pdfR2Url = await Promise.race([uploadPromise, initialTimeoutPromise]);
 				
 				if (pdfR2Url) {
 					onProgress?.("PDF uploaded successfully");
 				} else {
-					// Upload still in progress, will use invoice link as fallback
-					onProgress?.("PDF upload in progress...");
+					// If not ready in 5s, wait 3 more seconds
+					onProgress?.("Still uploading PDF...");
+					const extendedTimeoutPromise = new Promise<string | null>((resolve) => {
+						setTimeout(() => resolve(null), extendedTimeout);
+					});
+					
+					pdfR2Url = await Promise.race([uploadPromise, extendedTimeoutPromise]);
+					
+					if (pdfR2Url) {
+						onProgress?.("PDF uploaded successfully");
+					} else {
+						// Upload still in progress after 8 seconds - log warning but continue
+						console.warn("[InvoiceDocumentEngine] R2 upload took longer than 8 seconds, using invoice link fallback");
+						onProgress?.("PDF upload taking longer than expected, using invoice link");
+					}
 				}
 			} catch (err) {
-				console.warn("[InvoiceDocumentEngine] Upload timeout or error:", err);
-				// Continue with invoice link fallback
+				// If upload fails with an error (not just timeout), log it
+				console.error("[InvoiceDocumentEngine] R2 upload error:", err);
+				// Continue with invoice link fallback - don't block WhatsApp opening
 			}
 		}
 

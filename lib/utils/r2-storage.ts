@@ -75,27 +75,36 @@ export async function uploadInvoicePDFToR2(
   storeId?: string
 ): Promise<R2UploadResult> {
   try {
+    // Check environment variables first and provide detailed error messages
+    const accountId = process.env.R2_ACCOUNT_ID
+    const accessKeyId = process.env.R2_ACCESS_KEY_ID
+    const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY
+    const bucketName = process.env.R2_BUCKET_NAME
+    const publicBaseUrl = process.env.R2_PUBLIC_BASE_URL
+
+    // Detailed validation with specific missing variable names
+    const missingVars: string[] = []
+    if (!accountId) missingVars.push('R2_ACCOUNT_ID')
+    if (!accessKeyId) missingVars.push('R2_ACCESS_KEY_ID')
+    if (!secretAccessKey) missingVars.push('R2_SECRET_ACCESS_KEY')
+    if (!bucketName) missingVars.push('R2_BUCKET_NAME')
+    if (!publicBaseUrl) missingVars.push('R2_PUBLIC_BASE_URL')
+
+    if (missingVars.length > 0) {
+      const errorMsg = `R2 configuration incomplete. Missing environment variables: ${missingVars.join(', ')}. Please configure these in your Vercel project settings.`
+      console.error('[R2Storage] Configuration error:', errorMsg)
+      return {
+        success: false,
+        error: errorMsg,
+      }
+    }
+
     const client = getR2Client()
     if (!client) {
+      // This should not happen if env vars are set, but check anyway
       return {
         success: false,
-        error: 'R2 is not configured. Please set R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY environment variables.',
-      }
-    }
-
-    const bucketName = process.env.R2_BUCKET_NAME
-    if (!bucketName) {
-      return {
-        success: false,
-        error: 'R2_BUCKET_NAME environment variable is not set.',
-      }
-    }
-
-    const publicBaseUrl = process.env.R2_PUBLIC_BASE_URL
-    if (!publicBaseUrl) {
-      return {
-        success: false,
-        error: 'R2_PUBLIC_BASE_URL environment variable is not set.',
+        error: 'Failed to initialize R2 client. Please check your R2 credentials.',
       }
     }
 

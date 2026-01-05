@@ -61,12 +61,23 @@ export async function uploadInvoicePDFToR2Client(
 
       if (!response.ok) {
         let errorMessage = 'Unknown error'
+        let errorDetails: any = null
         try {
           const errorData = await response.json()
           errorMessage = errorData.error || errorData.message || `Upload failed: ${response.statusText}`
+          errorDetails = errorData
         } catch (parseError) {
           errorMessage = `Upload failed: ${response.statusText} (Status: ${response.status})`
         }
+        
+        // Log detailed error for debugging
+        console.error('[InvoiceR2Client] Upload failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorMessage,
+          details: errorDetails,
+        })
+        
         throw new Error(errorMessage)
       }
 
