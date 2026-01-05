@@ -270,6 +270,8 @@ export function InvoiceForm({
 	const [storeName, setStoreName] = useState<string>("Business");
 	const [showLogoModal, setShowLogoModal] = useState(false);
 	const [logoUrl, setLogoUrl] = useState<string | null>(null);
+	const [showR2ErrorModal, setShowR2ErrorModal] = useState(false);
+	const [r2UploadError, setR2UploadError] = useState<string>("");
 
 	// Merge prop customers with local additions without removing new ones
 	useEffect(() => {
@@ -1393,6 +1395,12 @@ export function InvoiceForm({
 				open={showLogoModal}
 				onOpenChange={setShowLogoModal}
 				onLogoConfigured={handleLogoConfigured}
+			/>
+			<R2UploadErrorModal
+				open={showR2ErrorModal}
+				onOpenChange={setShowR2ErrorModal}
+				error={r2UploadError}
+				onRetry={handleRetryR2Upload}
 			/>
 			<div
 				className={

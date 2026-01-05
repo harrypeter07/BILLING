@@ -754,17 +754,7 @@ ${finalPdfUrl}
 
 Thank you for your business! 🙏`;
 
-		// Step 6: Copy R2 URL to clipboard (optional UX improvement)
-		try {
-			if (typeof navigator !== "undefined" && navigator.clipboard) {
-				await navigator.clipboard.writeText(pdfR2Url);
-			}
-		} catch (clipboardError) {
-			// Non-critical - continue even if clipboard copy fails
-			console.warn("[InvoiceDocumentEngine] Failed to copy to clipboard:", clipboardError);
-		}
-
-		// Step 7: Open WhatsApp (ONLY after all steps complete)
+		// Step 6: Open WhatsApp (ONLY after all steps complete)
 		// CRITICAL: This must happen synchronously to preserve user gesture
 		// Navigation/redirect must happen AFTER this completes
 		onProgress?.("Opening WhatsApp...");
