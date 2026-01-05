@@ -50,6 +50,7 @@ import {
 import { db } from "@/lib/dexie-client";
 import { useInvalidateQueries } from "@/lib/hooks/use-cached-data";
 import { executeInvoiceAction } from "@/lib/invoice-document-engine";
+import { LogoConfigModal } from "@/components/features/invoices/logo-config-modal";
 import {
 	ResizablePanelGroup,
 	ResizablePanel,
@@ -266,6 +267,8 @@ export function InvoiceForm({
 	const [localCustomers, setLocalCustomers] = useState<Customer[]>(customers);
 	const [products, setProducts] = useState<Product[]>(initialProducts);
 	const [storeName, setStoreName] = useState<string>("Business");
+	const [showLogoModal, setShowLogoModal] = useState(false);
+	const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
 	// Merge prop customers with local additions without removing new ones
 	useEffect(() => {
@@ -281,7 +284,7 @@ export function InvoiceForm({
 		setProducts(initialProducts);
 	}, [initialProducts]);
 
-	// Fetch store name for WhatsApp sharing
+	// Fetch store name and logo URL
 	useEffect(() => {
 		const fetchStoreName = async () => {
 			if (!storeId) {
@@ -332,7 +335,37 @@ export function InvoiceForm({
 			}
 		};
 
+		const fetchLogoUrl = async () => {
+			try {
+				// First check localStorage cache
+				const cachedLogo = localStorage.getItem("business_logo_url");
+				if (cachedLogo) {
+					setLogoUrl(cachedLogo);
+					return;
+				}
+
+				// If not in cache, fetch from database
+				const supabase = createClient();
+				const { data: { user } } = await supabase.auth.getUser();
+				if (!user) return;
+
+				const { data: profile } = await supabase
+					.from("user_profiles")
+					.select("logo_url")
+					.eq("id", user.id)
+					.single();
+
+				if (profile?.logo_url) {
+					localStorage.setItem("business_logo_url", profile.logo_url);
+					setLogoUrl(profile.logo_url);
+				}
+			} catch (err) {
+				console.warn("[InvoiceForm] Failed to fetch logo URL:", err);
+			}
+		};
+
 		fetchStoreName();
+		fetchLogoUrl();
 	}, [storeId]);
 
 	useEffect(() => {
@@ -1067,6 +1100,13 @@ export function InvoiceForm({
 			return;
 		}
 
+		// Check if logo is configured
+		const currentLogoUrl = logoUrl || localStorage.getItem("business_logo_url");
+		if (!currentLogoUrl || currentLogoUrl.trim() === "") {
+			setShowLogoModal(true);
+			return;
+		}
+
 		// First, validate and save invoice (same as handleSubmit)
 		let finalCustomerId = customerId;
 
@@ -1258,163 +1298,39 @@ export function InvoiceForm({
 				storeName,
 			};
 
-			// NEW APPROACH: Wait for R2 URL, then open WhatsApp with complete message
-			// This ensures the WhatsApp message always contains the R2 URL
-			// We'll wait up to 5 seconds, then 3 more seconds if needed (total 8 seconds max)
-			
+			// OPTIMIZED: Let the engine handle WhatsApp opening (prevents duplicates)
+			// The engine will open WhatsApp immediately after PDF generation (non-blocking upload)
 			toast({
 				title: "Preparing PDF...",
-				description: "Generating PDF and uploading to cloud. Please wait...",
-				duration: 3000,
+				description: "Generating PDF and opening WhatsApp...",
+				duration: 2000,
 			});
 
-			// Start PDF generation and R2 upload
-			const pdfPromise = executeInvoiceAction({
+			// Execute action - this will handle PDF generation, upload, and WhatsApp opening
+			// The engine now opens WhatsApp immediately (upload happens in background)
+			const result = await executeInvoiceAction({
 				invoiceId,
 				action: "whatsapp",
 				format: "slip",
 				source,
 				onProgress: (message) => {
-					toast({
-						title: "Processing...",
-						description: message,
-						duration: 2000,
-					});
+					console.log(`[InvoiceForm] ${message}`);
 				},
 			});
 
-			// Wait for R2 URL with timeout
-			let r2Url: string | null = null;
-			const { getInvoiceStorage } = await import('@/lib/utils/save-invoice-storage');
-			
-			// Wait up to 5 seconds for R2 URL
-			const waitForR2Url = async (timeoutMs: number): Promise<string | null> => {
-				const startTime = Date.now();
-				while (Date.now() - startTime < timeoutMs) {
-					try {
-						const storage = await getInvoiceStorage(invoiceId);
-						if (storage?.public_url) {
-							const expiresAt = new Date(storage.expires_at).getTime();
-							const now = Date.now();
-							if (expiresAt > now) {
-								return storage.public_url;
-							}
-						}
-					} catch (err) {
-						console.warn('[InvoiceForm] Error checking for R2 URL:', err);
-					}
-					// Wait 500ms before checking again
-					await new Promise(resolve => setTimeout(resolve, 500));
-				}
-				return null;
-			};
-
-			// Wait 5 seconds first
-			r2Url = await waitForR2Url(5000);
-			
-			if (!r2Url) {
-				// Wait 3 more seconds (total 8 seconds)
-				toast({
-					title: "Still uploading...",
-					description: "PDF is taking a bit longer. Waiting a bit more...",
-					duration: 3000,
-				});
-				r2Url = await waitForR2Url(3000);
-			}
-
-			// If still no R2 URL, wait for the PDF promise to complete
-			if (!r2Url) {
-				try {
-					await pdfPromise;
-					// Check one more time after promise completes
-					r2Url = await waitForR2Url(2000);
-				} catch (error) {
-					console.error('[InvoiceForm] PDF generation failed:', error);
-				}
-			}
-
-			// Generate WhatsApp message with R2 URL (or fallback to invoice link if R2 not ready)
-			const formatDate = (dateStr: string) => {
-				return new Date(dateStr).toLocaleDateString('en-IN', {
-					day: '2-digit',
-					month: '2-digit',
-					year: 'numeric'
-				});
-			};
-			
-			const itemsList = items
-				.map((item, index) => {
-					const lineTotal = item.quantity * item.unit_price;
-					return `${index + 1}. ${item.description}\n   Qty: ${item.quantity} × ₹${item.unit_price.toFixed(2)} = ₹${lineTotal.toFixed(2)}`;
-				})
-				.join('\n\n');
-			
-			const invoiceLink = `${window.location.origin}/i/${invoiceId}`;
-			const pdfLink = r2Url || invoiceLink;
-			const linkLabel = r2Url ? '📄 Download Invoice PDF' : '📱 View Invoice';
-			
-			const whatsappMessage = `📋 *Invoice Receipt*
-
-🏪 *${storeName}*
-
-━━━━━━━━━━━━━━━━━━━━
-📄 Invoice #${invoiceData.invoice_number}
-📅 Date: ${formatDate(invoiceData.invoice_date)}
-━━━━━━━━━━━━━━━━━━━━
-
-*Items:*
-${itemsList}
-
-━━━━━━━━━━━━━━━━━━━━
-💰 *Total: ₹${invoiceData.total_amount.toFixed(2)}*
-━━━━━━━━━━━━━━━━━━━━
-
-${linkLabel}:
-${pdfLink}
-
-Thank you for your business! 🙏`;
-
-			// Now open WhatsApp with the complete message
-			const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(whatsappMessage)}`;
-			const whatsappWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer');
-			
-			// Verify WhatsApp opened
-			if (!whatsappWindow || whatsappWindow.closed) {
-				// Popup blocked - try link method
-				try {
-					const link = document.createElement('a');
-					link.href = whatsappUrl;
-					link.target = '_blank';
-					link.rel = 'noopener noreferrer';
-					link.style.display = 'none';
-					document.body.appendChild(link);
-					link.click();
-					setTimeout(() => document.body.removeChild(link), 1000);
-				} catch (linkError) {
-					console.error('[InvoiceForm] Link method failed:', linkError);
-					toast({
-						title: "⚠️ WhatsApp Blocked",
-						description: "Please allow popups for this site, then try again. Invoice has been saved.",
-						variant: "destructive",
-						duration: 5000,
-					});
-					// Do NOT redirect - keep user on page so they can try again
-					return;
-				}
-			}
-
-			// Show success toast
-			if (r2Url) {
+			// Check if WhatsApp opened successfully
+			if (result && typeof result === 'object' && 'success' in result && result.success) {
 				toast({
 					title: "✅ Invoice Created & Shared!",
-					description: "PDF uploaded and WhatsApp opened with PDF link.",
+					description: "WhatsApp opened with invoice details.",
 					duration: 3000,
 				});
 			} else {
 				toast({
-					title: "✅ Invoice Created & Shared!",
-					description: "WhatsApp opened. PDF is still uploading - link will be available shortly.",
-					duration: 4000,
+					title: "⚠️ WhatsApp Blocked",
+					description: "Invoice saved, but WhatsApp was blocked. Please allow popups and try sharing again.",
+					variant: "destructive",
+					duration: 5000,
 				});
 			}
 
@@ -1445,12 +1361,24 @@ Thank you for your business! 🙏`;
 		}
 	};
 
+	const handleLogoConfigured = (newLogoUrl: string) => {
+		setLogoUrl(newLogoUrl);
+		localStorage.setItem("business_logo_url", newLogoUrl);
+		setShowLogoModal(false);
+	};
+
 	return (
-		<div
-			className={
-				isFullscreen ? "fixed inset-0 z-[100] bg-background overflow-auto" : ""
-			}
-		>
+		<>
+			<LogoConfigModal
+				open={showLogoModal}
+				onOpenChange={setShowLogoModal}
+				onLogoConfigured={handleLogoConfigured}
+			/>
+			<div
+				className={
+					isFullscreen ? "fixed inset-0 z-[100] bg-background overflow-auto" : ""
+				}
+			>
 			{isFullscreen && (
 				<div className="sticky top-0 z-10 bg-background border-b flex items-center justify-between px-4 py-2">
 					<h2 className="text-lg font-semibold">Create New Invoice</h2>
@@ -2232,5 +2160,6 @@ Thank you for your business! 🙏`;
 				</div>
 			</form>
 		</div>
+		</>
 	);
 }

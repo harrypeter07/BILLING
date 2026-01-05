@@ -63,14 +63,15 @@ Thank you for your business! 🙏`
   return message
 }
 
+// Global flag to prevent multiple WhatsApp windows
+let whatsappWindowOpen = false
+let whatsappWindow: Window | null = null
+
 /**
- * Share invoice on WhatsApp - CRITICAL: Must preserve user gesture even after async operations
+ * Share invoice on WhatsApp - OPTIMIZED: Opens immediately to preserve user gesture
  * 
- * ROOT CAUSE: When called after async operations (PDF generation, R2 upload), the user gesture
- * context is lost, causing window.open() to be blocked.
- * 
- * SOLUTION: Use queueMicrotask to ensure window.open() runs in the next microtask,
- * which preserves the user gesture context even after await boundaries.
+ * CRITICAL: Opens WhatsApp synchronously to preserve user gesture context.
+ * Uses a global flag to prevent multiple windows from opening.
  * 
  * @returns Object with success status
  */
@@ -83,54 +84,70 @@ export async function shareOnWhatsApp(
     return { success: false }
   }
 
+  // Prevent multiple WhatsApp windows
+  if (whatsappWindowOpen && whatsappWindow && !whatsappWindow.closed) {
+    console.warn('[WhatsAppShare] WhatsApp window already open, closing previous window')
+    try {
+      whatsappWindow.close()
+    } catch (e) {
+      // Ignore close errors
+    }
+  }
+
   const encodedMessage = encodeURIComponent(message)
   const whatsappUrl = `https://wa.me/?text=${encodedMessage}`
 
-  // CRITICAL FIX: Use queueMicrotask to preserve user gesture context
-  // This ensures window.open() runs in the next microtask, which maintains
-  // the user gesture chain even after async operations (await boundaries)
-  return new Promise((resolve) => {
-    queueMicrotask(() => {
-      try {
-        // Method 1: PRIMARY - window.open (most reliable)
-        // queueMicrotask preserves user gesture even after async operations
-        const whatsappWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
-        
-        // Validate immediately: window.open succeeded if win !== null && win.closed === false
-        if (whatsappWindow !== null && whatsappWindow.closed === false) {
-          console.log('[WhatsAppShare] window.open succeeded - WhatsApp opened')
-          resolve({ success: true })
-          return
+  try {
+    // Method 1: PRIMARY - window.open (synchronous to preserve user gesture)
+    whatsappWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
+    
+    // Validate immediately
+    if (whatsappWindow !== null && whatsappWindow.closed === false) {
+      whatsappWindowOpen = true
+      console.log('[WhatsAppShare] window.open succeeded - WhatsApp opened')
+      
+      // Reset flag after window closes (check after 2 seconds)
+      setTimeout(() => {
+        if (whatsappWindow && whatsappWindow.closed) {
+          whatsappWindowOpen = false
+          whatsappWindow = null
         }
-        
-        // Method 2: FALLBACK - Create and click link (if popup was blocked)
-        console.warn('[WhatsAppShare] window.open was blocked, trying link method...')
-        try {
-          const link = document.createElement('a')
-          link.href = whatsappUrl
-          link.target = '_blank'
-          link.rel = 'noopener noreferrer'
-          link.style.display = 'none'
-          document.body.appendChild(link)
-          link.click()
-          console.log('[WhatsAppShare] Link clicked successfully')
-          
-          // Clean up after a short delay (non-blocking)
-          setTimeout(() => {
-            if (document.body.contains(link)) {
-              document.body.removeChild(link)
-            }
-          }, 1000)
-          
-          resolve({ success: true })
-        } catch (linkError) {
-          console.error('[WhatsAppShare] Link method failed:', linkError)
-          resolve({ success: false })
+      }, 2000)
+      
+      return { success: true }
+    }
+    
+    // Method 2: FALLBACK - Create and click link (if popup was blocked)
+    console.warn('[WhatsAppShare] window.open was blocked, trying link method...')
+    try {
+      const link = document.createElement('a')
+      link.href = whatsappUrl
+      link.target = '_blank'
+      link.rel = 'noopener noreferrer'
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      console.log('[WhatsAppShare] Link clicked successfully')
+      
+      // Clean up after a short delay (non-blocking)
+      setTimeout(() => {
+        if (document.body.contains(link)) {
+          document.body.removeChild(link)
         }
-      } catch (error) {
-        console.error('[WhatsAppShare] Failed to open WhatsApp:', error)
-        resolve({ success: false })
-      }
-    })
-  })
+      }, 1000)
+      
+      whatsappWindowOpen = true
+      setTimeout(() => {
+        whatsappWindowOpen = false
+      }, 2000)
+      
+      return { success: true }
+    } catch (linkError) {
+      console.error('[WhatsAppShare] Link method failed:', linkError)
+      return { success: false }
+    }
+  } catch (error) {
+    console.error('[WhatsAppShare] Failed to open WhatsApp:', error)
+    return { success: false }
+  }
 }

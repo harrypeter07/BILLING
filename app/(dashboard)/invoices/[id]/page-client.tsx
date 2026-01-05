@@ -18,6 +18,7 @@ import { db } from "@/lib/dexie-client"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { executeInvoiceAction, prepareInvoiceDocumentData } from "@/lib/invoice-document-engine"
 import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf"
+import { createClient } from "@/lib/supabase/client"
 
 export default function InvoiceDetailPageClient() {
   const params = useParams()
@@ -29,6 +30,7 @@ export default function InvoiceDetailPageClient() {
   const [storeName, setStoreName] = useState<string>("Business")
   const [isSharingPDF, setIsSharingPDF] = useState(false)
   const [profile, setProfile] = useState<any>(null)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
 
   // Extract invoice, items, and customer from the hook data
   const invoice = invoiceData
@@ -114,6 +116,18 @@ export default function InvoiceDetailPageClient() {
         if (profile) {
           setSettings(profile)
           setProfile(profile)
+          
+          // Cache logo URL in localStorage
+          if (profile.logo_url) {
+            localStorage.setItem("business_logo_url", profile.logo_url)
+            setLogoUrl(profile.logo_url)
+          } else {
+            // Try to get from cache
+            const cachedLogo = localStorage.getItem("business_logo_url")
+            if (cachedLogo) {
+              setLogoUrl(cachedLogo)
+            }
+          }
         }
       } catch (err) {
         console.warn("Failed to fetch business settings:", err)
@@ -277,7 +291,18 @@ export default function InvoiceDetailPageClient() {
           </Link>
           <div>
             <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">Invoice {invoice.invoice_number}</h1>
-            <p className="text-xs sm:text-sm text-muted-foreground">Created on {new Date(invoice.created_at).toLocaleDateString()}</p>
+            <p className="text-xs sm:text-sm text-muted-foreground">
+              Created on {new Date(invoice.created_at).toLocaleDateString('en-IN', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric'
+              })} at {new Date(invoice.created_at).toLocaleTimeString('en-IN', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                hour12: true
+              })}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
@@ -345,67 +370,211 @@ export default function InvoiceDetailPageClient() {
         </div>
       </div>
 
+      {/* Logo and Business Details Section */}
+      <div className="flex items-start justify-between gap-4 pb-4 border-b">
+        <div className="flex-1">
+          {/* Logo in top corner (below header) */}
+          {logoUrl && (
+            <div className="flex items-center gap-4">
+              <img
+                src={logoUrl}
+                alt="Business Logo"
+                className="h-16 w-16 object-contain border rounded-lg p-2 bg-gray-50"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none"
+                }}
+              />
+              <div>
+                <h2 className="text-lg font-semibold">{profile?.business_name || storeName || "Business"}</h2>
+                {profile?.business_address && (
+                  <p className="text-sm text-muted-foreground">{profile.business_address}</p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* Invoice Details */}
-      <div className="grid gap-4 md:gap-6 md:grid-cols-2">
+      <div className="grid gap-4 md:gap-6 md:grid-cols-3">
         <Card>
           <CardHeader>
             <CardTitle>Invoice Information</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
+          <CardContent className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Invoice Number:</span>
+              <span className="font-medium">{invoice.invoice_number}</span>
+            </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Invoice Date:</span>
-              <span>{new Date(invoice.invoice_date).toLocaleDateString()}</span>
+              <span className="font-medium">
+                {new Date(invoice.invoice_date).toLocaleDateString('en-IN', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric'
+                })}
+              </span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Invoice Time:</span>
+              <span className="font-medium">
+                {new Date(invoice.created_at).toLocaleTimeString('en-IN', {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                  second: '2-digit',
+                  hour12: true
+                })}
+              </span>
             </div>
             {invoice.due_date && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Due Date:</span>
-                <span>{new Date(invoice.due_date).toLocaleDateString()}</span>
+                <span className="font-medium">
+                  {new Date(invoice.due_date).toLocaleDateString('en-IN', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric'
+                  })}
+                </span>
               </div>
             )}
             <div className="flex justify-between">
               <span className="text-muted-foreground">Type:</span>
-              <span>{invoice.is_gst_invoice ? "GST Invoice" : "Non-GST Invoice"}</span>
+              <span className="font-medium">{invoice.is_gst_invoice ? "GST Invoice" : "Non-GST Invoice"}</span>
             </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Status:</span>
+              <Badge className={statusColors[invoice.status]}>{invoice.status.toUpperCase()}</Badge>
+            </div>
+            {invoice.payment_method && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Payment Method:</span>
+                <span className="font-medium">{invoice.payment_method}</span>
+              </div>
+            )}
+            {invoice.payment_status && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Payment Status:</span>
+                <span className="font-medium">{invoice.payment_status}</span>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {customer && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Customer Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Name:</span>
-                <span>{customer.name}</span>
+        <Card>
+          <CardHeader>
+            <CardTitle>Customer Information</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {customer ? (
+              <>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Name:</span>
+                  <span className="font-medium">{customer.name || "N/A"}</span>
+                </div>
+                {customer.phone && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Phone:</span>
+                    <span className="font-medium">{customer.phone}</span>
+                  </div>
+                )}
+                {customer.email && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Email:</span>
+                    <span className="font-medium break-all text-right">{customer.email}</span>
+                  </div>
+                )}
+                {customer.address && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Address:</span>
+                    <span className="font-medium text-right">{customer.address}</span>
+                  </div>
+                )}
+                {customer.gstin && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">GSTIN:</span>
+                    <span className="font-medium">{customer.gstin}</span>
+                  </div>
+                )}
+                {customer.city && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">City:</span>
+                    <span className="font-medium">{customer.city}</span>
+                  </div>
+                )}
+                {customer.state && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">State:</span>
+                    <span className="font-medium">{customer.state}</span>
+                  </div>
+                )}
+                {customer.pincode && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Pincode:</span>
+                    <span className="font-medium">{customer.pincode}</span>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-sm text-muted-foreground">
+                <div className="flex justify-between">
+                  <span>Name:</span>
+                  <span className="font-medium">Walk-in Customer</span>
+                </div>
+                <p className="mt-2 text-xs">No customer information available</p>
               </div>
-              {customer.email && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Email:</span>
-                  <span>{customer.email}</span>
-                </div>
-              )}
-              {customer.phone && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Phone:</span>
-                  <span>{customer.phone}</span>
-                </div>
-              )}
-              {customer.gstin && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">GSTIN:</span>
-                  <span>{customer.gstin}</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Business Information</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Business Name:</span>
+              <span className="font-medium">{profile?.business_name || storeName || "Business"}</span>
+            </div>
+            {profile?.business_gstin && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">GSTIN:</span>
+                <span className="font-medium">{profile.business_gstin}</span>
+              </div>
+            )}
+            {profile?.business_address && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Address:</span>
+                <span className="font-medium text-right">{profile.business_address}</span>
+              </div>
+            )}
+            {profile?.business_phone && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Phone:</span>
+                <span className="font-medium">{profile.business_phone}</span>
+              </div>
+            )}
+            {profile?.business_email && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Email:</span>
+                <span className="font-medium break-all text-right">{profile.business_email}</span>
+              </div>
+            )}
+            {storeName && storeName !== profile?.business_name && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Store:</span>
+                <span className="font-medium">{storeName}</span>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* Line Items */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg md:text-xl">Line Items</CardTitle>
+          <CardTitle className="text-lg md:text-xl">Line Items ({items?.length || 0} items)</CardTitle>
         </CardHeader>
         <CardContent className="p-4 md:p-6">
           <div className="overflow-x-auto -mx-4 md:mx-0">
@@ -413,6 +582,7 @@ export default function InvoiceDetailPageClient() {
               <Table className="min-w-full">
                 <TableHeader>
                   <TableRow>
+                    <TableHead>#</TableHead>
                     <TableHead>Description</TableHead>
                     <TableHead>Qty</TableHead>
                     <TableHead>Unit Price</TableHead>
@@ -423,9 +593,10 @@ export default function InvoiceDetailPageClient() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {items?.map((item: any) => (
+                  {items?.map((item: any, index: number) => (
                     <TableRow key={item.id}>
-                      <TableCell>{item.description}</TableCell>
+                      <TableCell className="font-medium">{index + 1}</TableCell>
+                      <TableCell className="font-medium">{item.description || "N/A"}</TableCell>
                       <TableCell>{item.quantity}</TableCell>
                       <TableCell>
                         <Tooltip>
@@ -439,23 +610,23 @@ export default function InvoiceDetailPageClient() {
                           </TooltipContent>
                         </Tooltip>
                       </TableCell>
-                      <TableCell>{item.discount_percent}%</TableCell>
-                      {invoice.is_gst_invoice && <TableCell>{item.gst_rate}%</TableCell>}
+                      <TableCell>{item.discount_percent || 0}%</TableCell>
+                      {invoice.is_gst_invoice && <TableCell>{item.gst_rate || 0}%</TableCell>}
                       {invoice.is_gst_invoice && (
                         <TableCell>
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span className="truncate block max-w-[130px] cursor-help">
-                                ₹{item.gst_amount.toFixed(2)}
+                                ₹{(item.gst_amount || 0).toFixed(2)}
                               </span>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>GST Amount: ₹{item.gst_amount.toFixed(2)}</p>
+                              <p>GST Amount: ₹{(item.gst_amount || 0).toFixed(2)}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TableCell>
                       )}
-                      <TableCell>
+                      <TableCell className="font-medium">
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span className="truncate block max-w-[130px] cursor-help">

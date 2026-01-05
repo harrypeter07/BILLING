@@ -296,13 +296,25 @@ export async function prepareInvoiceDocumentData(
 		store?.address || profile?.business_address || "";
 	const businessPhone = store?.phone || profile?.business_phone || "";
 	const businessEmail = profile?.business_email || "";
-	const logoUrl = profile?.logo_url || "";
+	let logoUrl = profile?.logo_url || "";
 	
-	// Debug: Log logo URL for troubleshooting
-	if (logoUrl) {
-		console.log("[InvoiceDocumentEngine] Logo URL found:", logoUrl.substring(0, 50) + "...");
-	} else {
-		console.warn("[InvoiceDocumentEngine] No logo URL found in profile");
+	// Cache logo URL in localStorage for faster access
+	if (logoUrl && typeof window !== "undefined") {
+		try {
+			localStorage.setItem("business_logo_url", logoUrl);
+		} catch (e) {
+			// Ignore localStorage errors
+		}
+	} else if (typeof window !== "undefined") {
+		// Try to get from cache if not in profile
+		try {
+			const cachedLogo = localStorage.getItem("business_logo_url");
+			if (cachedLogo) {
+				logoUrl = cachedLogo;
+			}
+		} catch (e) {
+			// Ignore localStorage errors
+		}
 	}
 
 	// Normalize items - SINGLE SOURCE OF TRUTH for item mapping
@@ -572,26 +584,13 @@ async function handleWhatsApp(
 			}
 		}
 
-		// Step 2: If no existing URL, generate PDF and upload to R2
+		// Step 2: If no existing URL, generate PDF and upload to R2 (NON-BLOCKING)
 		if (!pdfR2Url) {
-			// Check if we're actually online (network connectivity check)
-			// Note: Database mode (IndexedDB vs Supabase) doesn't affect R2 upload capability
-			// Users can upload to R2 as long as they have internet, regardless of database mode
-			// navigator.onLine can be unreliable (sometimes false even when online),
-			// so we'll attempt the upload anyway and catch actual network errors
-			// This provides better UX - we only block if navigator.onLine is false AND
-			// we can't verify connectivity with a quick check
-			if (typeof navigator !== "undefined" && !navigator.onLine) {
-				// navigator.onLine says offline, but it can be unreliable
-				// Log a warning but proceed - actual upload will fail if truly offline
-				console.warn("[InvoiceDocumentEngine] navigator.onLine reports offline, but proceeding with upload attempt");
-			}
-
 			onProgress?.("Generating PDF...");
 			// Generate PDF (slip format for WhatsApp)
 			const pdfBlob = await generatePDF(data, format, "whatsapp");
 
-			onProgress?.("Uploading PDF to cloud...");
+			onProgress?.("Starting PDF upload...");
 			// Get admin ID for upload
 			const supabase = createClient();
 			const {
@@ -601,53 +600,101 @@ async function handleWhatsApp(
 				throw new Error("Not authenticated");
 			}
 
-			// Upload to R2 (await completion - this is blocking by design)
-			const uploadResult = await uploadInvoicePDFToR2Client(
+			// OPTIMIZATION: Start upload but don't wait for it - open WhatsApp immediately
+			// For small files (26KB), upload is fast, but we don't want to block WhatsApp opening
+			const uploadPromise = uploadInvoicePDFToR2Client(
 				pdfBlob,
 				user.id,
 				invoiceId,
 				data.invoiceNumber
-			);
+			).then((uploadResult) => {
+				if (uploadResult.success && uploadResult.publicUrl) {
+					// Save metadata in background
+					if (uploadResult.expiresAt) {
+						saveInvoiceStorage({
+							invoice_id: invoiceId,
+							r2_object_key: uploadResult.objectKey || "",
+							public_url: uploadResult.publicUrl,
+							expires_at: uploadResult.expiresAt,
+						}).catch(err => {
+							console.warn("[InvoiceDocumentEngine] Failed to save metadata:", err);
+						});
+					}
+					return uploadResult.publicUrl;
+				}
+				return null;
+			}).catch(err => {
+				console.error("[InvoiceDocumentEngine] Upload failed:", err);
+				return null;
+			});
 
-			// Step 3: Verify upload success
-			if (!uploadResult.success || !uploadResult.publicUrl) {
-				throw new Error(
-					`Failed to upload PDF: ${uploadResult.error || "Unknown error"}`
-				);
-			}
-
-			pdfR2Url = uploadResult.publicUrl;
-
-			// Step 4: Save metadata (non-blocking for WhatsApp, but we await it for correctness)
-			if (uploadResult.expiresAt) {
-				await saveInvoiceStorage({
-					invoice_id: invoiceId,
-					r2_object_key: uploadResult.objectKey || "",
-					public_url: uploadResult.publicUrl,
-					expires_at: uploadResult.expiresAt,
+			// For small files, wait max 2 seconds for upload to complete
+			// If it takes longer, proceed with invoice link as fallback
+			try {
+				const timeoutPromise = new Promise<string | null>((resolve) => {
+					setTimeout(() => resolve(null), 2000); // 2 second timeout
 				});
+				
+				pdfR2Url = await Promise.race([uploadPromise, timeoutPromise]);
+				
+				if (pdfR2Url) {
+					onProgress?.("PDF uploaded successfully");
+				} else {
+					// Upload still in progress, will use invoice link as fallback
+					onProgress?.("PDF upload in progress...");
+				}
+			} catch (err) {
+				console.warn("[InvoiceDocumentEngine] Upload timeout or error:", err);
+				// Continue with invoice link fallback
 			}
-
-			onProgress?.("PDF uploaded successfully");
 		}
 
-		// Step 5: Generate WhatsApp message with R2 URL (required)
-		if (!pdfR2Url) {
-			throw new Error("PDF R2 URL is missing - cannot generate WhatsApp message");
-		}
+		// Step 5: Generate WhatsApp message with R2 URL or invoice link fallback
+		// Use invoice link as fallback if R2 URL not ready yet (upload still in progress)
+		const invoiceLink = typeof window !== 'undefined' 
+			? `${window.location.origin}/i/${invoiceId}`
+			: '';
+		
+		const finalPdfUrl = pdfR2Url || invoiceLink;
+		
+		// Build WhatsApp message manually to support fallback
+		const formatDate = (dateStr: string) => {
+			return new Date(dateStr).toLocaleDateString('en-IN', {
+				day: '2-digit',
+				month: '2-digit',
+				year: 'numeric'
+			});
+		};
+		
+		const itemsList = data.items
+			.map((item, index) => {
+				const lineTotal = item.quantity * item.unitPrice;
+				return `${index + 1}. ${item.description}\n   Qty: ${item.quantity} × ₹${item.unitPrice.toFixed(2)} = ₹${lineTotal.toFixed(2)}`;
+			})
+			.join('\n\n');
+		
+		const linkLabel = pdfR2Url ? '📄 Download Invoice PDF' : '📱 View Invoice';
+		
+		const whatsappMessage = `📋 *Invoice Receipt*
 
-		const whatsappMessage = generateWhatsAppBillMessage({
-			storeName: data.businessName,
-			invoiceNumber: data.invoiceNumber,
-			invoiceDate: data.invoiceDate,
-			items: data.items.map((item) => ({
-				name: item.description,
-				quantity: item.quantity,
-				unitPrice: item.unitPrice,
-			})),
-			totalAmount: data.totalAmount,
-			pdfR2Url, // REQUIRED - no fallback
-		});
+🏪 *${data.businessName}*
+
+━━━━━━━━━━━━━━━━━━━━
+📄 Invoice #${data.invoiceNumber}
+📅 Date: ${formatDate(data.invoiceDate)}
+━━━━━━━━━━━━━━━━━━━━
+
+*Items:*
+${itemsList}
+
+━━━━━━━━━━━━━━━━━━━━
+💰 *Total: ₹${data.totalAmount.toFixed(2)}*
+━━━━━━━━━━━━━━━━━━━━
+
+${linkLabel}:
+${finalPdfUrl}
+
+Thank you for your business! 🙏`;
 
 		// Step 6: Copy R2 URL to clipboard (optional UX improvement)
 		try {
