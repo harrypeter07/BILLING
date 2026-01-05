@@ -592,7 +592,6 @@ async function handleWhatsApp(
 			// Generate PDF (slip format for WhatsApp)
 			const pdfBlob = await generatePDF(data, format, "whatsapp");
 
-			onProgress?.("Starting PDF upload...");
 			// Get admin ID for upload
 			const supabase = createClient();
 			const {
@@ -604,6 +603,7 @@ async function handleWhatsApp(
 
 			// Start upload and wait for completion (with extended timeout for production)
 			// Production environments (Vercel) may have cold starts, so we allow more time
+			onProgress?.("Uploading PDF to cloud storage...");
 			const uploadPromise = uploadInvoicePDFToR2Client(
 				pdfBlob,
 				user.id,
@@ -640,27 +640,6 @@ async function handleWhatsApp(
 						invoiceNumber: data.invoiceNumber,
 					});
 					
-					// Show user-friendly warning message
-					if (onWarning) {
-						// Check if it's a configuration error
-						if (errorMessage.includes("R2 configuration") || errorMessage.includes("environment variable")) {
-							onWarning(
-								"⚠️ Cloud Storage Not Configured",
-								"PDF upload to cloud storage is not configured. WhatsApp will open with invoice page link instead. Please configure R2 storage in Vercel settings."
-							);
-						} else if (errorMessage.includes("timeout")) {
-							onWarning(
-								"⏱️ Upload Taking Longer",
-								"PDF upload is taking longer than expected. WhatsApp will open with invoice page link. The PDF will continue uploading in the background."
-							);
-						} else {
-							onWarning(
-								"⚠️ PDF Upload Failed",
-								`Unable to upload PDF to cloud storage: ${errorMessage}. WhatsApp will open with invoice page link instead.`
-							);
-						}
-					}
-					
 					throw new Error(errorMessage);
 				}
 			}).catch(err => {
@@ -668,13 +647,13 @@ async function handleWhatsApp(
 				throw err; // Re-throw to be caught by outer try-catch
 			});
 
-			// Wait for upload with extended timeout (8 seconds total: 5s initial + 3s extra)
+			// Wait for upload with extended timeout (12 seconds total: 7s initial + 5s extra)
 			// This accounts for Vercel cold starts and network latency
 			try {
-				const initialTimeout = 5000; // 5 seconds initial wait
-				const extendedTimeout = 3000; // 3 more seconds if needed
+				const initialTimeout = 7000; // 7 seconds initial wait
+				const extendedTimeout = 5000; // 5 more seconds if needed (total 12 seconds)
 				
-				// First attempt: wait 5 seconds
+				// First attempt: wait 7 seconds
 				const initialTimeoutPromise = new Promise<string | null>((resolve) => {
 					setTimeout(() => resolve(null), initialTimeout);
 				});
@@ -684,8 +663,8 @@ async function handleWhatsApp(
 				if (pdfR2Url) {
 					onProgress?.("PDF uploaded successfully");
 				} else {
-					// If not ready in 5s, wait 3 more seconds
-					onProgress?.("Still uploading PDF...");
+					// If not ready in 7s, wait 5 more seconds
+					onProgress?.("Still uploading PDF... Please wait...");
 					const extendedTimeoutPromise = new Promise<string | null>((resolve) => {
 						setTimeout(() => resolve(null), extendedTimeout);
 					});
@@ -695,9 +674,9 @@ async function handleWhatsApp(
 					if (pdfR2Url) {
 						onProgress?.("PDF uploaded successfully");
 					} else {
-						// Upload still in progress after 8 seconds - throw error instead of falling back
-						console.warn("[InvoiceDocumentEngine] R2 upload took longer than 8 seconds");
-						const timeoutError = new Error("PDF upload timeout: Upload took longer than 8 seconds. Please check your internet connection and try again.");
+						// Upload still in progress after 12 seconds - throw error instead of falling back
+						console.warn("[InvoiceDocumentEngine] R2 upload took longer than 12 seconds");
+						const timeoutError = new Error("PDF upload timeout: Upload took longer than 12 seconds. Please check your internet connection and try again.");
 						throw timeoutError;
 					}
 				}

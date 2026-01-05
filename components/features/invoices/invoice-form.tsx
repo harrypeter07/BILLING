@@ -1318,6 +1318,12 @@ export function InvoiceForm({
 				source,
 				onProgress: (message) => {
 					console.log(`[InvoiceForm] ${message}`);
+					// Show progress messages to user
+					toast({
+						title: "Processing...",
+						description: message,
+						duration: 2000,
+					});
 				},
 				onWarning: (title, description) => {
 					toast({
