@@ -650,8 +650,8 @@ async function handleWhatsApp(
 			// Wait for upload with extended timeout (12 seconds total: 7s initial + 5s extra)
 			// This accounts for Vercel cold starts and network latency
 			try {
-				const initialTimeout = 7000; // 7 seconds initial wait
-				const extendedTimeout = 5000; // 5 more seconds if needed (total 12 seconds)
+				const initialTimeout = 10000; // 7 seconds initial wait
+				const extendedTimeout = 15000; // 5 more seconds if needed (total 12 seconds)
 				
 				// First attempt: wait 7 seconds
 				const initialTimeoutPromise = new Promise<string | null>((resolve) => {
