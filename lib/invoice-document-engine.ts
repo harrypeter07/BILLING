@@ -1,12 +1,12 @@
 /**
  * Unified Invoice Document Engine
- * 
+ *
  * Single source of truth for all invoice document operations:
  * - Data fetching (IndexedDB + Supabase)
  * - Data normalization
  * - PDF generation (Invoice A4 + Slip 80mm)
  * - Actions (Print, Download, WhatsApp, R2 Upload)
- * 
+ *
  * Architecture:
  * - UI components call executeInvoiceAction() only
  * - All business logic lives here
@@ -19,13 +19,22 @@
 import { createClient } from "@/lib/supabase/client";
 import { db } from "@/lib/dexie-client";
 import { isIndexedDbMode } from "@/lib/utils/db-mode";
-import { generateInvoicePDF, type InvoicePDFData } from "@/lib/utils/invoice-pdf";
+import {
+	generateInvoicePDF,
+	type InvoicePDFData,
+} from "@/lib/utils/invoice-pdf";
 import {
 	generateInvoiceSlipPDF,
 	type InvoiceSlipData,
 } from "@/lib/utils/invoice-slip-pdf";
-import { generateWhatsAppBillMessage, shareOnWhatsApp } from "@/lib/utils/whatsapp-bill";
-import { getInvoiceStorage, saveInvoiceStorage } from "@/lib/utils/save-invoice-storage";
+import {
+	generateWhatsAppBillMessage,
+	shareOnWhatsApp,
+} from "@/lib/utils/whatsapp-bill";
+import {
+	getInvoiceStorage,
+	saveInvoiceStorage,
+} from "@/lib/utils/save-invoice-storage";
 import { calculateLineItem } from "@/lib/utils/gst-calculator";
 import { uploadInvoicePDFToR2Client } from "@/lib/utils/invoice-r2-client";
 
@@ -123,7 +132,9 @@ async function fetchInvoiceData(
 			? await db.customers.get(invoice.customer_id)
 			: null;
 
-		const store = invoice.store_id ? await db.stores.get(invoice.store_id) : null;
+		const store = invoice.store_id
+			? await db.stores.get(invoice.store_id)
+			: null;
 
 		// Fetch profile from Supabase (business settings)
 		let profile: any = null;
@@ -151,7 +162,11 @@ async function fetchInvoiceData(
 
 		// Fetch invoice and items in parallel
 		const [invoiceResult, itemsResult] = await Promise.all([
-			supabase.from("invoices").select("*, customers(*)").eq("id", invoiceId).single(),
+			supabase
+				.from("invoices")
+				.select("*, customers(*)")
+				.eq("id", invoiceId)
+				.single(),
 			supabase.from("invoice_items").select("*").eq("invoice_id", invoiceId),
 		]);
 
@@ -246,7 +261,9 @@ async function getServedByName(invoice: any): Promise<string | undefined> {
 				return profile.business_name;
 			}
 
-			const { data: { user } } = await supabase.auth.getUser();
+			const {
+				data: { user },
+			} = await supabase.auth.getUser();
 			if (user?.email) {
 				return user.email.split("@")[0];
 			}
@@ -254,7 +271,10 @@ async function getServedByName(invoice: any): Promise<string | undefined> {
 
 		return undefined;
 	} catch (error) {
-		console.warn("[InvoiceDocumentEngine] Error fetching served-by name:", error);
+		console.warn(
+			"[InvoiceDocumentEngine] Error fetching served-by name:",
+			error
+		);
 		return undefined;
 	}
 }
@@ -293,12 +313,11 @@ export async function prepareInvoiceDocumentData(
 	const businessName =
 		store?.name || storeName || profile?.business_name || "Business";
 	const businessGSTIN = store?.gstin || profile?.business_gstin || "";
-	const businessAddress =
-		store?.address || profile?.business_address || "";
+	const businessAddress = store?.address || profile?.business_address || "";
 	const businessPhone = store?.phone || profile?.business_phone || "";
 	const businessEmail = profile?.business_email || "";
 	let logoUrl = profile?.logo_url || "";
-	
+
 	// Cache logo URL in localStorage for faster access
 	if (logoUrl && typeof window !== "undefined") {
 		try {
@@ -323,7 +342,8 @@ export async function prepareInvoiceDocumentData(
 	const normalizedItems = items.map((item: any) => {
 		const quantity = Number(item.quantity) || 0;
 		const unitPrice = Number(item.unit_price || item.unitPrice) || 0;
-		const discountPercent = Number(item.discount_percent || item.discountPercent) || 0;
+		const discountPercent =
+			Number(item.discount_percent || item.discountPercent) || 0;
 		const gstRate = Number(item.gst_rate || item.gstRate) || 0;
 
 		// Calculate using shared GST calculator (single source of truth)
@@ -340,7 +360,10 @@ export async function prepareInvoiceDocumentData(
 			unitPrice,
 			discountPercent,
 			gstRate,
-			lineTotal: item.line_total || item.lineTotal || (calc.taxableAmount + calc.gstAmount),
+			lineTotal:
+				item.line_total ||
+				item.lineTotal ||
+				calc.taxableAmount + calc.gstAmount,
 			gstAmount: item.gst_amount || item.gstAmount || calc.gstAmount,
 			hsnCode: item.hsn_code || item.hsnCode || "",
 		};
@@ -355,7 +378,7 @@ export async function prepareInvoiceDocumentData(
 
 	// Wait for served-by name
 	const servedBy = await servedByPromise;
-	
+
 	// Debug: Log served-by for troubleshooting
 	if (servedBy) {
 		console.log("[InvoiceDocumentEngine] Served-by name:", servedBy);
@@ -396,7 +419,7 @@ export async function prepareInvoiceDocumentData(
 
 /**
  * Generates PDF based on format and action requirements
- * 
+ *
  * Rules:
  * - Invoice (A4) → Always client-side (fast, reliable)
  * - Slip (80mm):
@@ -438,15 +461,22 @@ async function generatePDF(
 
 /**
  * Main entry point for all invoice document actions
- * 
+ *
  * UI components should ONLY call this function
- * 
+ *
  * @returns For "whatsapp" action, returns { success: boolean } to indicate if WhatsApp opened
  */
 export async function executeInvoiceAction(
 	options: ExecuteInvoiceActionOptions
 ): Promise<{ success: boolean } | void> {
-	const { invoiceId, action, format = "invoice", source, onProgress, onWarning } = options;
+	const {
+		invoiceId,
+		action,
+		format = "invoice",
+		source,
+		onProgress,
+		onWarning,
+	} = options;
 
 	try {
 		// Step 1: Fetch invoice data (if not provided)
@@ -467,7 +497,13 @@ export async function executeInvoiceAction(
 				break;
 			case "whatsapp":
 				// WhatsApp action returns success status for redirect control
-				return await handleWhatsApp(documentData, invoiceId, format, onProgress, onWarning);
+				return await handleWhatsApp(
+					documentData,
+					invoiceId,
+					format,
+					onProgress,
+					onWarning
+				);
 			case "r2-upload":
 				await handleR2Upload(documentData, invoiceId, format);
 				break;
@@ -545,7 +581,7 @@ async function handleDownload(
 
 /**
  * Handles WhatsApp sharing with STRICT SEQUENCING
- * 
+ *
  * Flow (NON-NEGOTIABLE):
  * 1. Check for existing R2 URL (await properly)
  * 2. If no existing URL:
@@ -556,12 +592,12 @@ async function handleDownload(
  * 3. Generate WhatsApp message WITH R2 URL (required)
  * 4. Open WhatsApp (synchronously to preserve user gesture)
  * 5. Return success status for redirect control
- * 
+ *
  * ❌ WhatsApp NEVER opens before R2 upload completes
  * ❌ WhatsApp message NEVER contains fallback links
  * ❌ If upload fails, show error and do NOT open WhatsApp
  * ❌ Navigation must happen AFTER this function completes
- * 
+ *
  * @returns { success: boolean } - true if WhatsApp opened successfully
  */
 async function handleWhatsApp(
@@ -575,7 +611,7 @@ async function handleWhatsApp(
 		// Step 1: Check for existing valid R2 URL
 		onProgress?.("Checking for existing PDF...");
 		let pdfR2Url: string | undefined;
-		
+
 		const existingStorage = await getInvoiceStorage(invoiceId);
 		if (existingStorage?.public_url) {
 			const expiresAt = new Date(existingStorage.expires_at).getTime();
@@ -609,109 +645,133 @@ async function handleWhatsApp(
 				user.id,
 				invoiceId,
 				data.invoiceNumber
-			).then((uploadResult) => {
-				// Log upload result for debugging
-				console.log("[InvoiceDocumentEngine] R2 Upload Result:", {
-					success: uploadResult.success,
-					hasPublicUrl: !!uploadResult.publicUrl,
-					error: uploadResult.error,
-					objectKey: uploadResult.objectKey,
+			)
+				.then((uploadResult) => {
+					// Log upload result for debugging
+					console.log("[InvoiceDocumentEngine] R2 Upload Result:", {
+						success: uploadResult.success,
+						hasPublicUrl: !!uploadResult.publicUrl,
+						error: uploadResult.error,
+						objectKey: uploadResult.objectKey,
+					});
+
+					if (uploadResult.success && uploadResult.publicUrl) {
+						// Save metadata in background
+						if (uploadResult.expiresAt) {
+							saveInvoiceStorage({
+								invoice_id: invoiceId,
+								r2_object_key: uploadResult.objectKey || "",
+								public_url: uploadResult.publicUrl,
+								expires_at: uploadResult.expiresAt,
+							}).catch((err) => {
+								console.error(
+									"[InvoiceDocumentEngine] Failed to save metadata:",
+									err
+								);
+							});
+						}
+						return uploadResult.publicUrl;
+					} else {
+						// Log the error for debugging
+						const errorMessage = uploadResult.error || "R2 upload failed";
+						console.error("[InvoiceDocumentEngine] R2 Upload failed:", {
+							error: errorMessage,
+							invoiceId,
+							invoiceNumber: data.invoiceNumber,
+						});
+
+						throw new Error(errorMessage);
+					}
+				})
+				.catch((err) => {
+					console.error(
+						"[InvoiceDocumentEngine] Upload promise rejected:",
+						err
+					);
+					throw err; // Re-throw to be caught by outer try-catch
 				});
 
-				if (uploadResult.success && uploadResult.publicUrl) {
-					// Save metadata in background
-					if (uploadResult.expiresAt) {
-						saveInvoiceStorage({
-							invoice_id: invoiceId,
-							r2_object_key: uploadResult.objectKey || "",
-							public_url: uploadResult.publicUrl,
-							expires_at: uploadResult.expiresAt,
-						}).catch(err => {
-							console.error("[InvoiceDocumentEngine] Failed to save metadata:", err);
-						});
-					}
-					return uploadResult.publicUrl;
-				} else {
-					// Log the error for debugging
-					const errorMessage = uploadResult.error || "R2 upload failed";
-					console.error("[InvoiceDocumentEngine] R2 Upload failed:", {
-						error: errorMessage,
-						invoiceId,
-						invoiceNumber: data.invoiceNumber,
-					});
-					
-					throw new Error(errorMessage);
-				}
-			}).catch(err => {
-				console.error("[InvoiceDocumentEngine] Upload promise rejected:", err);
-				throw err; // Re-throw to be caught by outer try-catch
-			});
-
-			// Wait for upload with extended timeout (12 seconds total: 7s initial + 5s extra)
+			// Wait for upload with extended timeout (20 seconds total: 10s initial + 10s extra)
 			// This accounts for Vercel cold starts and network latency
 			try {
-				const initialTimeout = 10000; // 7 seconds initial wait
-				const extendedTimeout = 15000; // 5 more seconds if needed (total 12 seconds)
-				
-				// First attempt: wait 7 seconds
-				const initialTimeoutPromise = new Promise<string | null>((resolve) => {
-					setTimeout(() => resolve(null), initialTimeout);
-				});
-				
+				const initialTimeout = 10000; // 10 seconds initial wait
+				const extendedTimeout = 10000; // 10 more seconds if needed (total 20 seconds)
+
+				// First attempt: wait 10 seconds
+				const initialTimeoutPromise = new Promise<string | undefined>(
+					(resolve) => {
+						setTimeout(() => resolve(undefined), initialTimeout);
+					}
+				);
+
 				pdfR2Url = await Promise.race([uploadPromise, initialTimeoutPromise]);
-				
+
 				if (pdfR2Url) {
 					onProgress?.("PDF uploaded successfully");
 				} else {
-					// If not ready in 7s, wait 5 more seconds
+					// If not ready in 10s, wait 10 more seconds
 					onProgress?.("Still uploading PDF... Please wait...");
-					const extendedTimeoutPromise = new Promise<string | null>((resolve) => {
-						setTimeout(() => resolve(null), extendedTimeout);
-					});
-					
-					pdfR2Url = await Promise.race([uploadPromise, extendedTimeoutPromise]);
-					
+					const extendedTimeoutPromise = new Promise<string | undefined>(
+						(resolve) => {
+							setTimeout(() => resolve(undefined), extendedTimeout);
+						}
+					);
+
+					pdfR2Url = await Promise.race([
+						uploadPromise,
+						extendedTimeoutPromise,
+					]);
+
 					if (pdfR2Url) {
 						onProgress?.("PDF uploaded successfully");
 					} else {
-						// Upload still in progress after 12 seconds - throw error instead of falling back
-						console.warn("[InvoiceDocumentEngine] R2 upload took longer than 12 seconds");
-						const timeoutError = new Error("PDF upload timeout: Upload took longer than 12 seconds. Please check your internet connection and try again.");
+						// Upload still in progress after 20 seconds - throw error instead of falling back
+						console.warn(
+							"[InvoiceDocumentEngine] R2 upload took longer than 20 seconds"
+						);
+						const timeoutError = new Error(
+							"PDF upload timeout: Upload took longer than 20 seconds. Please check your internet connection and try again."
+						);
 						throw timeoutError;
 					}
 				}
 			} catch (err: any) {
 				// If upload fails with an error, throw it to prevent fallback
 				console.error("[InvoiceDocumentEngine] R2 upload error:", err);
-				const errorMessage = err?.message || "Unknown error occurred during PDF upload";
+				const errorMessage =
+					err?.message || "Unknown error occurred during PDF upload";
 				throw new Error(errorMessage);
 			}
 		}
 
 		// Step 5: Validate that we have R2 URL (required - no fallback)
 		if (!pdfR2Url) {
-			throw new Error("PDF upload failed: No valid PDF URL available. Please try again.");
+			throw new Error(
+				"PDF upload failed: No valid PDF URL available. Please try again."
+			);
 		}
 
 		// Step 6: Generate WhatsApp message with R2 URL (required - no fallback)
 		const finalPdfUrl = pdfR2Url;
-		
+
 		// Build WhatsApp message manually to support fallback
 		const formatDate = (dateStr: string) => {
-			return new Date(dateStr).toLocaleDateString('en-IN', {
-				day: '2-digit',
-				month: '2-digit',
-				year: 'numeric'
+			return new Date(dateStr).toLocaleDateString("en-IN", {
+				day: "2-digit",
+				month: "2-digit",
+				year: "numeric",
 			});
 		};
-		
+
 		const itemsList = data.items
 			.map((item, index) => {
 				const lineTotal = item.quantity * item.unitPrice;
-				return `${index + 1}. ${item.description}\n   Qty: ${item.quantity} × ₹${item.unitPrice.toFixed(2)} = ₹${lineTotal.toFixed(2)}`;
+				return `${index + 1}. ${item.description}\n   Qty: ${
+					item.quantity
+				} × ₹${item.unitPrice.toFixed(2)} = ₹${lineTotal.toFixed(2)}`;
 			})
-			.join('\n\n');
-		
+			.join("\n\n");
+
 		const whatsappMessage = `📋 *Invoice Receipt*
 
 🏪 *${data.businessName}*
@@ -738,11 +798,13 @@ Thank you for your business! 🙏`;
 		// Navigation/redirect must happen AFTER this completes
 		onProgress?.("Opening WhatsApp...");
 		const shareResult = await shareOnWhatsApp(whatsappMessage);
-		
+
 		if (!shareResult.success) {
-			throw new Error("Failed to open WhatsApp. Please check your popup blocker settings.");
+			throw new Error(
+				"Failed to open WhatsApp. Please check your popup blocker settings."
+			);
 		}
-		
+
 		// Return success status so caller can control redirect timing
 		return shareResult;
 	} catch (error) {
@@ -763,9 +825,8 @@ async function handleR2Upload(
 	// This is typically called from background API, not directly from UI
 	// But kept here for completeness
 	const pdfBlob = await generatePDF(data, format, "r2-upload");
-	
+
 	// Upload logic is handled by API route
 	// This function exists for potential future direct calls
 	throw new Error("R2 upload should be handled by API route");
 }
-
