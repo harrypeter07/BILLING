@@ -66,6 +66,8 @@ Thank you for your business! 🙏`
 // Global flag to prevent multiple WhatsApp windows
 let whatsappWindowOpen = false
 let whatsappWindow: Window | null = null
+let lastWhatsAppUrl: string | null = null
+let lastOpenTime: number = 0
 
 /**
  * Share invoice on WhatsApp - OPTIMIZED: Opens immediately to preserve user gesture
@@ -84,26 +86,39 @@ export async function shareOnWhatsApp(
     return { success: false }
   }
 
+  const encodedMessage = encodeURIComponent(message)
+  const whatsappUrl = `https://wa.me/?text=${encodedMessage}`
+  
+  // Prevent duplicate opens: Check if same URL was opened recently (within 1 second)
+  const now = Date.now()
+  if (lastWhatsAppUrl === whatsappUrl && (now - lastOpenTime) < 1000) {
+    console.warn('[WhatsAppShare] Duplicate WhatsApp open detected and prevented')
+    return { success: true } // Return success to avoid error, but don't open again
+  }
+
   // Prevent multiple WhatsApp windows
   if (whatsappWindowOpen && whatsappWindow && !whatsappWindow.closed) {
     console.warn('[WhatsAppShare] WhatsApp window already open, closing previous window')
     try {
       whatsappWindow.close()
+      whatsappWindow = null
+      whatsappWindowOpen = false
     } catch (e) {
       // Ignore close errors
     }
   }
 
-  const encodedMessage = encodeURIComponent(message)
-  const whatsappUrl = `https://wa.me/?text=${encodedMessage}`
-
   try {
+    // Set flags BEFORE opening to prevent race conditions
+    lastWhatsAppUrl = whatsappUrl
+    lastOpenTime = now
+    whatsappWindowOpen = true
+    
     // Method 1: PRIMARY - window.open (synchronous to preserve user gesture)
     whatsappWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
     
     // Validate immediately
     if (whatsappWindow !== null && whatsappWindow.closed === false) {
-      whatsappWindowOpen = true
       console.log('[WhatsAppShare] window.open succeeded - WhatsApp opened')
       
       // Reset flag after window closes (check after 2 seconds)
@@ -111,11 +126,15 @@ export async function shareOnWhatsApp(
         if (whatsappWindow && whatsappWindow.closed) {
           whatsappWindowOpen = false
           whatsappWindow = null
+          lastWhatsAppUrl = null
         }
       }, 2000)
       
       return { success: true }
     }
+    
+    // If window.open returned null, it was blocked
+    whatsappWindowOpen = false
     
     // Method 2: FALLBACK - Create and click link (if popup was blocked)
     console.warn('[WhatsAppShare] window.open was blocked, trying link method...')
@@ -139,15 +158,20 @@ export async function shareOnWhatsApp(
       whatsappWindowOpen = true
       setTimeout(() => {
         whatsappWindowOpen = false
+        lastWhatsAppUrl = null
       }, 2000)
       
       return { success: true }
     } catch (linkError) {
       console.error('[WhatsAppShare] Link method failed:', linkError)
+      whatsappWindowOpen = false
+      lastWhatsAppUrl = null
       return { success: false }
     }
   } catch (error) {
     console.error('[WhatsAppShare] Failed to open WhatsApp:', error)
+    whatsappWindowOpen = false
+    lastWhatsAppUrl = null
     return { success: false }
   }
 }

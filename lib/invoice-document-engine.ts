@@ -85,6 +85,7 @@ export interface ExecuteInvoiceActionOptions {
 	format?: DocumentFormat;
 	source?: InvoiceDocumentSource; // Optional: if data already loaded
 	onProgress?: (message: string) => void;
+	onWarning?: (title: string, description: string) => void;
 }
 
 // ============================================================================
@@ -445,7 +446,7 @@ async function generatePDF(
 export async function executeInvoiceAction(
 	options: ExecuteInvoiceActionOptions
 ): Promise<{ success: boolean } | void> {
-	const { invoiceId, action, format = "invoice", source, onProgress } = options;
+	const { invoiceId, action, format = "invoice", source, onProgress, onWarning } = options;
 
 	try {
 		// Step 1: Fetch invoice data (if not provided)
@@ -466,7 +467,7 @@ export async function executeInvoiceAction(
 				break;
 			case "whatsapp":
 				// WhatsApp action returns success status for redirect control
-				return await handleWhatsApp(documentData, invoiceId, format, onProgress);
+				return await handleWhatsApp(documentData, invoiceId, format, onProgress, onWarning);
 			case "r2-upload":
 				await handleR2Upload(documentData, invoiceId, format);
 				break;
@@ -567,7 +568,8 @@ async function handleWhatsApp(
 	data: InvoiceDocumentData,
 	invoiceId: string,
 	format: DocumentFormat,
-	onProgress?: (message: string) => void
+	onProgress?: (message: string) => void,
+	onWarning?: (title: string, description: string) => void
 ): Promise<{ success: boolean }> {
 	try {
 		// Step 1: Check for existing valid R2 URL
@@ -631,12 +633,35 @@ async function handleWhatsApp(
 					return uploadResult.publicUrl;
 				} else {
 					// Log the error for debugging
+					const errorMessage = uploadResult.error || "R2 upload failed";
 					console.error("[InvoiceDocumentEngine] R2 Upload failed:", {
-						error: uploadResult.error,
+						error: errorMessage,
 						invoiceId,
 						invoiceNumber: data.invoiceNumber,
 					});
-					throw new Error(uploadResult.error || "R2 upload failed");
+					
+					// Show user-friendly warning message
+					if (onWarning) {
+						// Check if it's a configuration error
+						if (errorMessage.includes("R2 configuration") || errorMessage.includes("environment variable")) {
+							onWarning(
+								"⚠️ Cloud Storage Not Configured",
+								"PDF upload to cloud storage is not configured. WhatsApp will open with invoice page link instead. Please configure R2 storage in Vercel settings."
+							);
+						} else if (errorMessage.includes("timeout")) {
+							onWarning(
+								"⏱️ Upload Taking Longer",
+								"PDF upload is taking longer than expected. WhatsApp will open with invoice page link. The PDF will continue uploading in the background."
+							);
+						} else {
+							onWarning(
+								"⚠️ PDF Upload Failed",
+								`Unable to upload PDF to cloud storage: ${errorMessage}. WhatsApp will open with invoice page link instead.`
+							);
+						}
+					}
+					
+					throw new Error(errorMessage);
 				}
 			}).catch(err => {
 				console.error("[InvoiceDocumentEngine] Upload promise rejected:", err);
@@ -670,14 +695,33 @@ async function handleWhatsApp(
 					if (pdfR2Url) {
 						onProgress?.("PDF uploaded successfully");
 					} else {
-						// Upload still in progress after 8 seconds - log warning but continue
+						// Upload still in progress after 8 seconds - show warning to user
 						console.warn("[InvoiceDocumentEngine] R2 upload took longer than 8 seconds, using invoice link fallback");
 						onProgress?.("PDF upload taking longer than expected, using invoice link");
+						
+						// Show user warning before falling back
+						if (onWarning) {
+							onWarning(
+								"⏱️ Upload Timeout",
+								"PDF upload is taking longer than expected. WhatsApp will open with invoice page link. The PDF will continue uploading in the background and will be available shortly."
+							);
+						}
 					}
 				}
-			} catch (err) {
-				// If upload fails with an error (not just timeout), log it
+			} catch (err: any) {
+				// If upload fails with an error (not just timeout), log it and show warning
 				console.error("[InvoiceDocumentEngine] R2 upload error:", err);
+				
+				// Show user warning if not already shown
+				if (onWarning) {
+					const errorMessage = err?.message || "Unknown error";
+					if (!errorMessage.includes("R2 configuration") && !errorMessage.includes("environment variable")) {
+						onWarning(
+							"⚠️ PDF Upload Failed",
+							`Unable to upload PDF to cloud storage. WhatsApp will open with invoice page link instead. Error: ${errorMessage}`
+						);
+					}
+				}
 				// Continue with invoice link fallback - don't block WhatsApp opening
 			}
 		}

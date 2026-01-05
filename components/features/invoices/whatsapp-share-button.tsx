@@ -108,6 +108,12 @@ export function WhatsAppShareButton({
 	}, []);
 
 	const handleShare = async () => {
+		// Prevent double-clicks and multiple simultaneous shares
+		if (isSharing) {
+			console.warn("[WhatsAppShare] Share already in progress, ignoring duplicate click");
+			return;
+		}
+
 		if (!isOnline) {
 			toast({
 				title: "Internet Required",
@@ -141,6 +147,20 @@ export function WhatsAppShareButton({
 				source,
 				onProgress: (message) => {
 					console.log(`[WhatsAppShare] ${message}`);
+					// Show progress messages to user
+					toast({
+						title: "Processing...",
+						description: message,
+						duration: 2000,
+					});
+				},
+				onWarning: (title, description) => {
+					toast({
+						title,
+						description,
+						variant: "default",
+						duration: 6000,
+					});
 				},
 			});
 

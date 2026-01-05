@@ -1316,6 +1316,14 @@ export function InvoiceForm({
 				onProgress: (message) => {
 					console.log(`[InvoiceForm] ${message}`);
 				},
+				onWarning: (title, description) => {
+					toast({
+						title,
+						description,
+						variant: "default",
+						duration: 6000,
+					});
+				},
 			});
 
 			// Check if WhatsApp opened successfully
