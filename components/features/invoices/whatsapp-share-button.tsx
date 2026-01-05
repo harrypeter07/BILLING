@@ -251,6 +251,12 @@ export function WhatsAppShareButton({
 
 	return (
 		<>
+			<R2UploadErrorModal
+				open={showErrorModal}
+				onOpenChange={setShowErrorModal}
+				error={uploadError}
+				onRetry={handleRetryUpload}
+			/>
 			<div className="flex items-center gap-2">
 				<Button
 					onClick={handleShare}
