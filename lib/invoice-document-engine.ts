@@ -695,44 +695,27 @@ async function handleWhatsApp(
 					if (pdfR2Url) {
 						onProgress?.("PDF uploaded successfully");
 					} else {
-						// Upload still in progress after 8 seconds - show warning to user
-						console.warn("[InvoiceDocumentEngine] R2 upload took longer than 8 seconds, using invoice link fallback");
-						onProgress?.("PDF upload taking longer than expected, using invoice link");
-						
-						// Show user warning before falling back
-						if (onWarning) {
-							onWarning(
-								"⏱️ Upload Timeout",
-								"PDF upload is taking longer than expected. WhatsApp will open with invoice page link. The PDF will continue uploading in the background and will be available shortly."
-							);
-						}
+						// Upload still in progress after 8 seconds - throw error instead of falling back
+						console.warn("[InvoiceDocumentEngine] R2 upload took longer than 8 seconds");
+						const timeoutError = new Error("PDF upload timeout: Upload took longer than 8 seconds. Please check your internet connection and try again.");
+						throw timeoutError;
 					}
 				}
 			} catch (err: any) {
-				// If upload fails with an error (not just timeout), log it and show warning
+				// If upload fails with an error, throw it to prevent fallback
 				console.error("[InvoiceDocumentEngine] R2 upload error:", err);
-				
-				// Show user warning if not already shown
-				if (onWarning) {
-					const errorMessage = err?.message || "Unknown error";
-					if (!errorMessage.includes("R2 configuration") && !errorMessage.includes("environment variable")) {
-						onWarning(
-							"⚠️ PDF Upload Failed",
-							`Unable to upload PDF to cloud storage. WhatsApp will open with invoice page link instead. Error: ${errorMessage}`
-						);
-					}
-				}
-				// Continue with invoice link fallback - don't block WhatsApp opening
+				const errorMessage = err?.message || "Unknown error occurred during PDF upload";
+				throw new Error(errorMessage);
 			}
 		}
 
-		// Step 5: Generate WhatsApp message with R2 URL or invoice link fallback
-		// Use invoice link as fallback if R2 URL not ready yet (upload still in progress)
-		const invoiceLink = typeof window !== 'undefined' 
-			? `${window.location.origin}/i/${invoiceId}`
-			: '';
-		
-		const finalPdfUrl = pdfR2Url || invoiceLink;
+		// Step 5: Validate that we have R2 URL (required - no fallback)
+		if (!pdfR2Url) {
+			throw new Error("PDF upload failed: No valid PDF URL available. Please try again.");
+		}
+
+		// Step 6: Generate WhatsApp message with R2 URL (required - no fallback)
+		const finalPdfUrl = pdfR2Url;
 		
 		// Build WhatsApp message manually to support fallback
 		const formatDate = (dateStr: string) => {
@@ -750,8 +733,6 @@ async function handleWhatsApp(
 			})
 			.join('\n\n');
 		
-		const linkLabel = pdfR2Url ? '📄 Download Invoice PDF' : '📱 View Invoice';
-		
 		const whatsappMessage = `📋 *Invoice Receipt*
 
 🏪 *${data.businessName}*
@@ -768,7 +749,7 @@ ${itemsList}
 💰 *Total: ₹${data.totalAmount.toFixed(2)}*
 ━━━━━━━━━━━━━━━━━━━━
 
-${linkLabel}:
+📄 Download Invoice PDF:
 ${finalPdfUrl}
 
 Thank you for your business! 🙏`;

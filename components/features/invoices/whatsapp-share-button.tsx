@@ -23,6 +23,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { getInvoiceStorage } from "@/lib/utils/save-invoice-storage";
 import { executeInvoiceAction } from "@/lib/invoice-document-engine";
+import { R2UploadErrorModal } from "@/components/features/invoices/r2-upload-error-modal";
 
 interface WhatsAppShareButtonProps {
 	invoice: {
@@ -199,15 +200,26 @@ export function WhatsAppShareButton({
 					? error.message
 					: "Failed to prepare WhatsApp message. Please try again.";
 			
-			toast({
-				title: "Error",
-				description: errorMessage,
-				variant: "destructive",
-				duration: 5000,
-			});
+			// Check if it's an R2 upload error - show modal instead of toast
+			if (errorMessage.includes("upload") || errorMessage.includes("R2") || errorMessage.includes("PDF")) {
+				setUploadError(errorMessage);
+				setShowErrorModal(true);
+			} else {
+				toast({
+					title: "Error",
+					description: errorMessage,
+					variant: "destructive",
+					duration: 5000,
+				});
+			}
 		} finally {
 			setIsSharing(false);
 		}
+	};
+
+	const handleRetryUpload = () => {
+		// Retry the share operation
+		handleShare();
 	};
 
 	const handleCopyLink = async () => {

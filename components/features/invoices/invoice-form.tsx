@@ -51,6 +51,7 @@ import { db } from "@/lib/dexie-client";
 import { useInvalidateQueries } from "@/lib/hooks/use-cached-data";
 import { executeInvoiceAction } from "@/lib/invoice-document-engine";
 import { LogoConfigModal } from "@/components/features/invoices/logo-config-modal";
+import { R2UploadErrorModal } from "@/components/features/invoices/r2-upload-error-modal";
 import {
 	ResizablePanelGroup,
 	ResizablePanel,
@@ -1352,13 +1353,19 @@ export function InvoiceForm({
 					? error.message
 					: "Failed to save and share invoice";
 			
-			// Show specific error message
-			toast({
-				title: "Error",
-				description: errorMessage,
-				variant: "destructive",
-				duration: 5000,
-			});
+			// Check if it's an R2 upload error - show modal instead of toast
+			if (errorMessage.includes("upload") || errorMessage.includes("R2") || errorMessage.includes("PDF") || errorMessage.includes("timeout")) {
+				setR2UploadError(errorMessage);
+				setShowR2ErrorModal(true);
+			} else {
+				// Show specific error message for other errors
+				toast({
+					title: "Error",
+					description: errorMessage,
+					variant: "destructive",
+					duration: 5000,
+				});
+			}
 			
 			// If invoice was saved but WhatsApp failed, keep user on page
 			// (invoice is already saved at this point)
@@ -1367,6 +1374,11 @@ export function InvoiceForm({
 			setIsSharing(false);
 			setIsLoading(false);
 		}
+	};
+
+	const handleRetryR2Upload = () => {
+		// Retry the share operation
+		handleSaveAndShare(new Event('submit') as any);
 	};
 
 	const handleLogoConfigured = (newLogoUrl: string) => {
