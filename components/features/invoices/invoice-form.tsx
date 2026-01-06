@@ -670,6 +670,10 @@ export function InvoiceForm({
 			const isIndexedDb = isIndexedDbMode();
 			let newCustomer: { id: string; name: string };
 
+			// Get current store ID for store-scoped isolation
+			const { getCurrentStoreId } = await import("@/lib/utils/get-current-store-id");
+			const currentStoreId = await getCurrentStoreId();
+
 			if (isIndexedDb) {
 				// Create customer in IndexedDB
 				const customerId = crypto.randomUUID();
@@ -678,6 +682,7 @@ export function InvoiceForm({
 					name: data.name,
 					phone: data.phone,
 					email: data.email || null,
+					store_id: currentStoreId || null, // Store-scoped isolation
 					created_at: new Date().toISOString(),
 					updated_at: new Date().toISOString(),
 				};
@@ -694,12 +699,12 @@ export function InvoiceForm({
 					const empSession = localStorage.getItem("employeeSession");
 					if (empSession) {
 						const session = JSON.parse(empSession);
-						const storeId = session.storeId;
-						if (storeId) {
+						const sessionStoreId = session.storeId;
+						if (sessionStoreId) {
 							const { data: store } = await supabase
 								.from("stores")
 								.select("admin_user_id")
-								.eq("id", storeId)
+								.eq("id", sessionStoreId)
 								.single();
 							if (store?.admin_user_id) {
 								userId = store.admin_user_id;
@@ -724,6 +729,7 @@ export function InvoiceForm({
 						phone: data.phone,
 						email: data.email || null,
 						user_id: userId,
+						store_id: currentStoreId || null, // Store-scoped isolation
 						created_at: new Date().toISOString(),
 						updated_at: new Date().toISOString(),
 					})

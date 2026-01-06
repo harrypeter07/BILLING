@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
+import { getCurrentStoreId } from "@/lib/utils/get-current-store-id"
 
 // Query keys for consistent caching
 export const queryKeys = {
@@ -19,14 +20,20 @@ export const queryKeys = {
     store: (id: string) => ["store", id] as const,
 }
 
-// Hook to fetch customers with caching
+// Hook to fetch customers with caching (store-scoped)
 export function useCustomers() {
     return useQuery({
         queryKey: queryKeys.customers,
         queryFn: async () => {
             const isIndexedDb = isIndexedDbMode()
+            const storeId = await getCurrentStoreId()
 
             if (isIndexedDb) {
+                // IndexedDB: Filter by store_id if available
+                if (storeId) {
+                    return await db.customers.where("store_id").equals(storeId).toArray()
+                }
+                // Fallback: Return all (for backward compatibility with legacy data)
                 return await db.customers.toArray()
             } else {
                 const supabase = createClient()
@@ -37,12 +44,12 @@ export function useCustomers() {
                     const empSession = localStorage.getItem("employeeSession")
                     if (empSession) {
                         const session = JSON.parse(empSession)
-                        const storeId = session.storeId
-                        if (storeId) {
+                        const sessionStoreId = session.storeId
+                        if (sessionStoreId) {
                             const { data: store } = await supabase
                                 .from('stores')
                                 .select('admin_user_id')
-                                .eq('id', storeId)
+                                .eq('id', sessionStoreId)
                                 .single()
                             if (store?.admin_user_id) {
                                 userId = store.admin_user_id
@@ -56,11 +63,18 @@ export function useCustomers() {
 
                 if (!userId) return []
 
-                const { data, error } = await supabase
+                // Build query with store_id filter
+                let query = supabase
                     .from("customers")
                     .select("*")
                     .eq("user_id", userId)
-                    .order("created_at", { ascending: false })
+
+                // Filter by store_id if available (store-scoped isolation)
+                if (storeId) {
+                    query = query.or(`store_id.is.null,store_id.eq.${storeId}`)
+                }
+
+                const { data, error } = await query.order("created_at", { ascending: false })
 
                 if (error) throw error
                 return data || []
@@ -69,25 +83,38 @@ export function useCustomers() {
     })
 }
 
-// Hook to fetch products with caching
+// Hook to fetch products with caching (store-scoped)
 export function useProducts() {
     return useQuery({
         queryKey: queryKeys.products,
         queryFn: async () => {
             const isIndexedDb = isIndexedDbMode()
+            const storeId = await getCurrentStoreId()
 
             if (isIndexedDb) {
+                // IndexedDB: Filter by store_id if available
+                if (storeId) {
+                    return await db.products.where("store_id").equals(storeId).toArray()
+                }
+                // Fallback: Return all (for backward compatibility with legacy data)
                 return await db.products.toArray()
             } else {
                 const supabase = createClient()
                 const { data: { user } } = await supabase.auth.getUser()
                 if (!user) return []
 
-                const { data, error } = await supabase
+                // Build query with store_id filter
+                let query = supabase
                     .from("products")
                     .select("*")
                     .eq("user_id", user.id)
-                    .order("created_at", { ascending: false })
+
+                // Filter by store_id if available (store-scoped isolation)
+                if (storeId) {
+                    query = query.or(`store_id.is.null,store_id.eq.${storeId}`)
+                }
+
+                const { data, error } = await query.order("created_at", { ascending: false })
 
                 if (error) throw error
                 return data || []

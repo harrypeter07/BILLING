@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { name, email, phone, gstin, user_id } = body
+    const { name, email, phone, gstin, user_id, store_id } = body
 
     if (!name || !name.trim()) {
       return NextResponse.json({ error: "Customer name is required" }, { status: 400 })
@@ -57,15 +57,32 @@ export async function POST(request: Request) {
     // Use provided user_id (for employees) or current user's id (for admins)
     const targetUserId = user_id || user.id
 
-    // Check for duplicate email if provided
+    // Get store_id from request or derive from employee session
+    let targetStoreId = store_id || null
+    
+    // If employee, get store_id from their session
+    if (!targetStoreId) {
+      // Try to get from request headers (set by frontend)
+      const storeIdHeader = request.headers.get("x-store-id")
+      if (storeIdHeader) {
+        targetStoreId = storeIdHeader
+      }
+    }
+
+    // Check for duplicate email if provided (store-scoped)
     if (email && email.trim()) {
-      const { data: existingCustomer } = await supabase
+      let duplicateQuery = supabase
         .from("customers")
         .select("id, name, email")
         .eq("user_id", targetUserId)
         .ilike("email", email.trim())
-        .limit(1)
-        .single()
+      
+      // Filter by store_id if available (store-scoped duplicate check)
+      if (targetStoreId) {
+        duplicateQuery = duplicateQuery.or(`store_id.is.null,store_id.eq.${targetStoreId}`)
+      }
+      
+      const { data: existingCustomer } = await duplicateQuery.limit(1).single()
 
       if (existingCustomer) {
         return NextResponse.json(
@@ -79,6 +96,7 @@ export async function POST(request: Request) {
       .from("customers")
       .insert({
         user_id: targetUserId,
+        store_id: targetStoreId, // Store-scoped isolation
         name: name.trim(),
         email: email?.trim() || null,
         phone: phone?.trim() || null,

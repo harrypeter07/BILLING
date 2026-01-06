@@ -175,7 +175,15 @@ export function ProductForm({ product }: ProductFormProps) {
         }
       }
 
-      const payload: any = { id: product?.id || uuidv4(), ...formData }
+      // Get current store ID for store-scoped isolation
+      const { getCurrentStoreId } = await import("@/lib/utils/get-current-store-id")
+      const storeId = await getCurrentStoreId()
+
+      const payload: any = { 
+        id: product?.id || uuidv4(), 
+        ...formData,
+        store_id: storeId || null, // Set store_id for store-scoped isolation
+      }
 
       if (isIndexedDb) {
         // Save to Dexie
@@ -195,9 +203,14 @@ export function ProductForm({ product }: ProductFormProps) {
           return
         }
 
+        // Get current store ID for store-scoped isolation
+        const { getCurrentStoreId } = await import("@/lib/utils/get-current-store-id")
+        const storeId = await getCurrentStoreId()
+
         const productData = {
           ...payload,
           user_id: user.id,
+          store_id: storeId || null, // Set store_id for store-scoped isolation
         }
 
         if (product?.id) {

@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useToast } from "@/hooks/use-toast"
 import { Upload, X, Image as ImageIcon } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export default function BusinessSettingsPage() {
   const [loading, setLoading] = useState(false)
@@ -28,6 +30,9 @@ export default function BusinessSettingsPage() {
     next_invoice_number: 1,
     default_due_days: 30,
     default_gst_rate: 18,
+    is_b2b_enabled: false,
+    place_of_supply: "",
+    business_email: "",
   })
   const { toast } = useToast()
   const supabase = createClient()
@@ -67,6 +72,9 @@ export default function BusinessSettingsPage() {
           next_invoice_number: settings.next_invoice_number || 1,
           default_due_days: settings.default_due_days || 30,
           default_gst_rate: settings.default_gst_rate || 18,
+          is_b2b_enabled: settings.is_b2b_enabled || false,
+          place_of_supply: settings.place_of_supply || "",
+          business_email: settings.business_email || "",
         })
       }
     } catch (error) {
@@ -85,6 +93,29 @@ export default function BusinessSettingsPage() {
       ...prev,
       [name]: name === "next_invoice_number" || name === "default_due_days" ? Number.parseInt(value) : value,
     }))
+  }
+
+  const handleB2BToggle = (checked: boolean) => {
+    // Validate B2B requirements before enabling
+    if (checked) {
+      if (!businessData.business_gstin?.trim()) {
+        toast({
+          title: "GSTIN Required",
+          description: "Please set your business GSTIN before enabling B2B mode",
+          variant: "destructive",
+        })
+        return
+      }
+      if (!businessData.business_address?.trim()) {
+        toast({
+          title: "Address Required",
+          description: "Please set your business address before enabling B2B mode",
+          variant: "destructive",
+        })
+        return
+      }
+    }
+    setInvoiceSettings((prev) => ({ ...prev, is_b2b_enabled: checked }))
   }
 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -404,6 +435,89 @@ export default function BusinessSettingsPage() {
 
           <Button onClick={saveInvoiceSettings} disabled={loading} className="w-full">
             {loading ? "Saving..." : "Save Invoice Settings"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* B2B Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle>B2B Billing Mode</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-0.5">
+              <Label htmlFor="b2b-toggle">Enable B2B Billing</Label>
+              <p className="text-sm text-muted-foreground">
+                Enable B2B mode to enforce GST compliance, HSN codes, and tax calculations for business-to-business transactions
+              </p>
+            </div>
+            <Switch
+              id="b2b-toggle"
+              checked={invoiceSettings.is_b2b_enabled}
+              onCheckedChange={handleB2BToggle}
+              disabled={loading || !businessData.business_gstin?.trim() || !businessData.business_address?.trim()}
+            />
+          </div>
+
+          {invoiceSettings.is_b2b_enabled && (
+            <Alert>
+              <AlertDescription>
+                B2B mode is enabled. GSTIN, HSN codes, and tax compliance will be enforced for all invoices.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {!businessData.business_gstin?.trim() && (
+            <Alert variant="destructive">
+              <AlertDescription>
+                Business GSTIN is required to enable B2B mode. Please set it in Business Information above.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {!businessData.business_address?.trim() && (
+            <Alert variant="destructive">
+              <AlertDescription>
+                Business address is required to enable B2B mode. Please set it in Business Information above.
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {invoiceSettings.is_b2b_enabled && (
+            <>
+              <div>
+                <Label htmlFor="place_of_supply">Place of Supply (State Code)</Label>
+                <Input
+                  id="place_of_supply"
+                  name="place_of_supply"
+                  value={invoiceSettings.place_of_supply}
+                  onChange={handleInvoiceChange}
+                  placeholder="e.g., 27 (Maharashtra)"
+                  className="mt-1"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  State code for tax calculation (CGST/SGST vs IGST)
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="business_email">Business Email (for B2B invoices)</Label>
+                <Input
+                  id="business_email"
+                  name="business_email"
+                  type="email"
+                  value={invoiceSettings.business_email}
+                  onChange={handleInvoiceChange}
+                  placeholder="business@example.com"
+                  className="mt-1"
+                />
+              </div>
+            </>
+          )}
+
+          <Button onClick={saveInvoiceSettings} disabled={loading} className="w-full">
+            {loading ? "Saving..." : "Save B2B Settings"}
           </Button>
         </CardContent>
       </Card>

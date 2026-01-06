@@ -104,9 +104,10 @@ export default function NewInvoicePage() {
                     .single()
                   
                   if (store?.admin_user_id) {
+                    // Store-scoped queries: filter by store_id
                     const [{ data: dbCustomers }, { data: dbProducts }, { data: dbSettings }] = await Promise.all([
-                      supabase.from('customers').select('id, name').eq('user_id', store.admin_user_id),
-                      supabase.from('products').select('id, name, price, gst_rate, hsn_code, unit').eq('user_id', store.admin_user_id).eq('is_active', true),
+                      supabase.from('customers').select('id, name').eq('user_id', store.admin_user_id).or(`store_id.is.null,store_id.eq.${storeId}`),
+                      supabase.from('products').select('id, name, price, gst_rate, hsn_code, unit').eq('user_id', store.admin_user_id).eq('is_active', true).or(`store_id.is.null,store_id.eq.${storeId}`),
                       supabase.from('business_settings').select('*').eq('user_id', store.admin_user_id).single(),
                     ])
                     setCustomers(dbCustomers || [])

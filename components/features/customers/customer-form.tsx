@@ -13,6 +13,8 @@ import { createClient } from "@/lib/supabase/client"
 import { useToast } from "@/hooks/use-toast"
 import { storageManager } from "@/lib/storage-manager"
 import { db } from "@/lib/dexie-client"
+import { isIndexedDbMode } from "@/lib/utils/db-mode"
+import { getCurrentStoreId } from "@/lib/utils/get-current-store-id"
 import {
   Command,
   CommandEmpty,
@@ -99,9 +101,72 @@ export function CustomerForm({ customer }: CustomerFormProps) {
 
     setIsLoading(true);
     try {
+      const isIndexedDb = isIndexedDbMode()
+      const storeId = await getCurrentStoreId()
       const id = customer?.id || (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now()))
-      await storageManager.updateCustomer({ id, ...formData })
-      toast({ title: "Success", description: customer?.id ? "Customer updated" : "Customer created" })
+      
+      if (isIndexedDb) {
+        // IndexedDB mode
+        await storageManager.updateCustomer({ id, ...formData, store_id: storeId || null })
+        toast({ title: "Success", description: customer?.id ? "Customer updated" : "Customer created" })
+      } else {
+        // Supabase mode
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          toast({ title: "Error", description: "Not authenticated", variant: "destructive" })
+          return
+        }
+
+        // Handle employee auth
+        const authType = localStorage.getItem("authType")
+        let userId = user.id
+        if (authType === "employee") {
+          const empSession = localStorage.getItem("employeeSession")
+          if (empSession) {
+            const session = JSON.parse(empSession)
+            const sessionStoreId = session.storeId
+            if (sessionStoreId) {
+              const { data: store } = await supabase
+                .from("stores")
+                .select("admin_user_id")
+                .eq("id", sessionStoreId)
+                .single()
+              if (store?.admin_user_id) {
+                userId = store.admin_user_id
+              }
+            }
+          }
+        }
+
+        const customerData = {
+          id: customer?.id,
+          user_id: userId,
+          store_id: storeId || null, // Store-scoped isolation
+          name: formData.name.trim(),
+          email: formData.email?.trim() || null,
+          phone: formData.phone?.trim() || null,
+          billing_address: formData.billing_address?.trim() || null,
+          shipping_address: formData.shipping_address?.trim() || null,
+          notes: formData.notes?.trim() || null,
+        }
+
+        if (customer?.id) {
+          const { error } = await supabase
+            .from("customers")
+            .update(customerData)
+            .eq("id", customer.id)
+          if (error) throw error
+          toast({ title: "Success", description: "Customer updated" })
+        } else {
+          const { error } = await supabase
+            .from("customers")
+            .insert(customerData)
+          if (error) throw error
+          toast({ title: "Success", description: "Customer created" })
+        }
+      }
+      
       router.push(customer?.id ? `/customers/${customer.id}` : "/customers")
       router.refresh();
     } catch (error) {
