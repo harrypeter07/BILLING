@@ -117,8 +117,8 @@ export async function shareOnWhatsApp(
     // Method 1: PRIMARY - window.open (synchronous to preserve user gesture)
     whatsappWindow = window.open(whatsappUrl, '_blank', 'noopener,noreferrer')
     
-    // Validate immediately
-    if (whatsappWindow !== null && whatsappWindow.closed === false) {
+    // Validate immediately - check if window opened successfully
+    if (whatsappWindow !== null && typeof whatsappWindow !== 'undefined' && whatsappWindow.closed === false) {
       console.log('[WhatsAppShare] window.open succeeded - WhatsApp opened')
       
       // Reset flag after window closes (check after 2 seconds)
@@ -133,10 +133,11 @@ export async function shareOnWhatsApp(
       return { success: true }
     }
     
-    // If window.open returned null, it was blocked
+    // If window.open returned null/undefined, it was blocked
+    // CRITICAL: Reset flag BEFORE trying fallback to prevent double-open
     whatsappWindowOpen = false
     
-    // Method 2: FALLBACK - Create and click link (if popup was blocked)
+    // Method 2: FALLBACK - Create and click link (only if window.open was blocked)
     console.warn('[WhatsAppShare] window.open was blocked, trying link method...')
     try {
       const link = document.createElement('a')
@@ -145,6 +146,9 @@ export async function shareOnWhatsApp(
       link.rel = 'noopener noreferrer'
       link.style.display = 'none'
       document.body.appendChild(link)
+      
+      // Set flag before clicking to prevent race conditions
+      whatsappWindowOpen = true
       link.click()
       console.log('[WhatsAppShare] Link clicked successfully')
       
@@ -155,7 +159,7 @@ export async function shareOnWhatsApp(
         }
       }, 1000)
       
-      whatsappWindowOpen = true
+      // Reset flag after delay
       setTimeout(() => {
         whatsappWindowOpen = false
         lastWhatsAppUrl = null

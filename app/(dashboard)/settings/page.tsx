@@ -203,17 +203,33 @@ export default function SettingsPage() {
         // Switch to Supabase mode
         localStorage.setItem('databaseType', 'supabase')
         
+        // Sync to business_settings for employee inheritance
+        if (user) {
+          await supabase
+            .from("business_settings")
+            .update({ database_mode: 'supabase' })
+            .eq("user_id", user.id)
+        }
+        
         toast({
           title: "Switched to Supabase Mode",
-          description: "All local data has been copied to Supabase. App is now in cloud-only mode.",
+          description: "All local data has been copied to Supabase. App is now in cloud-only mode. Employees will inherit this mode.",
         })
       } else {
         // Switching back to IndexedDB mode
         localStorage.setItem('databaseType', 'indexeddb')
         
+        // Sync to business_settings for employee inheritance
+        if (user) {
+          await supabase
+            .from("business_settings")
+            .update({ database_mode: 'indexeddb' })
+            .eq("user_id", user.id)
+        }
+        
         toast({
           title: "Switched to IndexedDB Mode",
-          description: "App is now using local storage. Data will be stored locally in IndexedDB.",
+          description: "App is now using local storage. Data will be stored locally in IndexedDB. Employees will inherit this mode.",
         })
       }
 

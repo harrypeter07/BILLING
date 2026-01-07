@@ -152,16 +152,26 @@ export function Header({ title }: HeaderProps) {
     setHasMounted(true);
     setIsOnline(typeof navigator !== "undefined" ? navigator.onLine : true)
 
-    // Get current database type
+    // Get current database type (async for employees to get admin's mode)
+    const updateDbMode = async () => {
+      const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
+      const dbType = await getActiveDbModeAsync()
+      setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local')
+      setDbMode(dbType)
+    }
+    updateDbMode()
+
+    // Also set initial value synchronously (may be stale for employees)
     const dbType = getActiveDbMode();
     setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
     setDbMode(dbType);
 
     // Listen for database type changes
-    const handleStorageChange = () => {
-      const dbType = getActiveDbMode();
-      setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
-      setDbMode(dbType);
+    const handleStorageChange = async () => {
+      const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
+      const dbType = await getActiveDbModeAsync()
+      setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local')
+      setDbMode(dbType)
     };
 
     window.addEventListener('storage', handleStorageChange);
@@ -170,12 +180,13 @@ export function Header({ title }: HeaderProps) {
     window.addEventListener("online", handleOnline)
     window.addEventListener("offline", handleOffline)
 
-    // Also check periodically (in case changed in same tab)
-    const interval = setInterval(() => {
-      const dbType = getActiveDbMode();
-      setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
-      setDbMode(dbType);
-    }, 1000);
+    // Also check periodically (in case changed in same tab) - async for employees
+    const interval = setInterval(async () => {
+      const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
+      const dbType = await getActiveDbModeAsync()
+      setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local')
+      setDbMode(dbType)
+    }, 3000); // Check every 3 seconds for real-time sync
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);

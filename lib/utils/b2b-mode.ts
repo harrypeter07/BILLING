@@ -85,11 +85,16 @@ export async function getB2BModeConfig(): Promise<B2BModeConfig> {
     const isEmployeeSession = authType === "employee"
     
     // Get admin's business_settings
-    const { data: adminSettings } = await supabase
+    // Use maybeSingle() to handle case where settings don't exist
+    const { data: adminSettings, error: settingsError } = await supabase
       .from("business_settings")
-      .select("allow_b2b_mode, is_b2b_enabled")
+      .select("allow_b2b_mode, is_b2b_enabled, database_mode")
       .eq("user_id", adminUserId)
-      .single()
+      .maybeSingle()
+    
+    if (settingsError) {
+      console.error("[getB2BModeConfig] Error fetching admin settings:", settingsError)
+    }
     
     const allowB2BMode = adminSettings?.allow_b2b_mode || false
     

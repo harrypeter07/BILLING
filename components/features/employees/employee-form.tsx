@@ -15,8 +15,6 @@ import { storageManager } from "@/lib/storage-manager"
 import { getDatabaseType, isIndexedDbMode } from "@/lib/utils/db-mode"
 import { useStore } from "@/lib/utils/store-context"
 import { db } from "@/lib/dexie-client"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Checkbox } from "@/components/ui/checkbox"
 import { useInvalidateQueries } from "@/lib/hooks/use-cached-data"
 
 interface Employee {
@@ -24,10 +22,10 @@ interface Employee {
   name: string
   email: string
   phone?: string | null
-  role: string
+  role?: string // Optional - will default to 'employee'
   salary?: number | null
   joining_date?: string | null
-  is_active: boolean
+  is_active?: boolean // Optional - will default to true
   employee_id?: string | null
   password?: string | null
   store_id?: string | null
@@ -49,10 +47,8 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
     name: employee?.name || "",
     email: employee?.email || "",
     phone: employee?.phone || "",
-    role: employee?.role || "employee",
     salary: employee?.salary?.toString() || "",
     joining_date: employee?.joining_date ? new Date(employee.joining_date).toISOString().split('T')[0] : "",
-    is_active: employee?.is_active !== undefined ? employee.is_active : true,
     password: employee?.password || "",
   })
 
@@ -127,10 +123,10 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
         name: formData.name,
         email: formData.email || '',
         phone: formData.phone || '',
-        role: formData.role || 'employee',
+        role: 'employee', // Always set to 'employee' (role field removed from form)
         salary: formData.salary ? parseFloat(formData.salary) : 0,
         joining_date: formData.joining_date || new Date().toISOString().split('T')[0],
-        is_active: formData.is_active !== undefined ? formData.is_active : true,
+        is_active: true, // Always set to true (is_active field removed from form)
         employee_id: employeeId || '',
         password: password || employeeId || '',
         store_id: storeId || '',
@@ -167,7 +163,7 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
 
       if (employee?.id) {
         // Update existing employee via API
-        const updateData = {
+        const updateData: any = {
           name: employeeData.name,
           email: employeeData.email,
           phone: employeeData.phone,
@@ -369,21 +365,6 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="role">
-                Role <span className="text-destructive">*</span>
-              </Label>
-              <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select role" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="employee">Employee</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
               <Label htmlFor="salary">Salary</Label>
               <Input
                 id="salary"
@@ -420,17 +401,6 @@ export function EmployeeForm({ employee }: EmployeeFormProps) {
                 </p>
               </div>
             )}
-          </div>
-
-          <div className="flex items-center space-x-2">
-            <Checkbox
-              id="is_active"
-              checked={formData.is_active}
-              onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked === true })}
-            />
-            <Label htmlFor="is_active" className="cursor-pointer">
-              Active Employee
-            </Label>
           </div>
 
           <div className="flex gap-4">
