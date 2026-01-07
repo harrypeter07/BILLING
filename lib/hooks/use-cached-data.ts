@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
-import { isIndexedDbMode } from "@/lib/utils/db-mode"
+import { isIndexedDbMode, getActiveDbModeAsync } from "@/lib/utils/db-mode"
 import { getCurrentStoreId } from "@/lib/utils/get-current-store-id"
 
 // Query keys for consistent caching
@@ -25,7 +25,9 @@ export function useCustomers() {
     return useQuery({
         queryKey: queryKeys.customers,
         queryFn: async () => {
-            const isIndexedDb = isIndexedDbMode()
+            // Use async mode detection to properly inherit from admin for employees
+            const dbMode = await getActiveDbModeAsync()
+            const isIndexedDb = dbMode === 'indexeddb'
             const storeId = await getCurrentStoreId()
 
             if (isIndexedDb) {
@@ -92,7 +94,9 @@ export function useProducts() {
     return useQuery({
         queryKey: queryKeys.products,
         queryFn: async () => {
-            const isIndexedDb = isIndexedDbMode()
+            // Use async mode detection to properly inherit from admin for employees
+            const dbMode = await getActiveDbModeAsync()
+            const isIndexedDb = dbMode === 'indexeddb'
             const storeId = await getCurrentStoreId()
 
             if (isIndexedDb) {
@@ -161,7 +165,9 @@ export function useInvoices() {
     return useQuery({
         queryKey: queryKeys.invoices,
         queryFn: async () => {
-            const isIndexedDb = isIndexedDbMode()
+            // Use async mode detection to properly inherit from admin for employees
+            const dbMode = await getActiveDbModeAsync()
+            const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
                 const list = await db.invoices.toArray()
@@ -253,7 +259,9 @@ export function useEmployees() {
     return useQuery({
         queryKey: queryKeys.employees,
         queryFn: async () => {
-            const isIndexedDb = isIndexedDbMode()
+            // Use async mode detection to properly inherit from admin for employees
+            const dbMode = await getActiveDbModeAsync()
+            const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
                 return await db.employees.toArray()
@@ -280,7 +288,9 @@ export function useStores() {
     return useQuery({
         queryKey: queryKeys.stores,
         queryFn: async () => {
-            const isIndexedDb = isIndexedDbMode()
+            // Use async mode detection to properly inherit from admin for employees
+            const dbMode = await getActiveDbModeAsync()
+            const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
                 return await db.stores.toArray()
@@ -332,7 +342,9 @@ export function useEmployee(id: string) {
     return useQuery({
         queryKey: queryKeys.employee(id),
         queryFn: async () => {
-            const isIndexedDb = isIndexedDbMode()
+            // Use async mode detection to properly inherit from admin for employees
+            const dbMode = await getActiveDbModeAsync()
+            const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
                 const employee = await db.employees.get(id)
@@ -365,7 +377,9 @@ export function useCustomer(id: string) {
     return useQuery({
         queryKey: queryKeys.customer(id),
         queryFn: async () => {
-            const isIndexedDb = isIndexedDbMode()
+            // Use async mode detection to properly inherit from admin for employees
+            const dbMode = await getActiveDbModeAsync()
+            const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
                 return await db.customers.get(id)
@@ -390,7 +404,9 @@ export function useProduct(id: string) {
     return useQuery({
         queryKey: queryKeys.product(id),
         queryFn: async () => {
-            const isIndexedDb = isIndexedDbMode()
+            // Use async mode detection to properly inherit from admin for employees
+            const dbMode = await getActiveDbModeAsync()
+            const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
                 return await db.products.get(id)
@@ -415,7 +431,9 @@ export function useInvoice(id: string) {
     return useQuery({
         queryKey: queryKeys.invoice(id),
         queryFn: async () => {
-            const isIndexedDb = isIndexedDbMode()
+            // Use async mode detection to properly inherit from admin for employees
+            const dbMode = await getActiveDbModeAsync()
+            const isIndexedDb = dbMode === 'indexeddb'
 
             if (isIndexedDb) {
                 const invoice = await db.invoices.get(id)

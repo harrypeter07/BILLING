@@ -6,7 +6,15 @@ export type DatabaseMode = 'indexeddb' | 'supabase'
 // Cache for admin's database mode (for employees)
 let cachedAdminDbMode: DatabaseMode | null = null
 let cacheTimestamp: number = 0
-const CACHE_DURATION = 5000 // 5 seconds
+const CACHE_DURATION = 2000 // 2 seconds (shorter for real-time sync)
+
+/**
+ * Clear the database mode cache (call when admin switches modes)
+ */
+export function clearDatabaseModeCache(): void {
+  cachedAdminDbMode = null
+  cacheTimestamp = 0
+}
 
 /**
  * Get admin's database mode from business_settings

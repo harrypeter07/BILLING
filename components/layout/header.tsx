@@ -71,9 +71,22 @@ export function Header({ title }: HeaderProps) {
               }
             }
 
-            // Fetch B2B mode config for employee (includes employee's personal mode)
-            const b2bConfig = await getB2BModeConfig()
-            setB2bMode(b2bConfig.isB2BEnabled)
+            // Fetch B2B mode config for employee
+            try {
+              const b2bConfig = await getB2BModeConfig()
+              console.log("[Header] Employee B2B Config:", b2bConfig)
+              // For employees, show their personal B2B mode preference
+              setB2bMode(b2bConfig.isB2BEnabled)
+              
+              // Also fetch DB mode for employee
+              const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
+              const dbType = await getActiveDbModeAsync()
+              console.log("[Header] Employee DB Mode:", dbType)
+              setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local')
+              setDbMode(dbType)
+            } catch (error) {
+              console.error("[Header] Error fetching employee B2B/DB config:", error)
+            }
             return
           } catch (e) {
             console.error("[Header] Error parsing employee session:", e)
@@ -101,8 +114,20 @@ export function Header({ title }: HeaderProps) {
         }
 
         // Fetch B2B mode config for admin (admin's own mode)
-        const b2bConfig = await getB2BModeConfig()
-        setB2bMode(b2bConfig.isB2BEnabled)
+        try {
+          const b2bConfig = await getB2BModeConfig()
+          console.log("[Header] Admin B2B Config:", b2bConfig)
+          setB2bMode(b2bConfig.isB2BEnabled)
+          
+          // Also ensure DB mode is set for admin
+          const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
+          const dbType = await getActiveDbModeAsync()
+          console.log("[Header] Admin DB Mode:", dbType)
+          setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local')
+          setDbMode(dbType)
+        } catch (error) {
+          console.error("[Header] Error fetching admin B2B/DB config:", error)
+        }
       }
     }
     fetchUser()
@@ -154,14 +179,23 @@ export function Header({ title }: HeaderProps) {
 
     // Get current database type (async for employees to get admin's mode)
     const updateDbMode = async () => {
-      const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
-      const dbType = await getActiveDbModeAsync()
-      setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local')
-      setDbMode(dbType)
+      try {
+        const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
+        const dbType = await getActiveDbModeAsync()
+        console.log("[Header] DB Mode fetched:", dbType)
+        setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local')
+        setDbMode(dbType)
+      } catch (error) {
+        console.error("[Header] Error fetching DB mode:", error)
+        // Fallback to sync version
+        const dbType = getActiveDbMode();
+        setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
+        setDbMode(dbType);
+      }
     }
     updateDbMode()
 
-    // Also set initial value synchronously (may be stale for employees)
+    // Set initial value synchronously (may be stale for employees, but will update)
     const dbType = getActiveDbMode();
     setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
     setDbMode(dbType);
@@ -182,10 +216,19 @@ export function Header({ title }: HeaderProps) {
 
     // Also check periodically (in case changed in same tab) - async for employees
     const interval = setInterval(async () => {
-      const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
-      const dbType = await getActiveDbModeAsync()
-      setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local')
-      setDbMode(dbType)
+      try {
+        const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
+        const dbType = await getActiveDbModeAsync()
+        setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local')
+        setDbMode(dbType)
+        
+        // Also refresh B2B mode
+        const { getB2BModeConfig } = await import("@/lib/utils/b2b-mode")
+        const b2bConfig = await getB2BModeConfig()
+        setB2bMode(b2bConfig.isB2BEnabled)
+      } catch (error) {
+        console.error("[Header] Error in periodic refresh:", error)
+      }
     }, 3000); // Check every 3 seconds for real-time sync
 
     return () => {

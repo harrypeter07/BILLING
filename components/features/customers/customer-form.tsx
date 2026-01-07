@@ -67,7 +67,10 @@ export function CustomerForm({ customer }: CustomerFormProps) {
   useEffect(() => {
     const loadCustomers = async () => {
       try {
-        const isIndexedDb = isIndexedDbMode()
+        // Use async mode detection to properly inherit from admin for employees
+        const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
+        const dbMode = await getActiveDbModeAsync()
+        const isIndexedDb = dbMode === 'indexeddb'
         if (isIndexedDb) {
           // IndexedDB mode - load from IndexedDB
           const customers = await db.customers.toArray()
@@ -162,7 +165,10 @@ export function CustomerForm({ customer }: CustomerFormProps) {
 
     setIsLoading(true);
     try {
-      const isIndexedDb = isIndexedDbMode()
+      // Use async mode detection to properly inherit from admin for employees
+      const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
+      const dbMode = await getActiveDbModeAsync()
+      const isIndexedDb = dbMode === 'indexeddb'
       const storeId = await getCurrentStoreId()
       const id = customer?.id || (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Date.now()))
       

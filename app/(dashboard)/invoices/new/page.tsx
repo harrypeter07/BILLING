@@ -57,7 +57,10 @@ export default function NewInvoicePage() {
 
   useEffect(() => {
     (async () => {
-      const isIndexedDb = isIndexedDbMode()
+      // Use async mode detection to properly inherit from admin for employees
+      const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
+      const dbMode = await getActiveDbModeAsync()
+      const isIndexedDb = dbMode === 'indexeddb'
       
       if (isIndexedDb) {
         // IndexedDB mode - load from Dexie

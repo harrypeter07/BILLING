@@ -102,96 +102,94 @@ export async function syncEmployeeToSupabase(employeeData: any): Promise<SyncRes
         storeName: store.name,
         adminUserId: store.admin_user_id,
       })
-    } else {
-      console.warn("[SupabaseSync] No store_id provided for employee:", {
-        employeeId: employeeData.employee_id || employeeData.id,
-        employeeName: employeeData.name,
-      })
-    }
-
-    // Check if employee exists in Supabase
-    console.log("[SupabaseSync] Checking if employee exists with id:", employeeData.id)
-    const { data: existing, error: existingError } = await supabase
-      .from("employees")
-      .select("id")
-      .eq("id", employeeData.id)
-      .single()
-    
-    if (existingError && existingError.code !== 'PGRST116') {
-      // PGRST116 is "no rows returned" which is expected for new employees
-      console.warn("[SupabaseSync] Error checking for existing employee:", existingError)
-    }
-    
-    console.log("[SupabaseSync] Employee exists check:", {
-      exists: !!existing,
-      employeeId: employeeData.id,
-      existingId: existing?.id,
-    })
-
-    if (existing) {
-      // Update existing employee
-      const updateData: any = {
-        name: employeeData.name,
-        email: employeeData.email,
-        phone: employeeData.phone || null,
-        role: employeeData.role || 'employee',
-        salary: employeeData.salary ?? null,
-        joining_date: employeeData.joining_date 
-          ? (employeeData.joining_date.includes('T') 
-              ? employeeData.joining_date.split('T')[0] 
-              : employeeData.joining_date)
-          : null,
-        is_active: employeeData.is_active ?? true,
-        employee_id: employeeData.employee_id || null,
-        password: employeeData.password || null,
-        store_id: employeeData.store_id || null,
-      }
-
-      const { data: updatedData, error } = await supabase
+      
+      // Use store's admin_user_id for employee (not current user's id)
+      // This ensures employees are associated with the correct admin
+      const adminUserId = store.admin_user_id
+      
+      // Check if employee exists in Supabase
+      console.log("[SupabaseSync] Checking if employee exists with id:", employeeData.id)
+      const { data: existing, error: existingError } = await supabase
         .from("employees")
-        .update(updateData)
+        .select("id")
         .eq("id", employeeData.id)
-        .select()
         .single()
+      
+      if (existingError && existingError.code !== 'PGRST116') {
+        // PGRST116 is "no rows returned" which is expected for new employees
+        console.warn("[SupabaseSync] Error checking for existing employee:", existingError)
+      }
+      
+      console.log("[SupabaseSync] Employee exists check:", {
+        exists: !!existing,
+        employeeId: employeeData.id,
+        existingId: existing?.id,
+      })
 
-      if (error) {
-        // Enhanced error logging
-        console.error("[SupabaseSync] Error updating employee:", {
-          error,
-          errorDetails: {
-            message: error.message,
-            details: error.details,
-            hint: error.hint,
-            code: error.code,
-          },
-          updateData: {
-            ...updateData,
-            password: updateData.password ? '[REDACTED]' : null, // Don't log password
-          },
-          employeeId: employeeData.id
-        })
-        return { success: false, error: error.message || error.details || JSON.stringify(error) }
-      }
-      
-      console.log("[SupabaseSync] Employee updated successfully:", updatedData?.id)
-    } else {
-      // Create new employee
-      // Validate required fields (NOT NULL columns based on schema)
-      if (!employeeData.name) {
-        return { success: false, error: "Employee name is required (NOT NULL)" }
-      }
-      // Note: Email might be nullable or NOT NULL depending on schema
-      // We'll provide it but allow null if schema allows
-      
-      // Prepare insert data with defaults for nullable fields
-      // CRITICAL: Ensure all NOT NULL columns are provided:
-      // - id (required, provided)
-      // - user_id (required, provided)
-      // - name (required, validated above)
-      // - role (required, must have default 'employee' if not provided)
-      const insertData: any = {
-        id: employeeData.id,
-        user_id: user.id, // NOT NULL - required
+      if (existing) {
+        // Update existing employee
+        const updateData: any = {
+          name: employeeData.name,
+          email: employeeData.email,
+          phone: employeeData.phone || null,
+          role: employeeData.role || 'employee',
+          salary: employeeData.salary ?? null,
+          joining_date: employeeData.joining_date 
+            ? (employeeData.joining_date.includes('T') 
+                ? employeeData.joining_date.split('T')[0] 
+                : employeeData.joining_date)
+            : null,
+          is_active: employeeData.is_active ?? true,
+          employee_id: employeeData.employee_id || null,
+          password: employeeData.password || null,
+          store_id: employeeData.store_id || null,
+          user_id: adminUserId, // Use admin's user_id from store
+        }
+
+        const { data: updatedData, error } = await supabase
+          .from("employees")
+          .update(updateData)
+          .eq("id", employeeData.id)
+          .select()
+          .single()
+
+        if (error) {
+          // Enhanced error logging
+          console.error("[SupabaseSync] Error updating employee:", {
+            error,
+            errorDetails: {
+              message: error.message,
+              details: error.details,
+              hint: error.hint,
+              code: error.code,
+            },
+            updateData: {
+              ...updateData,
+              password: updateData.password ? '[REDACTED]' : null, // Don't log password
+            },
+            employeeId: employeeData.id
+          })
+          return { success: false, error: error.message || error.details || JSON.stringify(error) }
+        }
+        
+        console.log("[SupabaseSync] Employee updated successfully:", updatedData?.id)
+        return { success: true }
+      } else {
+        // Create new employee
+        // Validate required fields (NOT NULL columns based on schema)
+        if (!employeeData.name) {
+          return { success: false, error: "Employee name is required (NOT NULL)" }
+        }
+        
+        // Prepare insert data with defaults for nullable fields
+        // CRITICAL: Ensure all NOT NULL columns are provided:
+        // - id (required, provided)
+        // - user_id (required, use admin's user_id from store)
+        // - name (required, validated above)
+        // - role (required, must have default 'employee' if not provided)
+        const insertData: any = {
+          id: employeeData.id,
+          user_id: adminUserId, // Use admin's user_id from store (NOT current user's id)
         name: employeeData.name, // NOT NULL - required (validated above)
         email: employeeData.email || null, // nullable
         phone: employeeData.phone || null, // nullable
@@ -228,7 +226,7 @@ export async function syncEmployeeToSupabase(employeeData: any): Promise<SyncRes
 
       // Log input data before insert (for debugging)
       console.log("[SupabaseSync] Preparing to insert employee:", {
-        userId: user.id,
+        adminUserId: adminUserId, // Use adminUserId from store
         employeeId: insertData.id,
         employeeDataId: insertData.employee_id,
         storeId: insertData.store_id,
@@ -239,12 +237,13 @@ export async function syncEmployeeToSupabase(employeeData: any): Promise<SyncRes
         dataStructure: Object.keys(insertData),
       })
 
-      // Check for unique constraint violation (store_id + employee_id)
+      // Check for duplicate employee_id in the same store
+      // If duplicate exists, update it instead of failing
       if (insertData.store_id && insertData.employee_id) {
         console.log("[SupabaseSync] Checking for duplicate employee_id...")
         const { data: duplicate, error: duplicateCheckError } = await supabase
           .from("employees")
-          .select("id, employee_id")
+          .select("id, employee_id, user_id")
           .eq("store_id", insertData.store_id)
           .eq("employee_id", insertData.employee_id)
           .maybeSingle()
@@ -254,14 +253,45 @@ export async function syncEmployeeToSupabase(employeeData: any): Promise<SyncRes
         }
         
         if (duplicate) {
-          console.error("[SupabaseSync] Employee with same employee_id already exists in this store:", duplicate)
-          return { success: false, error: `Employee ID ${insertData.employee_id} already exists in this store` }
+          console.log("[SupabaseSync] Employee with same employee_id already exists, updating instead of inserting:", duplicate)
+          // Update existing employee instead of failing
+          const updateData: any = {
+            name: insertData.name,
+            email: insertData.email,
+            phone: insertData.phone,
+            role: insertData.role,
+            salary: insertData.salary,
+            joining_date: insertData.joining_date,
+            is_active: insertData.is_active,
+            password: insertData.password,
+            store_id: insertData.store_id,
+            user_id: adminUserId, // Use admin's user_id from store
+          }
+          
+          const { data: updatedData, error: updateError } = await supabase
+            .from("employees")
+            .update(updateData)
+            .eq("id", duplicate.id)
+            .select()
+            .single()
+          
+          if (updateError) {
+            console.error("[SupabaseSync] Error updating duplicate employee:", updateError)
+            return { success: false, error: `Failed to update existing employee: ${updateError.message}` }
+          }
+          
+          console.log("[SupabaseSync] Successfully updated existing employee:", updatedData?.id)
+          return { success: true }
         }
         console.log("[SupabaseSync] No duplicate found, proceeding with insert...")
       }
 
       // Attempt insert
-      console.log("[SupabaseSync] Attempting insert to Supabase...")
+      console.log("[SupabaseSync] Attempting insert to Supabase...", {
+        userId: adminUserId,
+        storeId: insertData.store_id,
+        employeeId: insertData.employee_id,
+      })
       const { data: insertedData, error } = await supabase
         .from("employees")
         .insert(insertData)
@@ -341,10 +371,105 @@ export async function syncEmployeeToSupabase(employeeData: any): Promise<SyncRes
       }
       
       console.log("[SupabaseSync] Employee created successfully:", insertedData?.id)
-    }
+      }
+      
+      console.log("[SupabaseSync] Employee synced successfully:", employeeData.employee_id)
+      return { success: true }
+    } else {
+      // No store_id provided - use current user's id
+      console.warn("[SupabaseSync] No store_id provided for employee, using current user as admin:", {
+        employeeId: employeeData.employee_id || employeeData.id,
+        employeeName: employeeData.name,
+      })
+      
+      // For employees without store_id, use current user's id
+      const adminUserId = user.id
+      
+      // Check if employee exists
+      const { data: existing, error: existingError } = await supabase
+        .from("employees")
+        .select("id")
+        .eq("id", employeeData.id)
+        .single()
+      
+      if (existingError && existingError.code !== 'PGRST116') {
+        console.warn("[SupabaseSync] Error checking for existing employee:", existingError)
+      }
+      
+      if (existing) {
+        // Update existing employee
+        const updateData: any = {
+          name: employeeData.name,
+          email: employeeData.email,
+          phone: employeeData.phone || null,
+          role: employeeData.role || 'employee',
+          salary: employeeData.salary ?? null,
+          joining_date: employeeData.joining_date 
+            ? (employeeData.joining_date.includes('T') 
+                ? employeeData.joining_date.split('T')[0] 
+                : employeeData.joining_date)
+            : null,
+          is_active: employeeData.is_active ?? true,
+          employee_id: employeeData.employee_id || null,
+          password: employeeData.password || null,
+          store_id: null,
+          user_id: adminUserId,
+        }
 
-    console.log("[SupabaseSync] Employee synced successfully:", employeeData.employee_id)
-    return { success: true }
+        const { data: updatedData, error } = await supabase
+          .from("employees")
+          .update(updateData)
+          .eq("id", employeeData.id)
+          .select()
+          .single()
+
+        if (error) {
+          console.error("[SupabaseSync] Error updating employee:", error)
+          return { success: false, error: error.message || error.details || JSON.stringify(error) }
+        }
+        
+        console.log("[SupabaseSync] Employee updated successfully:", updatedData?.id)
+        return { success: true }
+      } else {
+        // Create new employee without store_id
+        if (!employeeData.name) {
+          return { success: false, error: "Employee name is required (NOT NULL)" }
+        }
+        
+        const insertData: any = {
+          id: employeeData.id,
+          user_id: adminUserId,
+          name: employeeData.name,
+          email: employeeData.email || null,
+          phone: employeeData.phone || null,
+          role: employeeData.role || 'employee',
+          salary: employeeData.salary ?? null,
+          joining_date: employeeData.joining_date 
+            ? (employeeData.joining_date.includes('T') 
+                ? employeeData.joining_date.split('T')[0] 
+                : employeeData.joining_date)
+            : null,
+          is_active: employeeData.is_active ?? true,
+          employee_id: employeeData.employee_id || null,
+          password: employeeData.password || null,
+          store_id: null,
+        }
+        
+        const { data: insertedData, error } = await supabase
+          .from("employees")
+          .insert(insertData)
+          .select()
+          .single()
+
+        if (error) {
+          console.error("[SupabaseSync] Error creating employee:", error)
+          return { success: false, error: error.message || error.details || JSON.stringify(error) }
+        }
+        
+        console.log("[SupabaseSync] Employee created successfully:", insertedData?.id)
+        return { success: true }
+      }
+    }
   } catch (error: any) {
     console.error("[SupabaseSync] Exception syncing employee:", {
       error,

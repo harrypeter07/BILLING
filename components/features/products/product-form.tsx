@@ -167,7 +167,10 @@ export function ProductForm({ product }: ProductFormProps) {
       }
 
       // Check for duplicate product (same name and category)
-      const isIndexedDb = isIndexedDbMode();
+      // Use async mode detection to properly inherit from admin for employees
+      const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
+      const dbMode = await getActiveDbModeAsync()
+      const isIndexedDb = dbMode === 'indexeddb'
       if (!product?.id) { // Only check for new products
         if (isIndexedDb) {
           const existingProducts = await db.products.toArray();

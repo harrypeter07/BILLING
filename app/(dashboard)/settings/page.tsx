@@ -205,10 +205,18 @@ export default function SettingsPage() {
         
         // Sync to business_settings for employee inheritance
         if (user) {
-          await supabase
+          const { error: updateError } = await supabase
             .from("business_settings")
             .update({ database_mode: 'supabase' })
             .eq("user_id", user.id)
+          
+          if (updateError) {
+            console.error("[Settings] Error updating database_mode:", updateError)
+          } else {
+            // Clear cache so employees get the update immediately
+            const { clearDatabaseModeCache } = await import("@/lib/utils/db-mode")
+            clearDatabaseModeCache()
+          }
         }
         
         toast({
@@ -220,11 +228,21 @@ export default function SettingsPage() {
         localStorage.setItem('databaseType', 'indexeddb')
         
         // Sync to business_settings for employee inheritance
-        if (user) {
-          await supabase
+        const supabase = createClient()
+        const { data: { user: currentUser } } = await supabase.auth.getUser()
+        if (currentUser) {
+          const { error: updateError } = await supabase
             .from("business_settings")
             .update({ database_mode: 'indexeddb' })
-            .eq("user_id", user.id)
+            .eq("user_id", currentUser.id)
+          
+          if (updateError) {
+            console.error("[Settings] Error updating database_mode:", updateError)
+          } else {
+            // Clear cache so employees get the update immediately
+            const { clearDatabaseModeCache } = await import("@/lib/utils/db-mode")
+            clearDatabaseModeCache()
+          }
         }
         
         toast({

@@ -106,14 +106,45 @@ export async function getB2BModeConfig(): Promise<B2BModeConfig> {
       isB2BEnabled = adminSettings?.is_b2b_enabled || false
     } else {
       // Employee uses their personal employee_b2b_mode (if admin allows)
-      if (allowB2BMode && user) {
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("employee_b2b_mode")
-          .eq("id", user.id)
-          .maybeSingle()
-        
-        isB2BEnabled = profile?.employee_b2b_mode || false
+      // If employee hasn't set a preference, default to admin's mode
+      if (allowB2BMode) {
+        // Try to get employee's profile if they have Supabase auth
+        if (user) {
+          const { data: profile } = await supabase
+            .from("user_profiles")
+            .select("employee_b2b_mode")
+            .eq("id", user.id)
+            .maybeSingle()
+          
+          // If employee has set a preference, use it; otherwise default to admin's mode
+          if (profile?.employee_b2b_mode !== null && profile?.employee_b2b_mode !== undefined) {
+            isB2BEnabled = profile.employee_b2b_mode
+          } else {
+            // Employee hasn't set preference, use admin's mode as default
+            isB2BEnabled = adminSettings?.is_b2b_enabled || false
+          }
+        } else {
+          // Employee without Supabase auth - check localStorage or default to admin's mode
+          try {
+            const employeeSession = localStorage.getItem("employeeSession")
+            if (employeeSession) {
+              const session = JSON.parse(employeeSession)
+              if (session.employeeB2BMode !== null && session.employeeB2BMode !== undefined) {
+                isB2BEnabled = session.employeeB2BMode
+              } else {
+                isB2BEnabled = adminSettings?.is_b2b_enabled || false
+              }
+            } else {
+              isB2BEnabled = adminSettings?.is_b2b_enabled || false
+            }
+          } catch (e) {
+            console.error("[getB2BModeConfig] Error parsing employee session:", e)
+            isB2BEnabled = adminSettings?.is_b2b_enabled || false
+          }
+        }
+      } else {
+        // Admin hasn't allowed B2B, force B2C
+        isB2BEnabled = false
       }
     }
     
