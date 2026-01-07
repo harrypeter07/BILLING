@@ -29,9 +29,13 @@ export function useCustomers() {
             const storeId = await getCurrentStoreId()
 
             if (isIndexedDb) {
-                // IndexedDB: Filter by store_id if available
+                // IndexedDB: Filter by store_id if available, but include legacy data (null store_id)
                 if (storeId) {
-                    return await db.customers.where("store_id").equals(storeId).toArray()
+                    const allCustomers = await db.customers.toArray()
+                    // Include customers with matching store_id OR null/undefined store_id (legacy data)
+                    return allCustomers.filter(
+                        (c) => !c.store_id || c.store_id === storeId
+                    )
                 }
                 // Fallback: Return all (for backward compatibility with legacy data)
                 return await db.customers.toArray()
@@ -92,9 +96,13 @@ export function useProducts() {
             const storeId = await getCurrentStoreId()
 
             if (isIndexedDb) {
-                // IndexedDB: Filter by store_id if available
+                // IndexedDB: Filter by store_id if available, but include legacy data (null store_id)
                 if (storeId) {
-                    return await db.products.where("store_id").equals(storeId).toArray()
+                    const allProducts = await db.products.toArray()
+                    // Include products with matching store_id OR null/undefined store_id (legacy data)
+                    return allProducts.filter(
+                        (p) => !p.store_id || p.store_id === storeId
+                    )
                 }
                 // Fallback: Return all (for backward compatibility with legacy data)
                 return await db.products.toArray()

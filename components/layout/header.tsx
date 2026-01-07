@@ -107,6 +107,16 @@ export function Header({ title }: HeaderProps) {
       }
     }
     fetchUser()
+
+    // Listen for storage changes to refresh B2B mode when updated
+    const handleStorageRefresh = () => {
+      fetchUser()
+    }
+    window.addEventListener('storage', handleStorageRefresh)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageRefresh)
+    }
   }, [])
 
   // Check service worker status on mount and periodically

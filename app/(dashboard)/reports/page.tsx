@@ -242,23 +242,21 @@ export default function ReportsPage() {
 								<UITooltip>
 									<TooltipTrigger asChild>
 										<p className="font-medium text-sm md:text-base truncate max-w-[120px] cursor-help">
-											₹
-											{(
+											{formatCurrency(
 												invoices?.reduce(
 													(sum, inv) => sum + Number(inv.cgst_amount || 0),
 													0
 												) || 0
-											).toLocaleString("en-IN")}
+											)}
 										</p>
 									</TooltipTrigger>
 									<TooltipContent>
-										CGST: ₹
-										{(
+										CGST: {formatCurrency(
 											invoices?.reduce(
 												(sum, inv) => sum + Number(inv.cgst_amount || 0),
 												0
 											) || 0
-										).toLocaleString("en-IN")}
+										)}
 									</TooltipContent>
 								</UITooltip>
 							</div>
@@ -270,23 +268,21 @@ export default function ReportsPage() {
 								<UITooltip>
 									<TooltipTrigger asChild>
 										<p className="font-medium text-sm md:text-base truncate max-w-[120px] cursor-help">
-											₹
-											{(
+											{formatCurrency(
 												invoices?.reduce(
 													(sum, inv) => sum + Number(inv.sgst_amount || 0),
 													0
 												) || 0
-											).toLocaleString("en-IN")}
+											)}
 										</p>
 									</TooltipTrigger>
 									<TooltipContent>
-										SGST: ₹
-										{(
+										SGST: {formatCurrency(
 											invoices?.reduce(
 												(sum, inv) => sum + Number(inv.sgst_amount || 0),
 												0
 											) || 0
-										).toLocaleString("en-IN")}
+										)}
 									</TooltipContent>
 								</UITooltip>
 							</div>
@@ -300,23 +296,21 @@ export default function ReportsPage() {
 								<UITooltip>
 									<TooltipTrigger asChild>
 										<p className="font-medium text-sm md:text-base truncate max-w-[120px] cursor-help">
-											₹
-											{(
+											{formatCurrency(
 												invoices?.reduce(
 													(sum, inv) => sum + Number(inv.igst_amount || 0),
 													0
 												) || 0
-											).toLocaleString("en-IN")}
+											)}
 										</p>
 									</TooltipTrigger>
 									<TooltipContent>
-										IGST: ₹
-										{(
+										IGST: {formatCurrency(
 											invoices?.reduce(
 												(sum, inv) => sum + Number(inv.igst_amount || 0),
 												0
 											) || 0
-										).toLocaleString("en-IN")}
+										)}
 									</TooltipContent>
 								</UITooltip>
 							</div>
