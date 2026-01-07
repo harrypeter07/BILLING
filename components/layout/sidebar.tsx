@@ -47,6 +47,7 @@ const employeeNavigation = [
   { name: "Products", href: "/products", icon: Package },
   { name: "Customers", href: "/customers", icon: Users },
   { name: "Invoices", href: "/invoices", icon: Receipt },
+  { name: "Settings", href: "/settings/employee", icon: Settings },
 ]
 
 export function Sidebar() {

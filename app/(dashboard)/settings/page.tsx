@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
-import { Building2, User, Palette, Store, Cloud, Database, Shield, LogOut } from "lucide-react"
+import { Building2, User, Palette, Store, Cloud, Database, Shield, LogOut, Users } from "lucide-react"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType } from "@/lib/utils/db-mode"
 import { useStore } from "@/lib/utils/store-context"
@@ -13,6 +13,7 @@ import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { Switch } from "@/components/ui/switch"
 import { isOfflineLoginEnabled, setOfflineLoginEnabled } from "@/lib/utils/offline-auth"
+import { useUserRole } from "@/lib/hooks/use-user-role"
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState<any>(null)
@@ -26,17 +27,18 @@ export default function SettingsPage() {
   const dbType = getDatabaseType()
   const [offlineEnabled, setOfflineEnabled] = useState(false)
   const [isSwitchingMode, setIsSwitchingMode] = useState(false)
+  const { isEmployee } = useUserRole()
 
   useEffect(() => {
     setOfflineEnabled(isOfflineLoginEnabled())
   }, [])
 
-  // Only admin can access settings
+  // Check access: admin can access all settings, employees can access employee settings
   useEffect(() => {
     const checkAccess = async () => {
       const authType = localStorage.getItem("authType")
       if (authType === "employee") {
-        router.push("/dashboard")
+        // Employees can access settings page (to see employee settings link)
         return
       }
       const supabase = createClient()
@@ -49,6 +51,7 @@ export default function SettingsPage() {
           .single()
         const role = p?.role || "admin"
         if (role !== "admin") {
+          // Non-admin, non-employee users redirected to dashboard
           router.push("/dashboard")
         }
       }
@@ -93,13 +96,13 @@ export default function SettingsPage() {
   }, [isExcel])
 
   const handleSwitchToSupabase = async (enabled: boolean) => {
-    if (!enabled) {
-      // Switching to Supabase mode
+    if (enabled) {
+      // Switching to Supabase mode (user turned switch ON)
       if (!confirm("Switch to Supabase mode? This will:\n1. Copy all local data to Supabase (one-time migration)\n2. Switch the app to cloud-only mode\n3. Disconnect from IndexedDB\n\nNote: IndexedDB and Supabase are separate plans with separate data storage.\n\nContinue?")) {
         return
       }
     } else {
-      // Switching back to IndexedDB mode
+      // Switching back to IndexedDB mode (user turned switch OFF)
       if (!confirm("Switch back to IndexedDB mode? This will disconnect from Supabase and use local storage only.\n\nNote: Data in Supabase will remain but won't be accessible in IndexedDB mode.\n\nContinue?")) {
         return
       }
@@ -107,7 +110,7 @@ export default function SettingsPage() {
 
     setIsSwitchingMode(true)
     try {
-      if (!enabled) {
+      if (enabled) {
         // Switching TO Supabase mode - copy all data (one-time migration)
         // Copy stores
         const stores = await db.stores.toArray()
@@ -165,12 +168,33 @@ export default function SettingsPage() {
             for (const invoice of invoices) {
               const items = await db.invoice_items.where("invoice_id").equals(invoice.id).toArray()
               if (items.length > 0) {
+                // Delete existing items first to avoid conflicts
                 await supabase.from("invoice_items").delete().eq("invoice_id", invoice.id)
-                await supabase.from("invoice_items").insert(items.map(item => ({
-                  ...item,
+                
+                // Map items to Supabase schema (no updated_at field, ensure all required fields)
+                const itemsData = items.map(item => ({
+                  id: item.id,
+                  invoice_id: item.invoice_id,
+                  product_id: item.product_id || null,
+                  description: item.description || "",
+                  quantity: Number(item.quantity) || 0,
+                  unit_price: Number(item.unit_price) || 0,
+                  discount_percent: Number(item.discount_percent) || 0,
+                  gst_rate: Number(item.gst_rate) || 0,
+                  hsn_code: item.hsn_code || null,
+                  line_total: Number(item.line_total) || 0,
+                  gst_amount: Number(item.gst_amount) || 0,
                   created_at: item.created_at || new Date().toISOString(),
-                  updated_at: new Date().toISOString(),
-                })))
+                }))
+                
+                const { error: itemsError } = await supabase
+                  .from("invoice_items")
+                  .insert(itemsData)
+                
+                if (itemsError) {
+                  console.error(`[Settings] Error copying invoice items for invoice ${invoice.id}:`, itemsError)
+                  // Continue with other invoices even if one fails
+                }
               }
             }
           }
@@ -269,6 +293,30 @@ export default function SettingsPage() {
             </Button>
           </CardContent>
         </Card>
+
+        {/* Employee Settings - Only visible to employees */}
+        {isEmployee && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                <CardTitle>Employee Settings</CardTitle>
+              </div>
+              <CardDescription>Manage your personal preferences and billing mode</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-2 text-sm mb-4">
+                <div>
+                  <p className="font-medium">Personal Preferences</p>
+                  <p className="text-muted-foreground">Configure your billing mode and theme preferences</p>
+                </div>
+              </div>
+              <Button asChild className="w-full bg-transparent" variant="outline">
+                <Link href="/settings/employee">Open Employee Settings</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

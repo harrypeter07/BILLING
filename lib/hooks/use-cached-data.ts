@@ -108,14 +108,39 @@ export function useProducts() {
                 return await db.products.toArray()
             } else {
                 const supabase = createClient()
-                const { data: { user } } = await supabase.auth.getUser()
-                if (!user) return []
+                const authType = localStorage.getItem("authType")
+                let userId: string | null = null
 
-                // Build query with store_id filter
+                if (authType === "employee") {
+                    // For employees, get admin_user_id from store to share products
+                    const empSession = localStorage.getItem("employeeSession")
+                    if (empSession) {
+                        const session = JSON.parse(empSession)
+                        const sessionStoreId = session.storeId
+                        if (sessionStoreId) {
+                            const { data: store } = await supabase
+                                .from('stores')
+                                .select('admin_user_id')
+                                .eq('id', sessionStoreId)
+                                .single()
+                            if (store?.admin_user_id) {
+                                userId = store.admin_user_id
+                            }
+                        }
+                    }
+                } else {
+                    // For admin, use their own user_id
+                    const { data: { user } } = await supabase.auth.getUser()
+                    if (user) userId = user.id
+                }
+
+                if (!userId) return []
+
+                // Build query with store_id filter (shared across employees/admins with same store_id)
                 let query = supabase
                     .from("products")
                     .select("*")
-                    .eq("user_id", user.id)
+                    .eq("user_id", userId)
 
                 // Filter by store_id if available (store-scoped isolation)
                 if (storeId) {
@@ -148,17 +173,76 @@ export function useInvoices() {
                 }))
             } else {
                 const supabase = createClient()
-                const { data: { user } } = await supabase.auth.getUser()
-                if (!user) return []
+                const authType = localStorage.getItem("authType")
+                let userId: string | null = null
+                const storeId = await getCurrentStoreId()
 
-                const { data, error } = await supabase
-                    .from('invoices')
-                    .select('*, customers(name)')
-                    .eq('user_id', user.id)
-                    .order('created_at', { ascending: false })
+                if (authType === "employee") {
+                    // For employees, show only their own invoices
+                    const empSession = localStorage.getItem("employeeSession")
+                    if (empSession) {
+                        const session = JSON.parse(empSession)
+                        const employeeId = session.employeeId
+                        if (employeeId) {
+                            // Get invoices created by this employee
+                            const { data, error } = await supabase
+                                .from('invoices')
+                                .select('*, customers(name), employees!invoices_created_by_employee_id_fkey(name, employee_id)')
+                                .or(`created_by_employee_id.eq.${employeeId},employee_id.eq.${employeeId}`)
+                                .order('created_at', { ascending: false })
+                            if (error) throw error
+                            return data || []
+                        }
+                    }
+                    return []
+                } else {
+                    // For admin, show all invoices from their stores (including employee invoices)
+                    const { data: { user } } = await supabase.auth.getUser()
+                    if (!user) return []
+                    userId = user.id
 
-                if (error) throw error
-                return data || []
+                    // Build query - include invoices from admin and all employees under their stores
+                    let query = supabase
+                        .from('invoices')
+                        .select('*, customers(name), employees!invoices_created_by_employee_id_fkey(name, employee_id)')
+                    
+                    // Filter by store_id if available
+                    if (storeId) {
+                        // Get invoices for this store (admin's invoices + employee invoices from this store)
+                        const { data: storeData } = await supabase
+                            .from('stores')
+                            .select('id, admin_user_id')
+                            .eq('id', storeId)
+                            .single()
+                        
+                        if (storeData) {
+                            // Get all employee IDs for this store
+                            const { data: employees } = await supabase
+                                .from('employees')
+                                .select('employee_id')
+                                .eq('store_id', storeId)
+                            const employeeIds = employees?.map(e => e.employee_id) || []
+                            
+                            // Query invoices from admin OR employees of this store
+                            const conditions = [`user_id.eq.${userId}`]
+                            if (employeeIds.length > 0) {
+                                conditions.push(`created_by_employee_id.in.(${employeeIds.join(',')})`)
+                                conditions.push(`employee_id.in.(${employeeIds.join(',')})`)
+                            }
+                            query = query.or(conditions.join(','))
+                        } else {
+                            // Fallback: just admin's invoices
+                            query = query.eq('user_id', userId)
+                        }
+                    } else {
+                        // No store selected - show all admin invoices
+                        query = query.eq('user_id', userId)
+                    }
+
+                    const { data, error } = await query.order('created_at', { ascending: false })
+                    if (error) throw error
+                    return data || []
+                }
             }
         },
     })
@@ -340,19 +424,27 @@ export function useInvoice(id: string) {
                 // Get customer info
                 const customer = await db.customers.get(invoice.customer_id)
 
+                // Get employee info if invoice was created by employee
+                let employee = null
+                if (invoice.created_by_employee_id || invoice.employee_id) {
+                    const employeeId = invoice.created_by_employee_id || invoice.employee_id
+                    employee = await db.employees.where("employee_id").equals(employeeId).first()
+                }
+
                 // Get invoice items
                 const items = await db.invoice_items.where("invoice_id").equals(id).toArray()
 
                 return {
                     ...invoice,
-                    customers: customer ? { name: customer.name } : null,
+                    customers: customer || null,
+                    employees: employee ? { name: employee.name, employee_id: employee.employee_id } : null,
                     invoice_items: items,
                 }
             } else {
                 const supabase = createClient()
                 const { data, error } = await supabase
                     .from("invoices")
-                    .select("*, customers(name), invoice_items(*)")
+                    .select("*, customers(*), invoice_items(*), employees!invoices_created_by_employee_id_fkey(name, employee_id)")
                     .eq("id", id)
                     .single()
 

@@ -32,7 +32,8 @@ export default function BusinessSettingsPage() {
 		next_invoice_number: 1,
 		default_due_days: 30,
 		default_gst_rate: 18,
-		is_b2b_enabled: false,
+		allow_b2b_mode: false, // Master switch
+		is_b2b_enabled: false, // Admin's B2B mode
 		place_of_supply: "",
 		business_email: "",
 	});
@@ -86,6 +87,7 @@ export default function BusinessSettingsPage() {
 					next_invoice_number: settings.next_invoice_number || 1,
 					default_due_days: settings.default_due_days || 30,
 					default_gst_rate: settings.default_gst_rate || 18,
+					allow_b2b_mode: settings.allow_b2b_mode || false,
 					is_b2b_enabled: settings.is_b2b_enabled || false,
 					place_of_supply: settings.place_of_supply || "",
 					business_email: settings.business_email || "",
@@ -114,7 +116,93 @@ export default function BusinessSettingsPage() {
 		}));
 	};
 
+	const handleAllowB2BToggle = async (checked: boolean) => {
+		// Validate B2B requirements before allowing B2B mode
+		if (checked) {
+			const missingFields: string[] = [];
+
+			if (!businessData.business_gstin?.trim()) {
+				missingFields.push("Business GSTIN");
+			}
+			if (!businessData.business_address?.trim()) {
+				missingFields.push("Business Address");
+			}
+
+			if (missingFields.length > 0) {
+				toast({
+					title: "Missing Required Fields",
+					description: `Please set the following before allowing B2B mode: ${missingFields.join(
+						", "
+					)}`,
+					variant: "destructive",
+				});
+				return;
+			}
+		}
+
+		// Update state immediately for UI feedback
+		setInvoiceSettings((prev) => ({ ...prev, allow_b2b_mode: checked }));
+
+		// If disabling allow_b2b_mode, also disable is_b2b_enabled
+		if (!checked) {
+			setInvoiceSettings((prev) => ({ ...prev, is_b2b_enabled: false }));
+		}
+
+		// Save to database
+		try {
+			const {
+				data: { user },
+			} = await supabase.auth.getUser();
+			if (!user) return;
+
+			const updateData: any = { allow_b2b_mode: checked };
+			if (!checked) {
+				updateData.is_b2b_enabled = false; // Also disable B2B when disabling allow
+			}
+
+			const { error } = await supabase
+				.from("business_settings")
+				.update(updateData)
+				.eq("user_id", user.id);
+
+			if (error) throw error;
+
+			toast({
+				title: checked ? "B2B Mode Allowed" : "B2B Mode Disabled",
+				description: checked
+					? "B2B mode is now available. You and your employees can switch between B2B and B2C."
+					: "B2B mode has been disabled. All users will use B2C mode.",
+			});
+
+			// Trigger storage event to update header badge
+			if (typeof window !== 'undefined') {
+				window.dispatchEvent(new Event('storage'));
+			}
+		} catch (error: any) {
+			// Revert state on error
+			setInvoiceSettings((prev) => ({ ...prev, allow_b2b_mode: !checked }));
+			if (!checked) {
+				setInvoiceSettings((prev) => ({ ...prev, is_b2b_enabled: invoiceSettings.is_b2b_enabled }));
+			}
+			toast({
+				title: "Error",
+				description: error?.message || "Failed to update B2B settings",
+				variant: "destructive",
+			});
+		}
+	};
+
 	const handleB2BToggle = async (checked: boolean) => {
+		// Can only toggle if allow_b2b_mode is enabled
+		if (!invoiceSettings.allow_b2b_mode) {
+			toast({
+				title: "B2B Mode Not Allowed",
+				description: "Please enable 'Allow B2B Mode' first to switch between B2B and B2C.",
+				variant: "destructive",
+			});
+			return;
+		}
+
 		// Validate B2B requirements before enabling
 		if (checked) {
 			const missingFields: string[] = [];
@@ -156,10 +244,10 @@ export default function BusinessSettingsPage() {
 			if (error) throw error;
 
 			toast({
-				title: checked ? "B2B Mode Enabled" : "B2B Mode Disabled",
+				title: checked ? "B2B Mode Enabled" : "B2C Mode Enabled",
 				description: checked
 					? "B2B billing mode is now active. GST compliance will be enforced."
-					: "B2B mode disabled. B2C mode is now active.",
+					: "B2C mode is now active.",
 			});
 
 			// Trigger storage event to update header badge
@@ -367,6 +455,7 @@ export default function BusinessSettingsPage() {
 				next_invoice_number: invoiceSettings.next_invoice_number || 1,
 				default_due_days: invoiceSettings.default_due_days || 30,
 				default_gst_rate: invoiceSettings.default_gst_rate || 18,
+				allow_b2b_mode: invoiceSettings.allow_b2b_mode || false,
 				is_b2b_enabled: invoiceSettings.is_b2b_enabled || false,
 				place_of_supply: invoiceSettings.place_of_supply?.trim() || null,
 				business_email: invoiceSettings.business_email?.trim() || null,
@@ -696,18 +785,19 @@ export default function BusinessSettingsPage() {
 					<CardTitle>B2B Billing Mode</CardTitle>
 				</CardHeader>
 				<CardContent className="space-y-4">
-					<div className="flex items-center justify-between">
-						<div className="space-y-0.5">
-							<Label htmlFor="b2b-toggle">Enable B2B Billing</Label>
+					{/* Master Switch: Allow B2B Mode */}
+					<div className="flex items-center justify-between pb-4 border-b">
+						<div className="space-y-0.5 flex-1">
+							<Label htmlFor="allow-b2b-toggle">Allow B2B Mode</Label>
 							<p className="text-sm text-muted-foreground">
-								Enable B2B mode to enforce GST compliance, HSN codes, and tax
-								calculations for business-to-business transactions
+								Master switch: Enable this to allow B2B mode for you and your employees.
+								When OFF, B2B mode is disabled for everyone.
 							</p>
 						</div>
 						<Switch
-							id="b2b-toggle"
-							checked={invoiceSettings.is_b2b_enabled}
-							onCheckedChange={handleB2BToggle}
+							id="allow-b2b-toggle"
+							checked={invoiceSettings.allow_b2b_mode}
+							onCheckedChange={handleAllowB2BToggle}
 							disabled={
 								loading ||
 								!businessData.business_gstin?.trim() ||
@@ -716,11 +806,50 @@ export default function BusinessSettingsPage() {
 						/>
 					</div>
 
-					{invoiceSettings.is_b2b_enabled && (
+					{/* B2B / B2C Toggle (only visible if Allow B2B is ON) */}
+					{invoiceSettings.allow_b2b_mode && (
+						<div className="flex items-center justify-between">
+							<div className="space-y-0.5">
+								<Label htmlFor="b2b-toggle">Billing Mode</Label>
+								<p className="text-sm text-muted-foreground">
+									Switch between B2B (Business-to-Business) and B2C (Business-to-Consumer) modes.
+									Employees can also set their own preference if B2B is allowed.
+								</p>
+							</div>
+							<div className="flex items-center gap-2">
+								<span className="text-sm text-muted-foreground">B2C</span>
+								<Switch
+									id="b2b-toggle"
+									checked={invoiceSettings.is_b2b_enabled}
+									onCheckedChange={handleB2BToggle}
+									disabled={loading}
+								/>
+								<span className="text-sm font-medium">B2B</span>
+							</div>
+						</div>
+					)}
+
+					{!invoiceSettings.allow_b2b_mode && (
 						<Alert>
 							<AlertDescription>
-								B2B mode is enabled. GSTIN, HSN codes, and tax compliance will
+								B2B mode is currently disabled. Enable "Allow B2B Mode" to use B2B features.
+							</AlertDescription>
+						</Alert>
+					)}
+
+					{invoiceSettings.allow_b2b_mode && invoiceSettings.is_b2b_enabled && (
+						<Alert>
+							<AlertDescription>
+								B2B mode is active. GSTIN, HSN codes, and tax compliance will
 								be enforced for all invoices.
+							</AlertDescription>
+						</Alert>
+					)}
+
+					{invoiceSettings.allow_b2b_mode && !invoiceSettings.is_b2b_enabled && (
+						<Alert>
+							<AlertDescription>
+								B2C mode is active. Employees can switch to B2B mode in their settings if needed.
 							</AlertDescription>
 						</Alert>
 					)}
@@ -728,7 +857,7 @@ export default function BusinessSettingsPage() {
 					{!businessData.business_gstin?.trim() && (
 						<Alert variant="destructive">
 							<AlertDescription>
-								Business GSTIN is required to enable B2B mode. Please set it in
+								Business GSTIN is required to allow B2B mode. Please set it in
 								Business Information above.
 							</AlertDescription>
 						</Alert>
@@ -737,13 +866,13 @@ export default function BusinessSettingsPage() {
 					{!businessData.business_address?.trim() && (
 						<Alert variant="destructive">
 							<AlertDescription>
-								Business address is required to enable B2B mode. Please set it
+								Business address is required to allow B2B mode. Please set it
 								in Business Information above.
 							</AlertDescription>
 						</Alert>
 					)}
 
-					{invoiceSettings.is_b2b_enabled && (
+					{invoiceSettings.allow_b2b_mode && invoiceSettings.is_b2b_enabled && (
 						<>
 							<div>
 								<Label htmlFor="place_of_supply">

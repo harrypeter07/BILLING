@@ -48,6 +48,9 @@ export function Header({ title }: HeaderProps) {
 
   useEffect(() => {
     const fetchUser = async () => {
+      // Import B2B mode utility
+      const { getB2BModeConfig } = await import("@/lib/utils/b2b-mode")
+      
       // Check for employee session first
       const authType = localStorage.getItem("authType")
       if (authType === "employee") {
@@ -67,8 +70,13 @@ export function Header({ title }: HeaderProps) {
                 setStoreName(storeData.name)
               }
             }
+
+            // Fetch B2B mode config for employee (includes employee's personal mode)
+            const b2bConfig = await getB2BModeConfig()
+            setB2bMode(b2bConfig.isB2BEnabled)
             return
           } catch (e) {
+            console.error("[Header] Error parsing employee session:", e)
             // Fall through to Supabase check
           }
         }
@@ -92,16 +100,9 @@ export function Header({ title }: HeaderProps) {
           }
         }
 
-        // Fetch B2B mode status
-        const { data: settings } = await supabase
-          .from("business_settings")
-          .select("is_b2b_enabled")
-          .eq("user_id", user.id)
-          .single()
-        
-        if (settings) {
-          setB2bMode(settings.is_b2b_enabled || false)
-        }
+        // Fetch B2B mode config for admin (admin's own mode)
+        const b2bConfig = await getB2BModeConfig()
+        setB2bMode(b2bConfig.isB2BEnabled)
       }
     }
     fetchUser()
@@ -364,15 +365,23 @@ export function Header({ title }: HeaderProps) {
           {b2bMode !== null && (
             <Badge 
               variant={b2bMode ? "default" : "secondary"} 
-              title={b2bMode ? "B2B (Business-to-Business) mode is enabled" : "B2C (Business-to-Consumer) mode is active"}
+              title={
+                isEmployee 
+                  ? (b2bMode ? "Your B2B (Business-to-Business) mode is enabled" : "Your B2C (Business-to-Consumer) mode is active")
+                  : (b2bMode ? "B2B (Business-to-Business) mode is enabled" : "B2C (Business-to-Consumer) mode is active")
+              }
             >
-              {b2bMode ? "B2B" : "B2C"}
+              Mode: {b2bMode ? "B2B" : "B2C"}
             </Badge>
           )}
           {dbMode && (
             <Badge 
               variant="outline" 
-              title={`Database: ${dbMode === 'supabase' ? 'Supabase (Cloud)' : 'IndexedDB (Local)'}`}
+              title={
+                isEmployee 
+                  ? `Database: ${dbMode === 'supabase' ? 'Supabase (Cloud) - Inherited from admin' : 'IndexedDB (Local) - Inherited from admin'}`
+                  : `Database: ${dbMode === 'supabase' ? 'Supabase (Cloud)' : 'IndexedDB (Local)'}`
+              }
             >
               DB: {dbMode === 'supabase' ? 'Supabase' : 'IndexedDB'}
             </Badge>
@@ -439,7 +448,12 @@ export function Header({ title }: HeaderProps) {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => router.push("/settings/profile")}>Profile Settings</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push("/settings/business")}>Business Settings</DropdownMenuItem>
+            {isAdmin && (
+              <DropdownMenuItem onClick={() => router.push("/settings/business")}>Business Settings</DropdownMenuItem>
+            )}
+            {isEmployee && (
+              <DropdownMenuItem onClick={() => router.push("/settings/employee")}>Employee Settings</DropdownMenuItem>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem 
               onClick={handleFixServiceWorkers} 

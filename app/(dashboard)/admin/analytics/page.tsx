@@ -81,6 +81,15 @@ interface AnalyticsData {
     customer_name: string
     customer_email: string
     customer_phone: string
+    employee_name?: string
+  }>
+  employeeStats?: Array<{
+    id: string
+    name: string
+    employee_id: string
+    invoiceCount: number
+    totalRevenue: number
+    avgInvoiceValue: number
   }>
   customerDetails: Array<{
     id: string
@@ -173,15 +182,54 @@ export default function AdminAnalyticsPage() {
             customers = await db.customers.toArray()
             invoiceItems = await db.invoice_items.toArray()
           } else {
-            const [{ data: invData }, { data: custData }, { data: itemsData }] = await Promise.all([
-              supabase.from("invoices").select("*").eq("user_id", user.id),
-              supabase.from("customers").select("*").eq("user_id", user.id),
-              supabase.from("invoice_items").select("*"),
-            ])
+            // For admin, get all invoices from their stores (including employee invoices)
+            const { data: { user: adminUser } } = await supabase.auth.getUser()
+            if (!adminUser) {
+              invoices = []
+              customers = []
+              invoiceItems = []
+            } else {
+              // Get all stores for this admin
+              const { data: stores } = await supabase
+                .from("stores")
+                .select("id")
+                .eq("admin_user_id", adminUser.id)
+              
+              const storeIds = stores?.map(s => s.id) || []
+              
+              // Get all employees under these stores
+              let employeeIds: string[] = []
+              if (storeIds.length > 0) {
+                const { data: employees } = await supabase
+                  .from("employees")
+                  .select("employee_id")
+                  .in("store_id", storeIds)
+                employeeIds = employees?.map(e => e.employee_id) || []
+              }
+              
+              // Build query for invoices - admin's invoices + employee invoices
+              let invoiceQuery = supabase.from("invoices").select("*")
+              
+              if (employeeIds.length > 0) {
+                // Include admin invoices and employee invoices
+                invoiceQuery = invoiceQuery.or(
+                  `user_id.eq.${adminUser.id},created_by_employee_id.in.(${employeeIds.join(',')}),employee_id.in.(${employeeIds.join(',')})`
+                )
+              } else {
+                // Just admin invoices
+                invoiceQuery = invoiceQuery.eq("user_id", adminUser.id)
+              }
+              
+              const [{ data: invData }, { data: custData }, { data: itemsData }] = await Promise.all([
+                invoiceQuery,
+                supabase.from("customers").select("*").eq("user_id", adminUser.id),
+                supabase.from("invoice_items").select("*"),
+              ])
 
-            invoices = invData || []
-            customers = custData || []
-            invoiceItems = itemsData || []
+              invoices = invData || []
+              customers = custData || []
+              invoiceItems = itemsData || []
+            }
           }
         } catch (error) {
           console.error("[AdminAnalytics] Supabase error, falling back to IndexedDB:", error)
@@ -249,7 +297,52 @@ export default function AdminAnalyticsPage() {
         total: totalGST,
       }
 
-      // Recent invoices
+      // Employee invoice statistics (if in Supabase mode)
+      let employeeStats: any[] = []
+      if (dbType === 'supabase') {
+        try {
+          const supabase = createClient()
+          const { data: { user: adminUser } } = await supabase.auth.getUser()
+          if (adminUser) {
+            // Get all employees for this admin
+            const { data: stores } = await supabase
+              .from("stores")
+              .select("id")
+              .eq("admin_user_id", adminUser.id)
+            
+            const storeIds = stores?.map(s => s.id) || []
+            
+            if (storeIds.length > 0) {
+              const { data: employees } = await supabase
+                .from("employees")
+                .select("id, name, employee_id")
+                .in("store_id", storeIds)
+              
+              if (employees) {
+                employeeStats = employees.map((emp: any) => {
+                  const empInvoices = filteredInvoices.filter(
+                    (inv: any) => inv.created_by_employee_id === emp.employee_id || inv.employee_id === emp.employee_id
+                  )
+                  const empRevenue = empInvoices.reduce((sum: number, inv: any) => sum + Number(inv.total_amount || 0), 0)
+                  
+                  return {
+                    id: emp.id,
+                    name: emp.name,
+                    employee_id: emp.employee_id,
+                    invoiceCount: empInvoices.length,
+                    totalRevenue: empRevenue,
+                    avgInvoiceValue: empInvoices.length > 0 ? empRevenue / empInvoices.length : 0,
+                  }
+                }).sort((a, b) => b.invoiceCount - a.invoiceCount)
+              }
+            }
+          }
+        } catch (error) {
+          console.error("[AdminAnalytics] Error fetching employee stats:", error)
+        }
+      }
+
+      // Recent invoices (include employee name)
       const recentInvoices = filteredInvoices
         .sort((a, b) => new Date(b.invoice_date || b.created_at || 0).getTime() - new Date(a.invoice_date || a.created_at || 0).getTime())
         .slice(0, 20)
@@ -264,6 +357,7 @@ export default function AdminAnalyticsPage() {
             customer_name: customer?.name || "N/A",
             customer_email: customer?.email || "",
             customer_phone: customer?.phone || "",
+            employee_name: inv.created_by_employee_id || inv.employee_id ? employeeStats.find((e: any) => e.employee_id === (inv.created_by_employee_id || inv.employee_id))?.name || "Employee" : "Admin",
           }
         })
 
@@ -303,6 +397,7 @@ export default function AdminAnalyticsPage() {
         gstBreakdown,
         recentInvoices,
         customerDetails,
+        employeeStats: employeeStats.length > 0 ? employeeStats : undefined,
       })
     } catch (error) {
       toast({
@@ -736,6 +831,42 @@ export default function AdminAnalyticsPage() {
         </TabsContent>
 
         <TabsContent value="invoices" className="space-y-4">
+          {/* Employee Statistics Card */}
+          {analytics.employeeStats && analytics.employeeStats.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Employee Invoice Statistics</CardTitle>
+                <CardDescription>Number of bills generated by each employee</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Employee Name</TableHead>
+                        <TableHead>Employee ID</TableHead>
+                        <TableHead>Total Invoices</TableHead>
+                        <TableHead>Total Revenue</TableHead>
+                        <TableHead>Avg Invoice Value</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {analytics.employeeStats.map((emp) => (
+                        <TableRow key={emp.id}>
+                          <TableCell className="font-medium">{emp.name}</TableCell>
+                          <TableCell className="text-muted-foreground">{emp.employee_id}</TableCell>
+                          <TableCell>{emp.invoiceCount}</TableCell>
+                          <TableCell className="font-semibold">{formatCurrency(emp.totalRevenue)}</TableCell>
+                          <TableCell>{formatCurrency(emp.avgInvoiceValue)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
           <Card>
             <CardHeader>
               <CardTitle>Recent Invoices</CardTitle>
@@ -749,6 +880,7 @@ export default function AdminAnalyticsPage() {
                       <TableHead>Invoice #</TableHead>
                       <TableHead>Date</TableHead>
                       <TableHead>Customer</TableHead>
+                      <TableHead>Generated By</TableHead>
                       <TableHead>Amount</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Actions</TableHead>
@@ -764,6 +896,11 @@ export default function AdminAnalyticsPage() {
                             <div className="font-medium">{invoice.customer_name}</div>
                             {invoice.customer_email && <div className="text-sm text-muted-foreground">{invoice.customer_email}</div>}
                           </div>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-sm text-muted-foreground">
+                            {invoice.employee_name || "Admin"}
+                          </span>
                         </TableCell>
                         <TableCell className="font-semibold">
                           <Tooltip>
