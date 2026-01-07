@@ -164,6 +164,19 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 			}
 		}
 
+		// Check B2B mode
+		let isB2B = false;
+		try {
+			const { data: b2bSettings } = await supabase
+				.from("business_settings")
+				.select("is_b2b_enabled")
+				.eq("user_id", user.id)
+				.single();
+			isB2B = b2bSettings?.is_b2b_enabled || false;
+		} catch (error) {
+			console.warn("[GeneratePDFAndUpload] Failed to check B2B mode:", error);
+		}
+
 		// 8. Prepare PDF data
 		const pdfData = {
 			invoiceNumber: invoice.invoice_number,
@@ -172,6 +185,11 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 			customerEmail: customer?.email || "",
 			customerPhone: customer?.phone || "",
 			customerGSTIN: customer?.gstin || "",
+			customerAddress: customer?.address || customer?.billing_address || "",
+			customerBillingAddress: customer?.billing_address || customer?.address || "",
+			customerCity: customer?.city || "",
+			customerState: customer?.state || "",
+			customerPincode: customer?.pincode || "",
 			businessName: businessProfile?.business_name || storeName || "Business",
 			businessGSTIN: businessProfile?.business_gstin || "",
 			businessAddress: businessProfile?.business_address || "",
@@ -203,6 +221,7 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 					gstRate,
 					lineTotal: Number(item.line_total || lineTotal),
 					gstAmount: Number(item.gst_amount || gstAmount),
+					hsnCode: item.hsn_code || "",
 				};
 			}),
 			subtotal: Number(invoice.subtotal || invoice.total_amount) || 0,
@@ -211,6 +230,7 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 			igstAmount: Number(invoice.igst_amount || 0),
 			totalAmount: Number(invoice.total_amount) || 0,
 			isGstInvoice: invoice.is_gst_invoice || false,
+			isB2B,
 		};
 
 		// 9. Generate PDF using server-side Puppeteer

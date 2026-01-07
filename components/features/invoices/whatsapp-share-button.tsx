@@ -81,6 +81,8 @@ export function WhatsAppShareButton({
 	const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
 	const [showLinkModal, setShowLinkModal] = useState(false);
 	const [linkCopied, setLinkCopied] = useState(false);
+	const [showErrorModal, setShowErrorModal] = useState(false);
+	const [uploadError, setUploadError] = useState<string | null>(null);
 	const [useServerSide, setUseServerSide] = useState(() => {
 		// Default to server-side for faster WhatsApp sharing
 		if (typeof window !== "undefined") {

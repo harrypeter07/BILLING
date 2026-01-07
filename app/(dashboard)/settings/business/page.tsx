@@ -12,9 +12,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Upload, X, Image as ImageIcon } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function BusinessSettingsPage() {
 	const [loading, setLoading] = useState(false);
+	const [initialLoading, setInitialLoading] = useState(true);
 	const [uploadingLogo, setUploadingLogo] = useState(false);
 	const [logoPreview, setLogoPreview] = useState<string | null>(null);
 	const [businessData, setBusinessData] = useState({
@@ -43,10 +45,14 @@ export default function BusinessSettingsPage() {
 
 	const fetchBusinessData = async () => {
 		try {
+			setInitialLoading(true);
 			const {
 				data: { user },
 			} = await supabase.auth.getUser();
-			if (!user) return;
+			if (!user) {
+				setInitialLoading(false);
+				return;
+			}
 
 			const { data: profile } = await supabase
 				.from("user_profiles")
@@ -87,6 +93,8 @@ export default function BusinessSettingsPage() {
 			}
 		} catch (error) {
 			console.error("Error fetching business data:", error);
+		} finally {
+			setInitialLoading(false);
 		}
 	};
 
@@ -400,6 +408,81 @@ export default function BusinessSettingsPage() {
 			</div>
 
 			{/* Two Column Layout */}
+			{initialLoading ? (
+				<div className="grid gap-6 lg:grid-cols-2">
+					{/* Left Column Skeleton */}
+					<div className="space-y-6">
+						<Card>
+							<CardHeader>
+								<Skeleton className="h-6 w-48" />
+							</CardHeader>
+							<CardContent className="space-y-4">
+								<div className="grid gap-4">
+									<div>
+										<Skeleton className="h-4 w-32 mb-2" />
+										<Skeleton className="h-10 w-full" />
+									</div>
+									<div>
+										<Skeleton className="h-4 w-24 mb-2" />
+										<Skeleton className="h-10 w-full" />
+									</div>
+									<div>
+										<Skeleton className="h-4 w-32 mb-2" />
+										<Skeleton className="h-10 w-full" />
+									</div>
+									<div>
+										<Skeleton className="h-4 w-20 mb-2" />
+										<Skeleton className="h-10 w-full" />
+									</div>
+									<div>
+										<Skeleton className="h-4 w-40 mb-2" />
+										<Skeleton className="h-10 w-full" />
+									</div>
+								</div>
+								<Skeleton className="h-10 w-full mt-4" />
+							</CardContent>
+						</Card>
+					</div>
+					{/* Right Column Skeleton */}
+					<div className="space-y-6">
+						<Card>
+							<CardHeader>
+								<Skeleton className="h-6 w-40" />
+							</CardHeader>
+							<CardContent className="space-y-4">
+								<div className="grid gap-4 md:grid-cols-2">
+									<div>
+										<Skeleton className="h-4 w-28 mb-2" />
+										<Skeleton className="h-10 w-full" />
+									</div>
+									<div>
+										<Skeleton className="h-4 w-40 mb-2" />
+										<Skeleton className="h-10 w-full" />
+									</div>
+									<div>
+										<Skeleton className="h-4 w-32 mb-2" />
+										<Skeleton className="h-10 w-full" />
+									</div>
+									<div>
+										<Skeleton className="h-4 w-36 mb-2" />
+										<Skeleton className="h-10 w-full" />
+									</div>
+								</div>
+								<Skeleton className="h-10 w-full mt-4" />
+							</CardContent>
+						</Card>
+						<Card>
+							<CardHeader>
+								<Skeleton className="h-6 w-40" />
+							</CardHeader>
+							<CardContent className="space-y-4">
+								<Skeleton className="h-20 w-full" />
+								<Skeleton className="h-10 w-full" />
+							</CardContent>
+						</Card>
+					</div>
+				</div>
+			) : (
 			<div className="grid gap-6 lg:grid-cols-2">
 				{/* Left Column: Business Information */}
 				<div className="space-y-6">
@@ -707,6 +790,7 @@ export default function BusinessSettingsPage() {
 			</Card>
 				</div>
 			</div>
+			)}
 		</div>
 	);
 }

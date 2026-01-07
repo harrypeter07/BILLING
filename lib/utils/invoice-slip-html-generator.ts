@@ -226,13 +226,19 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
     <!-- Business Address -->
     ${data.businessAddress ? `<div class="business-address">${data.businessAddress}</div>` : ""}
     
+    <!-- Business GSTIN (B2B mode) -->
+    ${(data.isB2B || data.businessGSTIN) ? `<div class="business-address">GSTIN: ${data.businessGSTIN || "N/A"}</div>` : ""}
+    
     <!-- Business Phone -->
     ${data.businessPhone ? `<div class="business-phone">Mob: ${data.businessPhone}</div>` : ""}
     
+    <!-- Business Email (B2B mode) -->
+    ${(data.isB2B && data.businessEmail) ? `<div class="business-phone">Email: ${data.businessEmail}</div>` : ""}
+    
     <div class="divider"></div>
     
-    <!-- ESTIMATE / SLIP -->
-    <div class="invoice-type">ESTIMATE / SLIP</div>
+    <!-- ESTIMATE / SLIP / TAX INVOICE -->
+    <div class="invoice-type">${data.isB2B ? "TAX INVOICE (B2B)" : "ESTIMATE / SLIP"}</div>
     
     <!-- Invoice Details -->
     <div class="invoice-details">
@@ -263,6 +269,11 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
     <div class="customer-section">
       <div class="customer-label">Bill To:</div>
       <div class="customer-name">${data.customerName}</div>
+      ${(data.isB2B && data.customerBillingAddress) || data.customerAddress ? `<div class="customer-name" style="margin-top: 1mm;">${data.customerBillingAddress || data.customerAddress}</div>` : ""}
+      ${(data.isB2B && data.customerCity) ? `<div class="customer-name">${data.customerCity}${data.customerState ? `, ${data.customerState}` : ""}${data.customerPincode ? ` - ${data.customerPincode}` : ""}</div>` : ""}
+      ${(data.isB2B && data.customerEmail) ? `<div class="customer-name">Email: ${data.customerEmail}</div>` : ""}
+      ${data.customerPhone ? `<div class="customer-name">Phone: ${data.customerPhone}</div>` : ""}
+      ${(data.isB2B || data.customerGSTIN) ? `<div class="customer-name">GSTIN: ${data.customerGSTIN || "N/A"}</div>` : ""}
     </div>
     <div class="divider"></div>
     ` : ""}

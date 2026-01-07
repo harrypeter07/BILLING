@@ -6,10 +6,16 @@ export interface InvoiceData {
   customerEmail?: string
   customerPhone?: string
   customerGSTIN?: string
+  customerAddress?: string
+  customerBillingAddress?: string
+  customerCity?: string
+  customerState?: string
+  customerPincode?: string
   businessName: string
   businessGSTIN?: string
   businessAddress?: string
   businessPhone?: string
+  businessEmail?: string
   items: Array<{
     description: string
     quantity: number
@@ -28,6 +34,7 @@ export interface InvoiceData {
   notes?: string
   terms?: string
   isGstInvoice: boolean
+  isB2B?: boolean
 }
 
 /**

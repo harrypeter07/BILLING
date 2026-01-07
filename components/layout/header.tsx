@@ -14,7 +14,6 @@ import {
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { useEffect, useState } from "react"
-import { SyncStatus } from "@/components/sync-status"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
@@ -35,7 +34,6 @@ export function Header({ title }: HeaderProps) {
   const [storeName, setStoreName] = useState<string>("")
   const [initials, setInitials] = useState<string>("U")
   const [hasMounted, setHasMounted] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [databaseType, setDatabaseType] = useState<'Local' | 'Supabase'>('Local');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { role, isAdmin, isEmployee, isPublic, isLoading: roleLoading } = useUserRole();
@@ -211,19 +209,6 @@ export function Header({ title }: HeaderProps) {
 
   // no storage mode persistence anymore
 
-  const handleSyncNow = async () => {
-    setIsSyncing(true)
-    try {
-      const { syncManager } = await import("@/lib/sync/sync-manager")
-      await syncManager.syncAll()
-      toast({ title: "Sync started", description: "Background sync triggered." })
-    } catch (error: any) {
-      const errorMsg = error?.message || "Sync failed"
-      toast({ title: "Sync failed", description: errorMsg, variant: "destructive" })
-    } finally {
-      setIsSyncing(false)
-    }
-  }
 
   const handleRefresh = () => {
     setIsRefreshing(true)
@@ -373,18 +358,6 @@ export function Header({ title }: HeaderProps) {
           {isRefreshing ? "Refreshing..." : "Refresh"}
         </Button>
 
-        {/* Manual sync button */}
-        {(isEmployee || isAdmin) && (
-          <Button
-            variant="outline"
-            className="bg-transparent"
-            onClick={handleSyncNow}
-            disabled={isSyncing}
-            title="Trigger background sync"
-          >
-            {isSyncing ? "Syncing..." : "Sync Now"}
-          </Button>
-        )}
 
         {/* Mode Indicators: B2B/B2C and Database Mode */}
         <div className="flex items-center gap-2 ml-2">
@@ -434,7 +407,6 @@ export function Header({ title }: HeaderProps) {
           </TooltipContent>
         </Tooltip>
 
-        <SyncStatus />
 
         {/* Notifications */}
         <Button variant="ghost" size="icon" className="relative">

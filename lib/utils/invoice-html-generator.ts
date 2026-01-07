@@ -242,22 +242,26 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
         <div class="business-name">${data.businessName || "BUSINESS NAME"}</div>
         <div class="business-details">
           ${data.businessAddress ? `<div>${data.businessAddress}</div>` : ""}
-          ${data.businessGSTIN ? `<div>GSTIN: ${data.businessGSTIN}</div>` : ""}
+          ${(data.isB2B || data.businessGSTIN) ? `<div>GSTIN: ${data.businessGSTIN || "N/A"}</div>` : ""}
+          ${(data.isB2B && data.businessPhone) ? `<div>Phone: ${data.businessPhone}</div>` : ""}
+          ${(data.isB2B && data.businessEmail) ? `<div>Email: ${data.businessEmail}</div>` : ""}
         </div>
       </div>
     </div>
 
-    <div class="invoice-title">TAX INVOICE (B2C)</div>
+    <div class="invoice-title">${data.isB2B ? "TAX INVOICE (B2B)" : "TAX INVOICE (B2C)"}</div>
 
     <div class="details-section">
       ${data.customerName ? `
       <div class="detail-box">
         <div class="detail-label">Bill To:</div>
         <div class="detail-value bold">${data.customerName}</div>
-        ${data.customerEmail ? `<div class="detail-value">${data.customerEmail}</div>` : ""}
-        ${data.customerPhone ? `<div class="detail-value">${data.customerPhone}</div>` : ""}
-        ${data.customerGSTIN ? `<div class="detail-value">GSTIN: ${data.customerGSTIN}</div>` : ""}
-        <div class="detail-value" style="margin-top: 8px; font-size: 10px; color: #94a3b8;">(Consumer - Unregistered)</div>
+        ${(data.isB2B && data.customerBillingAddress) || data.customerAddress ? `<div class="detail-value">${data.customerBillingAddress || data.customerAddress}</div>` : ""}
+        ${(data.isB2B && data.customerCity) ? `<div class="detail-value">${data.customerCity}${data.customerState ? `, ${data.customerState}` : ""}${data.customerPincode ? ` - ${data.customerPincode}` : ""}</div>` : ""}
+        ${data.customerEmail ? `<div class="detail-value">Email: ${data.customerEmail}</div>` : ""}
+        ${data.customerPhone ? `<div class="detail-value">Phone: ${data.customerPhone}</div>` : ""}
+        ${(data.isB2B || data.customerGSTIN) ? `<div class="detail-value">GSTIN: ${data.customerGSTIN || "N/A"}</div>` : ""}
+        ${!data.isB2B ? `<div class="detail-value" style="margin-top: 8px; font-size: 10px; color: #94a3b8;">(Consumer - Unregistered)</div>` : ""}
       </div>
       ` : `
       <div class="detail-box">

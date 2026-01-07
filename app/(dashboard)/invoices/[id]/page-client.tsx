@@ -19,6 +19,7 @@ import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { executeInvoiceAction, prepareInvoiceDocumentData } from "@/lib/invoice-document-engine"
 import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf"
 import { createClient } from "@/lib/supabase/client"
+import { getB2BModeStatus } from "@/lib/utils/b2b-mode"
 
 export default function InvoiceDetailPageClient() {
   const params = useParams()
@@ -31,6 +32,7 @@ export default function InvoiceDetailPageClient() {
   const [isSharingPDF, setIsSharingPDF] = useState(false)
   const [profile, setProfile] = useState<any>(null)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [isB2BEnabled, setIsB2BEnabled] = useState(false)
 
   // Extract invoice, items, and customer from the hook data
   const invoice = invoiceData
@@ -98,6 +100,21 @@ export default function InvoiceDetailPageClient() {
       toast({ title: "Error", description: "Invoice not found", variant: "destructive" })
     }
   }, [error, toast])
+
+  // Load B2B mode status
+  useEffect(() => {
+    const loadB2BStatus = async () => {
+      try {
+        const b2bEnabled = await getB2BModeStatus()
+        setIsB2BEnabled(b2bEnabled)
+      } catch (error) {
+        console.error("[InvoiceDetail] Failed to load B2B status:", error)
+      }
+    }
+    if (invoiceId) {
+      loadB2BStatus()
+    }
+  }, [invoiceId])
 
   // Fetch business settings for printing and sharing
   useEffect(() => {
@@ -485,34 +502,43 @@ export default function InvoiceDetailPageClient() {
                     <span className="font-medium break-all text-right">{customer.email}</span>
                   </div>
                 )}
-                {customer.address && (
+                {/* Show address or billing_address based on availability */}
+                {(customer.address || customer.billing_address) && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Address:</span>
-                    <span className="font-medium text-right">{customer.address}</span>
+                    <span className="font-medium text-right">{customer.billing_address || customer.address}</span>
                   </div>
                 )}
-                {customer.gstin && (
+                {/* B2B specific fields - always show in B2B mode, conditionally in B2C */}
+                {(isB2BEnabled || customer.gstin) && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">GSTIN:</span>
-                    <span className="font-medium">{customer.gstin}</span>
+                    <span className="font-medium">{customer.gstin || (isB2BEnabled ? "N/A" : "")}</span>
                   </div>
                 )}
-                {customer.city && (
+                {(isB2BEnabled || customer.city) && customer.city && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">City:</span>
                     <span className="font-medium">{customer.city}</span>
                   </div>
                 )}
-                {customer.state && (
+                {(isB2BEnabled || customer.state) && customer.state && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">State:</span>
                     <span className="font-medium">{customer.state}</span>
                   </div>
                 )}
-                {customer.pincode && (
+                {(isB2BEnabled || customer.pincode) && customer.pincode && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Pincode:</span>
                     <span className="font-medium">{customer.pincode}</span>
+                  </div>
+                )}
+                {/* Show shipping address if different from billing in B2B mode */}
+                {isB2BEnabled && customer.shipping_address && customer.shipping_address !== (customer.billing_address || customer.address) && (
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Shipping Address:</span>
+                    <span className="font-medium text-right">{customer.shipping_address}</span>
                   </div>
                 )}
               </>
@@ -537,25 +563,26 @@ export default function InvoiceDetailPageClient() {
               <span className="text-muted-foreground">Business Name:</span>
               <span className="font-medium">{profile?.business_name || storeName || "Business"}</span>
             </div>
-            {profile?.business_gstin && (
+            {/* B2B specific fields - always show in B2B mode, conditionally in B2C */}
+            {(isB2BEnabled || profile?.business_gstin) && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">GSTIN:</span>
-                <span className="font-medium">{profile.business_gstin}</span>
+                <span className="font-medium">{profile?.business_gstin || (isB2BEnabled ? "N/A" : "")}</span>
               </div>
             )}
-            {profile?.business_address && (
+            {(isB2BEnabled || profile?.business_address) && profile?.business_address && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Address:</span>
                 <span className="font-medium text-right">{profile.business_address}</span>
               </div>
             )}
-            {profile?.business_phone && (
+            {(isB2BEnabled || profile?.business_phone) && profile?.business_phone && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Phone:</span>
                 <span className="font-medium">{profile.business_phone}</span>
               </div>
             )}
-            {profile?.business_email && (
+            {(isB2BEnabled || profile?.business_email) && profile?.business_email && (
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Email:</span>
                 <span className="font-medium break-all text-right">{profile.business_email}</span>

@@ -62,6 +62,11 @@ export interface InvoiceDocumentData {
 	customerEmail: string;
 	customerPhone: string;
 	customerGSTIN: string;
+	customerAddress?: string;
+	customerBillingAddress?: string;
+	customerCity?: string;
+	customerState?: string;
+	customerPincode?: string;
 	businessName: string;
 	businessGSTIN: string;
 	businessAddress: string;
@@ -77,6 +82,7 @@ export interface InvoiceDocumentData {
 		gstRate: number;
 		lineTotal: number;
 		gstAmount: number;
+		hsnCode?: string;
 	}>;
 	subtotal: number;
 	cgstAmount: number;
@@ -86,6 +92,7 @@ export interface InvoiceDocumentData {
 	notes?: string;
 	terms?: string;
 	isGstInvoice: boolean;
+	isB2B?: boolean;
 }
 
 export interface ExecuteInvoiceActionOptions {
@@ -310,6 +317,20 @@ export async function prepareInvoiceDocumentData(
 	const customerEmail = customer?.email || "";
 	const customerPhone = customer?.phone || "";
 	const customerGSTIN = customer?.gstin || "";
+	const customerAddress = customer?.address || customer?.billing_address || "";
+	const customerBillingAddress = customer?.billing_address || customer?.address || "";
+	const customerCity = customer?.city || "";
+	const customerState = customer?.state || "";
+	const customerPincode = customer?.pincode || "";
+
+	// Check if B2B mode is enabled
+	let isB2B = false;
+	try {
+		const { getB2BModeStatus } = await import("@/lib/utils/b2b-mode");
+		isB2B = await getB2BModeStatus();
+	} catch (error) {
+		console.warn("[InvoiceDocumentEngine] Failed to check B2B mode:", error);
+	}
 
 	// Normalize business fields (store takes precedence over profile)
 	const businessName =
@@ -396,6 +417,11 @@ export async function prepareInvoiceDocumentData(
 		customerEmail,
 		customerPhone,
 		customerGSTIN,
+		customerAddress,
+		customerBillingAddress,
+		customerCity,
+		customerState,
+		customerPincode,
 		businessName,
 		businessGSTIN,
 		businessAddress,
@@ -412,6 +438,7 @@ export async function prepareInvoiceDocumentData(
 		notes: invoice.notes,
 		terms: invoice.terms,
 		isGstInvoice,
+		isB2B,
 	};
 }
 

@@ -16,18 +16,6 @@ import { db } from "@/lib/dexie-client"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { getCurrentStoreId } from "@/lib/utils/get-current-store-id"
 import { getB2BModeStatus } from "@/lib/utils/b2b-mode"
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-} from "@/components/ui/command"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
 
 interface Customer {
   id?: string
@@ -263,52 +251,59 @@ export function CustomerForm({ customer }: CustomerFormProps) {
               <Label htmlFor="name">
                 Customer Name <span className="text-destructive">*</span>
               </Label>
-              <Popover open={showSuggestions && filteredCustomers.length > 0} onOpenChange={setShowSuggestions}>
-                <PopoverTrigger asChild>
-                  <Input
-                    id="name"
-                    required
-                    value={formData.name}
-                    onChange={(e) => {
-                      setFormData({ ...formData, name: e.target.value })
+              <div className="relative">
+                <Input
+                  id="name"
+                  required
+                  value={formData.name}
+                  onChange={(e) => {
+                    setFormData({ ...formData, name: e.target.value })
+                    setShowSuggestions(e.target.value.length > 0)
+                  }}
+                  onFocus={() => {
+                    if (formData.name.length > 0) {
                       setShowSuggestions(true)
-                    }}
-                    onFocus={() => setShowSuggestions(true)}
-                    placeholder="e.g., John Doe"
-                    autoComplete="off"
-                  />
-                </PopoverTrigger>
-                {filteredCustomers.length > 0 && (
-                  <PopoverContent className="w-[300px] p-0" align="start">
-                    <Command>
-                      <CommandGroup heading="Existing Customers">
-                        {filteredCustomers.map((c) => (
-                          <CommandItem
-                            key={c.id}
-                            onSelect={() => {
-                              setFormData({
-                                name: c.name,
-                                email: c.email || "",
-                                phone: c.phone || "",
-                                gstin: c.gstin || "",
-                                billing_address: c.billing_address || "",
-                                shipping_address: c.shipping_address || "",
-                                notes: c.notes || "",
-                              })
-                              setShowSuggestions(false)
-                            }}
-                          >
-                            <div className="flex flex-col">
-                              <span className="font-medium">{c.name}</span>
-                              {c.phone && <span className="text-xs text-muted-foreground">{c.phone}</span>}
-                            </div>
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </Command>
-                  </PopoverContent>
+                    }
+                  }}
+                  onBlur={() => {
+                    // Delay hiding to allow clicks on suggestions
+                    setTimeout(() => setShowSuggestions(false), 200)
+                  }}
+                  placeholder="e.g., John Doe"
+                  autoComplete="off"
+                />
+                {showSuggestions && filteredCustomers.length > 0 && (
+                  <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-md max-h-[200px] overflow-auto">
+                    <div className="p-1">
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">Existing Customers</div>
+                      {filteredCustomers.map((c) => (
+                        <div
+                          key={c.id}
+                          className="px-2 py-1.5 cursor-pointer hover:bg-accent rounded-sm"
+                          onMouseDown={(e) => {
+                            e.preventDefault()
+                            setFormData({
+                              name: c.name,
+                              email: c.email || "",
+                              phone: c.phone || "",
+                              gstin: c.gstin || "",
+                              billing_address: c.billing_address || "",
+                              shipping_address: c.shipping_address || "",
+                              notes: c.notes || "",
+                            })
+                            setShowSuggestions(false)
+                          }}
+                        >
+                          <div className="flex flex-col">
+                            <span className="font-medium">{c.name}</span>
+                            {c.phone && <span className="text-xs text-muted-foreground">{c.phone}</span>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 )}
-              </Popover>
+              </div>
             </div>
 
             <div className="space-y-2">

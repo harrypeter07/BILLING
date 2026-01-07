@@ -51,14 +51,14 @@ getActiveDbMode(): 'indexeddb' | 'supabase'
 **Behavior**:
 - All data operations use Dexie (IndexedDB wrapper)
 - Data stored locally in browser
-- Optional sync to Supabase (background)
+- No sync functionality - completely separate from Supabase mode
 - Offline-first architecture
 - Business settings can be fetched from Supabase (read-only)
 
 **Key Files**:
 - `lib/dexie-client.ts` - Dexie database client
 - `lib/storage-manager.ts` - CRUD operations wrapper
-- `lib/sync/sync-manager.ts` - Background sync to Supabase
+- Note: Sync functionality has been removed - IndexedDB and Supabase are separate modes
 
 ### Supabase Mode Flow
 
@@ -67,9 +67,9 @@ getActiveDbMode(): 'indexeddb' | 'supabase'
 **Behavior**:
 - All data operations use Supabase client
 - Data stored in cloud PostgreSQL
-- Real-time sync
 - No IndexedDB access allowed
 - Direct API calls to Supabase
+- Completely separate from IndexedDB mode - no cross-mode sync
 
 **Key Files**:
 - `lib/supabase/client.ts` - Browser Supabase client
@@ -330,7 +330,7 @@ Action (Print/Download/R2 Upload)
 
 - [x] No regression in B2C mode
 - [x] No performance hit
-- [x] No sync bugs introduced
+- [x] Sync functionality removed - modes are completely separate
 
 ---
 

@@ -13,7 +13,6 @@ import { useRouter } from "next/navigation"
 import { useToast } from "@/hooks/use-toast"
 import { Switch } from "@/components/ui/switch"
 import { isOfflineLoginEnabled, setOfflineLoginEnabled } from "@/lib/utils/offline-auth"
-import { clearLicense, getStoredLicense } from "@/lib/utils/license-manager"
 
 export default function SettingsPage() {
   const [profile, setProfile] = useState<any>(null)
@@ -26,23 +25,10 @@ export default function SettingsPage() {
   const isExcel = false
   const dbType = getDatabaseType()
   const [offlineEnabled, setOfflineEnabled] = useState(false)
-  const [licenseInfo, setLicenseInfo] = useState<any>(null)
-  const [clearingLicense, setClearingLicense] = useState(false)
+  const [isSwitchingMode, setIsSwitchingMode] = useState(false)
 
   useEffect(() => {
     setOfflineEnabled(isOfflineLoginEnabled())
-  }, [])
-
-  useEffect(() => {
-    const fetchLicenseInfo = async () => {
-      try {
-        const license = await getStoredLicense()
-        setLicenseInfo(license)
-      } catch (error) {
-        console.error("Error fetching license info:", error)
-      }
-    }
-    fetchLicenseInfo()
   }, [])
 
   // Only admin can access settings
@@ -106,38 +92,119 @@ export default function SettingsPage() {
     })()
   }, [isExcel])
 
-  const handleSyncAllToSupabase = async () => {
-    setIsSyncing(true)
+  const handleSwitchToSupabase = async (enabled: boolean) => {
+    if (!enabled) {
+      // Switching to Supabase mode
+      if (!confirm("Switch to Supabase mode? This will:\n1. Copy all local data to Supabase (one-time migration)\n2. Switch the app to cloud-only mode\n3. Disconnect from IndexedDB\n\nNote: IndexedDB and Supabase are separate plans with separate data storage.\n\nContinue?")) {
+        return
+      }
+    } else {
+      // Switching back to IndexedDB mode
+      if (!confirm("Switch back to IndexedDB mode? This will disconnect from Supabase and use local storage only.\n\nNote: Data in Supabase will remain but won't be accessible in IndexedDB mode.\n\nContinue?")) {
+        return
+      }
+    }
+
+    setIsSwitchingMode(true)
     try {
-      // Sync stores first
-      const stores = await db.stores.toArray()
-      if (stores.length > 0) {
-        const { syncStoreToSupabase } = await import("@/lib/utils/supabase-sync")
-        for (const store of stores) {
-          await syncStoreToSupabase(store)
+      if (!enabled) {
+        // Switching TO Supabase mode - copy all data (one-time migration)
+        // Copy stores
+        const stores = await db.stores.toArray()
+        if (stores.length > 0) {
+          const { syncStoreToSupabase } = await import("@/lib/utils/supabase-sync")
+          for (const store of stores) {
+            await syncStoreToSupabase(store)
+          }
         }
+
+        // Copy employees (ensure all are in Supabase)
+        const { syncAllEmployeesToSupabase } = await import("@/lib/utils/supabase-sync")
+        await syncAllEmployeesToSupabase()
+        
+        // Copy products, customers, invoices
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          // Copy products
+          const products = await db.products.toArray()
+          if (products.length > 0) {
+            const productsData = products.map(p => ({
+              ...p,
+              user_id: user.id,
+              created_at: p.created_at || new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }))
+            await supabase.from("products").upsert(productsData, { onConflict: "id" })
+          }
+
+          // Copy customers
+          const customers = await db.customers.toArray()
+          if (customers.length > 0) {
+            const customersData = customers.map(c => ({
+              ...c,
+              user_id: user.id,
+              created_at: c.created_at || new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }))
+            await supabase.from("customers").upsert(customersData, { onConflict: "id" })
+          }
+
+          // Copy invoices and invoice items
+          const invoices = await db.invoices.toArray()
+          if (invoices.length > 0) {
+            const invoicesData = invoices.map(i => ({
+              ...i,
+              user_id: user.id,
+              created_at: i.created_at || new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            }))
+            await supabase.from("invoices").upsert(invoicesData, { onConflict: "id" })
+
+            // Copy invoice items
+            for (const invoice of invoices) {
+              const items = await db.invoice_items.where("invoice_id").equals(invoice.id).toArray()
+              if (items.length > 0) {
+                await supabase.from("invoice_items").delete().eq("invoice_id", invoice.id)
+                await supabase.from("invoice_items").insert(items.map(item => ({
+                  ...item,
+                  created_at: item.created_at || new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                })))
+              }
+            }
+          }
+        }
+
+        // Switch to Supabase mode
+        localStorage.setItem('databaseType', 'supabase')
+        
+        toast({
+          title: "Switched to Supabase Mode",
+          description: "All local data has been copied to Supabase. App is now in cloud-only mode.",
+        })
+      } else {
+        // Switching back to IndexedDB mode
+        localStorage.setItem('databaseType', 'indexeddb')
+        
+        toast({
+          title: "Switched to IndexedDB Mode",
+          description: "App is now using local storage. Data will be stored locally in IndexedDB.",
+        })
       }
 
-      // Sync employees
-      const { syncAllEmployeesToSupabase } = await import("@/lib/utils/supabase-sync")
-      const employeeResult = await syncAllEmployeesToSupabase()
-      
-      // Sync products, customers, invoices via sync manager
-      const { syncManager } = await import("@/lib/sync/sync-manager")
-      await syncManager.syncAll()
-
-      toast({
-        title: "Sync Complete",
-        description: `Synced ${stores.length} stores, ${employeeResult.synced} employees, and all other data to Supabase`,
-      })
+      // Reload to apply changes
+      setTimeout(() => {
+        window.location.reload()
+      }, 1000)
     } catch (error: any) {
       toast({
-        title: "Sync Failed",
-        description: error.message || "Failed to sync data to Supabase",
+        title: "Switch Failed",
+        description: error.message || "Failed to switch database mode",
         variant: "destructive",
       })
     } finally {
-      setIsSyncing(false)
+      setIsSwitchingMode(false)
     }
   }
 
@@ -300,27 +367,35 @@ export default function SettingsPage() {
                 </p>
               </div>
             </div>
-            {dbType !== 'supabase' && (
-              <div className="space-y-2">
-                <Button 
-                  onClick={handleSyncAllToSupabase}
-                  disabled={isSyncing}
-                  className="w-full"
-                  variant="outline"
-                >
-                  <Cloud className="h-4 w-4 mr-2" />
-                  {isSyncing ? "Syncing..." : "Sync All Data to Supabase"}
-                </Button>
-                <p className="text-xs text-muted-foreground">
-                  Sync all current local data (stores, employees, products, customers, invoices) to Supabase cloud storage
-                </p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 border rounded-lg">
+                <div className="space-y-0.5">
+                  <p className="text-sm font-medium">Supabase Mode</p>
+                  <p className="text-xs text-muted-foreground">
+                    {dbType === 'supabase' 
+                      ? 'Cloud-only mode - All data stored in Supabase' 
+                      : 'Local mode - Data stored in IndexedDB only (no cloud sync)'}
+                  </p>
+                </div>
+                <Switch
+                  checked={dbType === 'supabase'}
+                  onCheckedChange={handleSwitchToSupabase}
+                  disabled={isSwitchingMode}
+                />
               </div>
-            )}
-            {dbType === 'supabase' && (
-              <p className="text-xs text-muted-foreground">
-                All data is automatically saved to Supabase. No sync needed.
-              </p>
-            )}
+              
+              {dbType !== 'supabase' && (
+                <p className="text-xs text-muted-foreground">
+                  Switching to Supabase mode will copy all local data (stores, employees, products, customers, invoices) to cloud storage and switch to cloud-only mode. IndexedDB and Supabase are separate storage plans.
+                </p>
+              )}
+              
+              {dbType === 'supabase' && (
+                <p className="text-xs text-muted-foreground">
+                  All data is automatically saved to Supabase. Switching to IndexedDB mode will disconnect from cloud storage.
+                </p>
+              )}
+            </div>
             <div className="mt-6 rounded-lg border bg-muted/30 p-4">
               <div className="flex items-center justify-between">
                 <div>
@@ -347,90 +422,6 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <Shield className="h-5 w-5" />
-              <CardTitle>License Management</CardTitle>
-            </div>
-            <CardDescription>Manage your license key activation</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {licenseInfo ? (
-              <div className="space-y-2 text-sm mb-4">
-                <div>
-                  <p className="font-medium">Client Name</p>
-                  <p className="text-muted-foreground">{licenseInfo.clientName || "Not set"}</p>
-                </div>
-                <div>
-                  <p className="font-medium">License Key</p>
-                  <p className="text-muted-foreground font-mono text-xs">{licenseInfo.licenseKey || "Not set"}</p>
-                </div>
-                <div>
-                  <p className="font-medium">Device ID (MAC)</p>
-                  <p className="text-muted-foreground font-mono text-xs">{licenseInfo.macAddress || "Not set"}</p>
-                </div>
-                <div>
-                  <p className="font-medium">Status</p>
-                  <p className="text-muted-foreground capitalize">{licenseInfo.status || "Unknown"}</p>
-                </div>
-                <div>
-                  <p className="font-medium">Expires On</p>
-                  <p className="text-muted-foreground">
-                    {licenseInfo.expiresOn ? new Date(licenseInfo.expiresOn).toLocaleDateString() : "Not set"}
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground mb-4">No license information found.</p>
-            )}
-            <Button
-              onClick={async () => {
-                if (!confirm("Are you sure you want to logout/clear the license? This will require you to activate again.")) {
-                  return
-                }
-                setClearingLicense(true)
-                try {
-                  const result = await clearLicense()
-                  if (result.success) {
-                    toast({
-                      title: "License cleared",
-                      description: "License has been removed. You will need to activate again.",
-                    })
-                    setLicenseInfo(null)
-                    // Redirect to license page
-                    setTimeout(() => {
-                      router.push("/license")
-                    }, 1000)
-                  } else {
-                    toast({
-                      title: "Failed to clear license",
-                      description: result.error || "An error occurred",
-                      variant: "destructive",
-                    })
-                  }
-                } catch (error: any) {
-                  toast({
-                    title: "Error",
-                    description: error.message || "An unexpected error occurred",
-                    variant: "destructive",
-                  })
-                } finally {
-                  setClearingLicense(false)
-                }
-              }}
-              disabled={clearingLicense || !licenseInfo}
-              className="w-full bg-transparent text-destructive hover:text-destructive hover:bg-destructive/10"
-              variant="outline"
-            >
-              <LogOut className="h-4 w-4 mr-2" />
-              {clearingLicense ? "Clearing License..." : "Logout License (For Testing)"}
-            </Button>
-            <p className="mt-2 text-xs text-muted-foreground">
-              This will completely remove the license from your computer. Use this for testing purposes.
-            </p>
-          </CardContent>
-        </Card>
       </div>
     </div>
   )
