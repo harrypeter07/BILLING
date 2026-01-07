@@ -136,7 +136,9 @@ async function fetchInvoiceData(
 			? await db.stores.get(invoice.store_id)
 			: null;
 
-		// Fetch profile from Supabase (business settings)
+		// NOTE: Business settings (profile) are stored in Supabase even in IndexedDB mode
+		// This is a read-only operation for PDF generation and is acceptable
+		// IndexedDB mode uses Supabase for business settings only, not for transactional data
 		let profile: any = null;
 		try {
 			const supabase = createClient();
@@ -152,7 +154,7 @@ async function fetchInvoiceData(
 				profile = prof;
 			}
 		} catch (err) {
-			console.warn("[InvoiceDocumentEngine] Failed to fetch profile:", err);
+			console.warn("[InvoiceDocumentEngine] Failed to fetch profile (read-only business settings):", err);
 		}
 
 		return { invoice, items, customer, store, profile };

@@ -19,6 +19,7 @@ import { PRODUCT_CATEGORIES } from "@/lib/constants/product-categories"
 import { PRODUCT_UNITS } from "@/lib/constants/product-units"
 import { useInvalidateQueries } from "@/lib/hooks/use-cached-data"
 import { db } from "@/lib/dexie-client"
+import { getB2BModeStatus } from "@/lib/utils/b2b-mode"
 import {
   validateProductPrice,
   validateProductCost,
@@ -52,6 +53,20 @@ export function ProductForm({ product }: ProductFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [showCustomUnit, setShowCustomUnit] = useState(false)
   const [customUnit, setCustomUnit] = useState("")
+  const [isB2BEnabled, setIsB2BEnabled] = useState(false)
+
+  // Load B2B mode status
+  useEffect(() => {
+    const loadB2BStatus = async () => {
+      try {
+        const b2bEnabled = await getB2BModeStatus()
+        setIsB2BEnabled(b2bEnabled)
+      } catch (error) {
+        console.error('Failed to load B2B status:', error)
+      }
+    }
+    loadB2BStatus()
+  }, [])
 
   const [formData, setFormData] = useState({
     name: product?.name || "",
@@ -127,6 +142,28 @@ export function ProductForm({ product }: ProductFormProps) {
         });
         setIsLoading(false);
         return;
+      }
+
+      // B2B validation: HSN code and GST rate are mandatory when B2B is enabled
+      if (isB2BEnabled) {
+        if (!formData.hsn_code?.trim()) {
+          toast({
+            title: "B2B Validation Error",
+            description: "HSN code is required when B2B mode is enabled",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+        if (!formData.gst_rate || formData.gst_rate <= 0) {
+          toast({
+            title: "B2B Validation Error",
+            description: "GST rate is required and must be greater than 0 when B2B mode is enabled",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
       }
 
       // Check for duplicate product (same name and category)

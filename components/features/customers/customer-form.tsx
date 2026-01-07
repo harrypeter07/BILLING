@@ -15,6 +15,7 @@ import { storageManager } from "@/lib/storage-manager"
 import { db } from "@/lib/dexie-client"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { getCurrentStoreId } from "@/lib/utils/get-current-store-id"
+import { getB2BModeStatus } from "@/lib/utils/b2b-mode"
 import {
   Command,
   CommandEmpty,
@@ -33,6 +34,7 @@ interface Customer {
   name: string
   email?: string | null
   phone?: string | null
+  gstin?: string | null
   billing_address?: string | null
   shipping_address?: string | null
   notes?: string | null
@@ -53,17 +55,68 @@ export function CustomerForm({ customer }: CustomerFormProps) {
     name: customer?.name || "",
     email: customer?.email || "",
     phone: customer?.phone || "",
+    gstin: customer?.gstin || "",
     billing_address: customer?.billing_address || "",
     shipping_address: customer?.shipping_address || "",
     notes: customer?.notes || "",
   })
+  const [isB2BEnabled, setIsB2BEnabled] = useState(false)
+
+  // Load B2B mode status
+  useEffect(() => {
+    const loadB2BStatus = async () => {
+      try {
+        const b2bEnabled = await getB2BModeStatus()
+        setIsB2BEnabled(b2bEnabled)
+      } catch (error) {
+        console.error('Failed to load B2B status:', error)
+      }
+    }
+    loadB2BStatus()
+  }, [])
 
   // Load existing customers for autocomplete
   useEffect(() => {
     const loadCustomers = async () => {
       try {
-        const customers = await db.customers.toArray()
-        setExistingCustomers(customers as Customer[])
+        const isIndexedDb = isIndexedDbMode()
+        if (isIndexedDb) {
+          // IndexedDB mode - load from IndexedDB
+          const customers = await db.customers.toArray()
+          setExistingCustomers(customers as Customer[])
+        } else {
+          // Supabase mode - load from Supabase
+          const supabase = createClient()
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            // Handle employee auth
+            const authType = localStorage.getItem("authType")
+            let userId = user.id
+            if (authType === "employee") {
+              const empSession = localStorage.getItem("employeeSession")
+              if (empSession) {
+                const session = JSON.parse(empSession)
+                const sessionStoreId = session.storeId
+                if (sessionStoreId) {
+                  const { data: store } = await supabase
+                    .from("stores")
+                    .select("admin_user_id")
+                    .eq("id", sessionStoreId)
+                    .single()
+                  if (store?.admin_user_id) {
+                    userId = store.admin_user_id
+                  }
+                }
+              }
+            }
+
+            const { data: customers } = await supabase
+              .from("customers")
+              .select("*")
+              .eq("user_id", userId)
+            setExistingCustomers((customers || []) as Customer[])
+          }
+        }
       } catch (error) {
         console.error('Failed to load customers:', error)
       }
@@ -99,6 +152,26 @@ export function CustomerForm({ customer }: CustomerFormProps) {
       return;
     }
 
+    // B2B validation: GSTIN and billing address are mandatory when B2B is enabled
+    if (isB2BEnabled) {
+      if (!formData.gstin?.trim()) {
+        toast({
+          title: "B2B Validation Error",
+          description: "GSTIN is required when B2B mode is enabled",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (!formData.billing_address?.trim()) {
+        toast({
+          title: "B2B Validation Error",
+          description: "Billing address is required when B2B mode is enabled",
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+
     setIsLoading(true);
     try {
       const isIndexedDb = isIndexedDbMode()
@@ -107,7 +180,7 @@ export function CustomerForm({ customer }: CustomerFormProps) {
       
       if (isIndexedDb) {
         // IndexedDB mode
-        await storageManager.updateCustomer({ id, ...formData, store_id: storeId || null })
+        await storageManager.updateCustomer({ id, ...formData, gstin: formData.gstin || null, store_id: storeId || null })
         toast({ title: "Success", description: customer?.id ? "Customer updated" : "Customer created" })
       } else {
         // Supabase mode
@@ -146,6 +219,7 @@ export function CustomerForm({ customer }: CustomerFormProps) {
           name: formData.name.trim(),
           email: formData.email?.trim() || null,
           phone: formData.phone?.trim() || null,
+          gstin: formData.gstin?.trim() || null,
           billing_address: formData.billing_address?.trim() || null,
           shipping_address: formData.shipping_address?.trim() || null,
           notes: formData.notes?.trim() || null,
@@ -216,6 +290,7 @@ export function CustomerForm({ customer }: CustomerFormProps) {
                                 name: c.name,
                                 email: c.email || "",
                                 phone: c.phone || "",
+                                gstin: c.gstin || "",
                                 billing_address: c.billing_address || "",
                                 shipping_address: c.shipping_address || "",
                                 notes: c.notes || "",
@@ -260,17 +335,43 @@ export function CustomerForm({ customer }: CustomerFormProps) {
                 placeholder="customer@example.com"
               />
             </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="gstin">
+                GSTIN {isB2BEnabled && <span className="text-destructive">*</span>}
+              </Label>
+              <Input
+                id="gstin"
+                value={formData.gstin}
+                onChange={(e) => setFormData({ ...formData, gstin: e.target.value })}
+                placeholder="29ABCDE1234F1Z5"
+                required={isB2BEnabled}
+              />
+              {isB2BEnabled && (
+                <p className="text-xs text-muted-foreground">
+                  GSTIN is required for B2B transactions
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="billing_address">Billing Address</Label>
+            <Label htmlFor="billing_address">
+              Billing Address {isB2BEnabled && <span className="text-destructive">*</span>}
+            </Label>
             <Textarea
               id="billing_address"
               value={formData.billing_address}
               onChange={(e) => setFormData({ ...formData, billing_address: e.target.value })}
               placeholder="Street, City, State, PIN"
               rows={3}
+              required={isB2BEnabled}
             />
+            {isB2BEnabled && (
+              <p className="text-xs text-muted-foreground">
+                Billing address is required for B2B transactions
+              </p>
+            )}
           </div>
 
           <div className="space-y-2">

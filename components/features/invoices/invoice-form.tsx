@@ -41,6 +41,7 @@ import { InlineCustomerForm } from "@/components/features/customers/inline-custo
 import { useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { isIndexedDbMode } from "@/lib/utils/db-mode";
+import { getB2BModeStatus } from "@/lib/utils/b2b-mode";
 import { createClient } from "@/lib/supabase/client";
 import {
 	Tooltip,
@@ -417,8 +418,26 @@ export function InvoiceForm({
 	const [isSameState, setIsSameState] = useState(true);
 	const [productSearchTerm, setProductSearchTerm] = useState("");
 	const [focusedField, setFocusedField] = useState<string | null>(null);
+	const [isB2BEnabled, setIsB2BEnabled] = useState(false);
 
 	const [lineItems, setLineItems] = useState<LineItem[]>([]);
+
+	// Load B2B mode status and enforce GST when B2B is enabled
+	useEffect(() => {
+		const loadB2BStatus = async () => {
+			try {
+				const b2bEnabled = await getB2BModeStatus();
+				setIsB2BEnabled(b2bEnabled);
+				// Force GST invoice when B2B is enabled
+				if (b2bEnabled) {
+					setIsGstInvoice(true);
+				}
+			} catch (error) {
+				console.error('[InvoiceForm] Failed to load B2B status:', error);
+			}
+		};
+		loadB2BStatus();
+	}, []);
 
 	const addLineItem = useCallback(() => {
 		setLineItems((prev) => [
@@ -1487,14 +1506,21 @@ export function InvoiceForm({
 								<Switch
 									id="gst_invoice"
 									checked={isGstInvoice}
-									onCheckedChange={setIsGstInvoice}
+									onCheckedChange={(checked) => {
+										// Prevent disabling GST when B2B is enabled
+										if (!isB2BEnabled || checked) {
+											setIsGstInvoice(checked);
+										}
+									}}
+									disabled={isB2BEnabled}
 									className="scale-75"
 								/>
 								<Label
 									htmlFor="gst_invoice"
 									className="text-[10px] cursor-pointer leading-tight"
+									title={isB2BEnabled ? "GST Invoice is required when B2B mode is enabled" : ""}
 								>
-									GST Invoice
+									GST Invoice {isB2BEnabled && <span className="text-destructive">*</span>}
 								</Label>
 							</div>
 							{isGstInvoice && (

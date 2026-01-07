@@ -18,7 +18,7 @@ import { SyncStatus } from "@/components/sync-status"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/hooks/use-toast"
-import { getDatabaseType } from "@/lib/utils/db-mode"
+import { getActiveDbMode } from "@/lib/utils/db-mode"
 import { clearOfflineSession } from "@/lib/utils/offline-auth"
 import { useSessionCountdown } from "@/lib/hooks/use-session-countdown"
 import { cleanupServiceWorkers, checkServiceWorkerStatus } from "@/lib/utils/service-worker-cleanup"
@@ -44,6 +44,8 @@ export function Header({ title }: HeaderProps) {
   const [swCount, setSwCount] = useState(0)
   const [isCleaningSW, setIsCleaningSW] = useState(false)
   const [isFixingSW, setIsFixingSW] = useState(false)
+  const [b2bMode, setB2bMode] = useState<boolean | null>(null)
+  const [dbMode, setDbMode] = useState<'indexeddb' | 'supabase' | null>(null)
   const sessionCountdown = useSessionCountdown()
 
   useEffect(() => {
@@ -91,6 +93,17 @@ export function Header({ title }: HeaderProps) {
             setStoreName(storeData.name)
           }
         }
+
+        // Fetch B2B mode status
+        const { data: settings } = await supabase
+          .from("business_settings")
+          .select("is_b2b_enabled")
+          .eq("user_id", user.id)
+          .single()
+        
+        if (settings) {
+          setB2bMode(settings.is_b2b_enabled || false)
+        }
       }
     }
     fetchUser()
@@ -131,13 +144,15 @@ export function Header({ title }: HeaderProps) {
     setIsOnline(typeof navigator !== "undefined" ? navigator.onLine : true)
 
     // Get current database type
-    const dbType = getDatabaseType();
+    const dbType = getActiveDbMode();
     setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
+    setDbMode(dbType);
 
     // Listen for database type changes
     const handleStorageChange = () => {
-      const dbType = getDatabaseType();
+      const dbType = getActiveDbMode();
       setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
+      setDbMode(dbType);
     };
 
     window.addEventListener('storage', handleStorageChange);
@@ -148,8 +163,9 @@ export function Header({ title }: HeaderProps) {
 
     // Also check periodically (in case changed in same tab)
     const interval = setInterval(() => {
-      const dbType = getDatabaseType();
+      const dbType = getActiveDbMode();
       setDatabaseType(dbType === 'supabase' ? 'Supabase' : 'Local');
+      setDbMode(dbType);
     }, 1000);
 
     return () => {
@@ -359,6 +375,26 @@ export function Header({ title }: HeaderProps) {
             {isSyncing ? "Syncing..." : "Sync Now"}
           </Button>
         )}
+
+        {/* Mode Indicators: B2B/B2C and Database Mode */}
+        <div className="flex items-center gap-2 ml-2">
+          {b2bMode !== null && (
+            <Badge 
+              variant={b2bMode ? "default" : "secondary"} 
+              title={b2bMode ? "B2B (Business-to-Business) mode is enabled" : "B2C (Business-to-Consumer) mode is active"}
+            >
+              {b2bMode ? "B2B" : "B2C"}
+            </Badge>
+          )}
+          {dbMode && (
+            <Badge 
+              variant="outline" 
+              title={`Database: ${dbMode === 'supabase' ? 'Supabase (Cloud)' : 'IndexedDB (Local)'}`}
+            >
+              DB: {dbMode === 'supabase' ? 'Supabase' : 'IndexedDB'}
+            </Badge>
+          )}
+        </div>
 
         {/* Service Worker Fix Button - Always visible for easy access */}
         <Tooltip>

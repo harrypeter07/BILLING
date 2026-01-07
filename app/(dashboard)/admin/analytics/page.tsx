@@ -51,6 +51,7 @@ import { getDatabaseType } from "@/lib/utils/db-mode"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
 import { Calendar, TrendingUp, Users, Receipt, DollarSign, Package, Filter, Download } from "lucide-react"
 import Link from "next/link"
+import { formatCurrency, formatChartLabel, formatChartTooltip } from "@/lib/utils/format-number"
 
 interface AnalyticsData {
   totalRevenue: number
@@ -461,7 +462,7 @@ export default function AdminAnalyticsPage() {
             <DollarSign className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">₹{analytics.totalRevenue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</div>
+            <div className="text-2xl font-bold">{formatCurrency(analytics.totalRevenue)}</div>
             <p className="text-xs text-muted-foreground">All invoices</p>
           </CardContent>
         </Card>
@@ -472,7 +473,7 @@ export default function AdminAnalyticsPage() {
             <TrendingUp className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">₹{analytics.paidRevenue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</div>
+            <div className="text-2xl font-bold text-green-600">{formatCurrency(analytics.paidRevenue)}</div>
             <p className="text-xs text-muted-foreground">Collected payments</p>
           </CardContent>
         </Card>
@@ -484,7 +485,7 @@ export default function AdminAnalyticsPage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{analytics.totalInvoices}</div>
-            <p className="text-xs text-muted-foreground">Average: ₹{analytics.averageOrderValue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</p>
+            <p className="text-xs text-muted-foreground">Average: {formatCurrency(analytics.averageOrderValue)}</p>
           </CardContent>
         </Card>
 
@@ -507,7 +508,7 @@ export default function AdminAnalyticsPage() {
             <CardTitle className="text-sm font-medium">Pending Revenue</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-xl font-bold text-orange-600">₹{analytics.pendingRevenue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</div>
+            <div className="text-xl font-bold text-orange-600">{formatCurrency(analytics.pendingRevenue)}</div>
             <p className="text-xs text-muted-foreground">Unpaid invoices</p>
           </CardContent>
         </Card>
@@ -517,8 +518,8 @@ export default function AdminAnalyticsPage() {
             <CardTitle className="text-sm font-medium">Total GST</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-xl font-bold">₹{analytics.totalGST.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</div>
-            <p className="text-xs text-muted-foreground">CGST: ₹{analytics.gstBreakdown.cgst.toLocaleString("en-IN", { maximumFractionDigits: 2 })} | SGST: ₹{analytics.gstBreakdown.sgst.toLocaleString("en-IN", { maximumFractionDigits: 2 })} | IGST: ₹{analytics.gstBreakdown.igst.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</p>
+            <div className="text-xl font-bold">{formatCurrency(analytics.totalGST)}</div>
+            <p className="text-xs text-muted-foreground">CGST: {formatCurrency(analytics.gstBreakdown.cgst)} | SGST: {formatCurrency(analytics.gstBreakdown.sgst)} | IGST: {formatCurrency(analytics.gstBreakdown.igst)}</p>
           </CardContent>
         </Card>
 
@@ -527,7 +528,7 @@ export default function AdminAnalyticsPage() {
             <CardTitle className="text-sm font-medium">Average Order Value</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-xl font-bold">₹{analytics.averageOrderValue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</div>
+            <div className="text-xl font-bold">{formatCurrency(analytics.averageOrderValue)}</div>
             <p className="text-xs text-muted-foreground">Per invoice</p>
           </CardContent>
         </Card>
@@ -554,8 +555,8 @@ export default function AdminAnalyticsPage() {
                   <LineChart data={analytics.monthlySales}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="month" />
-                    <YAxis />
-                    <RechartsTooltip formatter={(value: any) => `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`} />
+                    <YAxis tickFormatter={(value) => formatChartLabel(value)} />
+                    <RechartsTooltip formatter={(value: any) => formatChartTooltip(Number(value))} />
                     <Legend />
                     <Line type="monotone" dataKey="sales" stroke="#3b82f6" name="Revenue" />
                     <Line type="monotone" dataKey="count" stroke="#10b981" name="Invoice Count" />
@@ -574,8 +575,8 @@ export default function AdminAnalyticsPage() {
                   <BarChart data={analytics.dailySales}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="date" />
-                    <YAxis />
-                    <RechartsTooltip formatter={(value: any) => `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`} />
+                    <YAxis tickFormatter={(value) => formatChartLabel(value)} />
+                    <RechartsTooltip formatter={(value: any) => formatChartTooltip(Number(value))} />
                     <Legend />
                     <Bar dataKey="sales" fill="#3b82f6" name="Revenue" />
                   </BarChart>
@@ -607,7 +608,7 @@ export default function AdminAnalyticsPage() {
                     </Pie>
                     <RechartsTooltip
                       formatter={(value: any, name: any, props: any) => [
-                        `${props.payload.status}: ${value} (₹${props.payload.revenue.toLocaleString("en-IN", { maximumFractionDigits: 2 })})`,
+                        `${props.payload.status}: ${value} (${formatChartTooltip(props.payload.revenue)})`,
                         "Count",
                       ]}
                     />
@@ -630,8 +631,8 @@ export default function AdminAnalyticsPage() {
                   ]}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="name" />
-                    <YAxis />
-                    <RechartsTooltip formatter={(value: any) => `₹${Number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`} />
+                    <YAxis tickFormatter={(value) => formatChartLabel(value)} />
+                    <RechartsTooltip formatter={(value: any) => formatChartTooltip(Number(value))} />
                     <Bar dataKey="value" fill="#10b981" />
                   </BarChart>
                 </ResponsiveContainer>
@@ -674,11 +675,11 @@ export default function AdminAnalyticsPage() {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span className="truncate block max-w-[130px] cursor-help">
-                                ₹{customer.totalSpent.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                                {formatCurrency(customer.totalSpent)}
                               </span>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Total Spent: ₹{customer.totalSpent.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                              <p>Total Spent: {formatCurrency(customer.totalSpent, { showDecimals: true, decimals: 2 })}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TableCell>
@@ -686,11 +687,11 @@ export default function AdminAnalyticsPage() {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span className="truncate block max-w-[130px] cursor-help">
-                                ₹{customer.averageOrderValue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                                {formatCurrency(customer.averageOrderValue)}
                               </span>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Average Order Value: ₹{customer.averageOrderValue.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                              <p>Average Order Value: {formatCurrency(customer.averageOrderValue, { showDecimals: true, decimals: 2 })}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TableCell>
@@ -724,7 +725,7 @@ export default function AdminAnalyticsPage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className="font-bold">₹{customer.totalSpent.toLocaleString("en-IN", { maximumFractionDigits: 2 })}</div>
+                      <div className="font-bold">{formatCurrency(customer.totalSpent)}</div>
                       <div className="text-sm text-muted-foreground">{customer.invoiceCount} invoices</div>
                     </div>
                   </div>
@@ -768,11 +769,11 @@ export default function AdminAnalyticsPage() {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span className="truncate block max-w-[130px] cursor-help">
-                                ₹{invoice.total_amount.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                                {formatCurrency(invoice.total_amount)}
                               </span>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Amount: ₹{invoice.total_amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                              <p>Amount: {formatCurrency(invoice.total_amount, { showDecimals: true, decimals: 2 })}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TableCell>
@@ -830,11 +831,11 @@ export default function AdminAnalyticsPage() {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span className="truncate block max-w-[130px] cursor-help">
-                                ₹{product.revenue.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
+                                {formatCurrency(product.revenue)}
                               </span>
                             </TooltipTrigger>
                             <TooltipContent>
-                              <p>Total Revenue: ₹{product.revenue.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                              <p>Total Revenue: {formatCurrency(product.revenue, { showDecimals: true, decimals: 2 })}</p>
                             </TooltipContent>
                           </Tooltip>
                         </TableCell>

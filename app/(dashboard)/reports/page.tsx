@@ -9,6 +9,7 @@ import {
 } from "@/components/ui/tooltip";
 import { DollarSign, TrendingUp, Package, Receipt } from "lucide-react";
 import { db } from "@/lib/dexie-client";
+import { formatCurrency } from "@/lib/utils/format-number";
 
 export default function ReportsPage() {
 	const [loading, setLoading] = useState(true);
@@ -89,7 +90,7 @@ export default function ReportsPage() {
 						<UITooltip>
 							<TooltipTrigger asChild>
 								<div className="text-xl md:text-2xl font-bold truncate cursor-help">
-									₹{totalRevenue.toLocaleString("en-IN")}
+									{formatCurrency(totalRevenue)}
 								</div>
 							</TooltipTrigger>
 							<TooltipContent>
@@ -109,7 +110,7 @@ export default function ReportsPage() {
 						<UITooltip>
 							<TooltipTrigger asChild>
 								<div className="text-xl md:text-2xl font-bold truncate cursor-help">
-									₹{paidRevenue.toLocaleString("en-IN")}
+									{formatCurrency(paidRevenue)}
 								</div>
 							</TooltipTrigger>
 							<TooltipContent>
@@ -129,7 +130,7 @@ export default function ReportsPage() {
 						<UITooltip>
 							<TooltipTrigger asChild>
 								<div className="text-xl md:text-2xl font-bold truncate cursor-help">
-									₹{totalGST.toLocaleString("en-IN")}
+									{formatCurrency(totalGST)}
 								</div>
 							</TooltipTrigger>
 							<TooltipContent>
@@ -212,7 +213,7 @@ export default function ReportsPage() {
 										<UITooltip>
 											<TooltipTrigger asChild>
 												<p className="font-medium text-sm md:text-base truncate max-w-[120px] cursor-help">
-													₹{amount.toLocaleString("en-IN")}
+													{formatCurrency(amount)}
 												</p>
 											</TooltipTrigger>
 											<TooltipContent>

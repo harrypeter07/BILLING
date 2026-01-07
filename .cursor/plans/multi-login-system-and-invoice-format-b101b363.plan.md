@@ -1,4 +1,9 @@
-<!-- b101b363-c582-4e0e-a7a2-731777c5e561 4126f996-2e8f-4e40-bf66-9fabb473fff2 -->
+---
+name: "Implementation Plan: Multi-Login System and Invoice Format"
+overview: ""
+todos: []
+---
+
 # Implementation Plan: Multi-Login System and Invoice Format
 
 ## 1. Fix Reports Page for Excel Mode
@@ -198,4 +203,3 @@
 - `lib/supabase/middleware.ts` - Add customer/employee route protection
 - `app/(dashboard)/employees/[id]/edit/page.tsx` - Add employee_id, password fields
 - `app/(dashboard)/employees/new/page.tsx` - Auto-generate employee_id
-- Customer/Employee listing pages - Show employee_id, store associations

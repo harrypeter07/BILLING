@@ -3,6 +3,7 @@
 ## ✅ Completed Tasks
 
 ### 1. Database Schema Updates
+
 - ✅ Created migration SQL (`scripts/multi-store-b2b-migration.sql`)
   - Adds `store_id` to `products` table
   - Adds `store_id` to `customers` table
@@ -11,18 +12,21 @@
   - Updates RLS policies for store-scoped access
 
 ### 2. Store Context & Utilities
+
 - ✅ Created `lib/utils/get-current-store-id.ts`
   - Single source of truth for getting active store ID
   - Handles employee sessions, localStorage, and fallbacks
   - Both async and sync versions
 
 ### 3. Query Updates (Store-Scoped)
+
 - ✅ Updated `lib/hooks/use-cached-data.ts`
   - `useCustomers()` now filters by `store_id`
   - `useProducts()` now filters by `store_id`
   - Backward compatible (handles NULL store_id for legacy data)
 
 ### 4. Product & Customer Creation
+
 - ✅ Updated `components/features/products/product-form.tsx`
   - Sets `store_id` when creating/updating products (both IndexedDB and Supabase)
 - ✅ Updated `components/features/customers/customer-form.tsx`
@@ -33,10 +37,12 @@
   - `createCustomer` function sets `store_id`
 
 ### 5. Invoice Page Queries
+
 - ✅ Updated `app/(dashboard)/invoices/new/page.tsx`
   - Products and customers queries now filter by `store_id`
 
 ### 6. B2B Settings UI
+
 - ✅ Updated `app/(dashboard)/settings/business/page.tsx`
   - Added B2B toggle switch
   - Validation before enabling (requires GSTIN and address)
@@ -46,29 +52,35 @@
 ## 🔄 In Progress / Pending
 
 ### 7. RLS Policies (Database)
+
 - ⏳ Migration SQL created but needs to be run in Supabase
 - ⏳ `current_store_id()` function needs testing
 
 ### 8. B2B Form Validation
+
 - ⏳ Customer form: Make GSTIN and billing address mandatory when B2B enabled
 - ⏳ Product form: Make HSN code and GST rate mandatory when B2B enabled
 
 ### 9. Tax Engine Centralization
+
 - ⏳ Create single tax calculation function
 - ⏳ Determine CGST/SGST vs IGST based on store GSTIN, customer GSTIN, place of supply
 - ⏳ Replace duplicate tax logic across codebase
 
 ### 10. Invoice Creation B2B Rules
+
 - ⏳ Enforce GST invoice when B2B enabled
 - ⏳ Validate customer GSTIN when B2B enabled
 - ⏳ Ensure store_id is always set
 
 ### 11. PDF Templates
+
 - ⏳ Update invoice PDF template for B2B conditional sections
 - ⏳ Update slip PDF template (already has most fields)
 - ⏳ Conditional rendering: GSTINs, HSN, tax breakup, "TAX INVOICE" label
 
 ### 12. Code Cleanup
+
 - ⏳ Remove duplicate invoice fetching logic
 - ⏳ Centralize invoice data preparation
 - ⏳ Clean up console logs
@@ -97,4 +109,3 @@
 - RLS policies allow NULL store_id for backward compatibility
 - Store context is already implemented in `lib/utils/store-context.ts`
 - B2B toggle requires GSTIN and address validation before enabling
-
