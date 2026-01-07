@@ -153,6 +153,15 @@ export default function BusinessSettingsPage() {
 					? "B2B billing mode is now active. GST compliance will be enforced."
 					: "B2B mode disabled. B2C mode is now active.",
 			});
+
+			// Trigger page refresh to update header badge
+			if (typeof window !== 'undefined') {
+				window.dispatchEvent(new Event('storage'));
+				// Small delay to ensure header updates
+				setTimeout(() => {
+					window.location.reload();
+				}, 500);
+			}
 		} catch (error: any) {
 			// Revert state on error
 			setInvoiceSettings((prev) => ({ ...prev, is_b2b_enabled: !checked }));
