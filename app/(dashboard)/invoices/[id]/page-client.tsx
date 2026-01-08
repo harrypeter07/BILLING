@@ -233,10 +233,38 @@ export default function InvoiceDetailPageClient() {
 
 	if (loading) {
 		return (
-			<div className="flex items-center justify-center min-h-[400px]">
-				<div className="text-center">
-					<p className="text-muted-foreground">Loading invoice...</p>
+			<div className="space-y-6 p-4 md:p-6">
+				<Skeleton className="h-10 w-64" />
+				<div className="grid gap-6 md:grid-cols-2">
+					<Card>
+						<CardHeader>
+							<Skeleton className="h-6 w-32" />
+						</CardHeader>
+						<CardContent className="space-y-3">
+							<Skeleton className="h-4 w-full" />
+							<Skeleton className="h-4 w-full" />
+							<Skeleton className="h-4 w-3/4" />
+						</CardContent>
+					</Card>
+					<Card>
+						<CardHeader>
+							<Skeleton className="h-6 w-32" />
+						</CardHeader>
+						<CardContent className="space-y-3">
+							<Skeleton className="h-4 w-full" />
+							<Skeleton className="h-4 w-full" />
+							<Skeleton className="h-4 w-3/4" />
+						</CardContent>
+					</Card>
 				</div>
+				<Card>
+					<CardHeader>
+						<Skeleton className="h-6 w-40" />
+					</CardHeader>
+					<CardContent>
+						<TableSkeleton rows={5} columns={6} />
+					</CardContent>
+				</Card>
 			</div>
 		);
 	}

@@ -7,6 +7,8 @@ import { InvoiceForm } from "@/components/features/invoices/invoice-form"
 import { db } from "@/lib/dexie-client"
 import { useStore } from "@/lib/utils/store-context"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Card, CardContent } from "@/components/ui/card"
 
 // Note: Client components cannot export 'revalidate' or 'dynamic'
 // These are server-side only features
@@ -17,6 +19,7 @@ export default function NewInvoicePage() {
   const [settings, setSettings] = useState<any>(null)
   const [storeId, setStoreId] = useState<string | null>(null)
   const [employeeId, setEmployeeId] = useState<string>("ADMN")
+  const [isLoading, setIsLoading] = useState(true)
   const { currentStore } = useStore()
   const router = useRouter()
   
@@ -57,6 +60,7 @@ export default function NewInvoicePage() {
 
   useEffect(() => {
     (async () => {
+      setIsLoading(true)
       // Use async mode detection to properly inherit from admin for employees
       const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode")
       const dbMode = await getActiveDbModeAsync()
@@ -83,6 +87,8 @@ export default function NewInvoicePage() {
           setCustomers([])
           setProducts([])
           setSettings({ invoice_prefix: 'INV', next_invoice_number: 1, default_gst_rate: 18, place_of_supply: null })
+        } finally {
+          setIsLoading(false)
         }
       } else {
         // Supabase mode - load from Supabase
@@ -116,6 +122,7 @@ export default function NewInvoicePage() {
                     setCustomers(dbCustomers || [])
                     setProducts(dbProducts || [])
                     setSettings(dbSettings || null)
+                    setIsLoading(false)
                     return
                   }
                 }
@@ -127,6 +134,7 @@ export default function NewInvoicePage() {
             setCustomers([])
             setProducts([])
             setSettings(null)
+            setIsLoading(false)
             return
           }
           
@@ -136,6 +144,7 @@ export default function NewInvoicePage() {
             setCustomers([])
             setProducts([])
             setSettings(null)
+            setIsLoading(false)
             return
           }
           
@@ -152,6 +161,8 @@ export default function NewInvoicePage() {
           setCustomers([])
           setProducts([])
           setSettings(null)
+        } finally {
+          setIsLoading(false)
         }
       }
     })()
@@ -163,16 +174,27 @@ export default function NewInvoicePage() {
         <h1 className="text-2xl md:text-3xl font-bold">Create New Invoice</h1>
         <p className="text-sm md:text-base text-muted-foreground mt-1">Generate a new invoice for your customer</p>
       </div>
-      <InvoiceForm 
-        customers={customers || []} 
-        products={products || []} 
-        settings={settings} 
-        storeId={storeId} 
-        employeeId={employeeId}
-        onCustomersUpdate={(updatedCustomers) => {
-          setCustomers(updatedCustomers)
-        }}
-      />
+      {isLoading ? (
+        <Card>
+          <CardContent className="p-6 space-y-4">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-64 w-full" />
+            <Skeleton className="h-32 w-full" />
+          </CardContent>
+        </Card>
+      ) : (
+        <InvoiceForm 
+          customers={customers || []} 
+          products={products || []} 
+          settings={settings} 
+          storeId={storeId} 
+          employeeId={employeeId}
+          onCustomersUpdate={(updatedCustomers) => {
+            setCustomers(updatedCustomers)
+          }}
+        />
+      )}
     </div>
   )
 }

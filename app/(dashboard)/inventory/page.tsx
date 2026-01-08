@@ -39,6 +39,8 @@ import {
 } from "lucide-react";
 import { useUserRole } from "@/lib/hooks/use-user-role";
 import { useRouter } from "next/navigation";
+import { TableSkeleton } from "@/components/ui/table-skeleton";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface InventoryProduct {
 	id: string;
@@ -771,7 +773,21 @@ export default function InventoryPage() {
 										</TableRow>
 									</TableHeader>
 									<TableBody>
-										{filteredProducts.length === 0 ? (
+										{loading ? (
+											Array.from({ length: 5 }).map((_, i) => (
+												<TableRow key={i}>
+													<TableCell><Skeleton className="h-4 w-full" /></TableCell>
+													<TableCell><Skeleton className="h-4 w-full" /></TableCell>
+													<TableCell><Skeleton className="h-4 w-full" /></TableCell>
+													<TableCell><Skeleton className="h-4 w-full" /></TableCell>
+													<TableCell><Skeleton className="h-4 w-full" /></TableCell>
+													<TableCell><Skeleton className="h-4 w-full" /></TableCell>
+													<TableCell><Skeleton className="h-4 w-full" /></TableCell>
+													<TableCell><Skeleton className="h-4 w-full" /></TableCell>
+													<TableCell><Skeleton className="h-4 w-full" /></TableCell>
+												</TableRow>
+											))
+										) : filteredProducts.length === 0 ? (
 											<TableRow>
 												<TableCell
 													colSpan={9}

@@ -16,6 +16,7 @@ import { useUserRole } from "@/lib/hooks/use-user-role"
 import { db } from "@/lib/dexie-client"
 import { getDatabaseType, isIndexedDbMode } from "@/lib/utils/db-mode"
 import { useEmployees, useInvalidateQueries } from "@/lib/hooks/use-cached-data"
+import { TableSkeleton } from "@/components/ui/table-skeleton"
 
 interface Employee {
   id: string
@@ -132,7 +133,9 @@ export default function EmployeesPage() {
         </CardHeader>
         <CardContent className="p-0 sm:p-4 md:p-6">
           {isLoading ? (
-            <div className="text-center py-8">Loading...</div>
+            <div className="p-4 sm:p-6">
+              <TableSkeleton rows={8} columns={11} />
+            </div>
           ) : filteredEmployees.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">No employees found</div>
           ) : (

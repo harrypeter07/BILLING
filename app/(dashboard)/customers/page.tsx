@@ -10,6 +10,8 @@ import { db } from "@/lib/dexie-client"
 import { storageManager } from "@/lib/storage-manager"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { useCustomers, useInvalidateQueries } from "@/lib/hooks/use-cached-data"
+import { TableSkeleton } from "@/components/ui/table-skeleton"
+import { Card, CardContent } from "@/components/ui/card"
 
 export default function CustomersPage() {
   const { data: customers = [], isLoading } = useCustomers()
@@ -46,7 +48,15 @@ export default function CustomersPage() {
           </Button>
         </div>
       </div>
-      <CustomersTable customers={customers || []} />
+      {isLoading ? (
+        <Card>
+          <CardContent className="p-4 sm:p-6">
+            <TableSkeleton rows={8} columns={6} />
+          </CardContent>
+        </Card>
+      ) : (
+        <CustomersTable customers={customers || []} />
+      )}
     </div>
   )
 }

@@ -74,12 +74,14 @@ export async function GET(
       };
 
       if (type === "slip") {
-        // Custom size for slip: 80mm x 200mm
+        // Custom size for slip: 80mm width, auto height (allows longer bills)
         pdfOptions.width = "80mm";
-        pdfOptions.height = "200mm";
+        pdfOptions.height = "auto"; // Auto height allows content to flow to multiple pages
+        pdfOptions.pageRanges = "1-"; // Allow multiple pages
       } else {
-        // Standard A4 format for invoice
+        // Standard A4 format for invoice (automatically handles multiple pages)
         pdfOptions.format = "A4";
+        pdfOptions.pageRanges = "1-"; // Allow multiple pages
       }
 
       const pdf = await page.pdf(pdfOptions);

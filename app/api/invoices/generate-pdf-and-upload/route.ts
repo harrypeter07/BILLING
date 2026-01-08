@@ -297,7 +297,8 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 					printBackground: true,
 					margin: { top: "6mm", right: "6mm", bottom: "6mm", left: "6mm" },
 					width: "80mm",
-					height: "200mm",
+					height: "auto", // Auto height allows longer bills with multiple pages
+					pageRanges: "1-", // Allow multiple pages
 				})
 			);
 			

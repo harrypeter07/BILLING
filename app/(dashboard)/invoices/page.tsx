@@ -11,6 +11,8 @@ import { storageManager } from "@/lib/storage-manager"
 import { useUserRole } from "@/lib/hooks/use-user-role"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { useInvoices, useInvalidateQueries } from "@/lib/hooks/use-cached-data"
+import { TableSkeleton } from "@/components/ui/table-skeleton"
+import { Card, CardContent } from "@/components/ui/card"
 
 export default function InvoicesPage() {
   const { data: invoices = [], isLoading: loading } = useInvoices()
@@ -57,7 +59,15 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      <InvoicesTable invoices={invoices || []} />
+      {loading ? (
+        <Card>
+          <CardContent className="p-4 sm:p-6">
+            <TableSkeleton rows={8} columns={6} />
+          </CardContent>
+        </Card>
+      ) : (
+        <InvoicesTable invoices={invoices || []} />
+      )}
     </div >
   )
 }

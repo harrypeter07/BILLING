@@ -227,13 +227,7 @@ export async function generateInvoicePDFClient(
 				throw new Error("html2canvas failed to generate canvas");
 			}
 
-			// Create PDF from canvas
-			const pdf = new jsPDF({
-				orientation: "portrait",
-				unit: "mm",
-				format: "a4",
-			});
-
+			// Create PDF from canvas with multi-page support for long invoices
 			const imgData = canvas.toDataURL("image/png", 1.0);
 			if (!imgData || imgData === "data:,") {
 				throw new Error("Failed to convert canvas to image data");
@@ -241,8 +235,67 @@ export async function generateInvoicePDFClient(
 
 			const imgWidth = 210; // A4 width in mm
 			const imgHeight = (canvas.height * imgWidth) / canvas.width;
+			const pageHeight = 297; // A4 height in mm
+			const pageWidth = 210; // A4 width in mm
+			const margin = 0; // No margin for invoices
 
-			pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
+			// Create first page
+			const pdf = new jsPDF({
+				orientation: "portrait",
+				unit: "mm",
+				format: "a4",
+			});
+
+			// Split image across multiple pages by cropping canvas sections
+			let yPosition = 0; // Current Y position in the source image
+			let pageNumber = 0;
+
+			while (yPosition < imgHeight) {
+				if (pageNumber > 0) {
+					pdf.addPage("a4", "portrait");
+				}
+
+				// Calculate how much of the image fits on this page
+				const remainingHeight = imgHeight - yPosition;
+				const pageContentHeight = Math.min(pageHeight, remainingHeight);
+				
+				// Calculate source coordinates for cropping
+				const sourceX = 0;
+				const sourceY = (yPosition / imgHeight) * canvas.height;
+				const sourceWidth = canvas.width;
+				const sourceHeight = (pageContentHeight / imgHeight) * canvas.height;
+
+				// Create a temporary canvas for this page's content
+				const pageCanvas = document.createElement("canvas");
+				pageCanvas.width = canvas.width;
+				pageCanvas.height = sourceHeight;
+				const pageCtx = pageCanvas.getContext("2d");
+				
+				if (pageCtx) {
+					// Draw the cropped section to the temporary canvas
+					pageCtx.drawImage(
+						canvas,
+						sourceX, sourceY, sourceWidth, sourceHeight, // Source rectangle
+						0, 0, canvas.width, sourceHeight // Destination rectangle
+					);
+					
+					// Convert cropped canvas to image
+					const pageImgData = pageCanvas.toDataURL("image/png", 1.0);
+					
+					// Add to PDF
+					pdf.addImage(
+						pageImgData,
+						"PNG",
+						margin,
+						margin,
+						imgWidth,
+						pageContentHeight
+					);
+				}
+
+				yPosition += pageContentHeight;
+				pageNumber++;
+			}
 
 			const blob = pdf.output("blob");
 			if (!blob || !(blob instanceof Blob)) {

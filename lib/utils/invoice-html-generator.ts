@@ -32,6 +32,10 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
       padding: 0;
       box-sizing: border-box;
     }
+    @page {
+      size: A4;
+      margin: 0;
+    }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
       color: #1e293b;
@@ -120,10 +124,15 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
       border-collapse: collapse;
       margin-bottom: 20px;
       font-size: 11px;
+      page-break-inside: auto;
     }
     .items-table thead {
       background: #1e293b;
       color: white;
+      display: table-header-group;
+    }
+    .items-table tbody {
+      display: table-row-group;
     }
     .items-table th {
       padding: 10px 8px;
@@ -144,6 +153,10 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
       border-bottom: 1px solid #e2e8f0;
       font-size: 11px;
     }
+    .items-table tbody tr {
+      page-break-inside: avoid;
+      page-break-after: auto;
+    }
     .items-table tbody tr:nth-child(even) {
       background: #f8fafc;
     }
@@ -157,6 +170,7 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
       display: flex;
       justify-content: flex-end;
       margin-bottom: 30px;
+      page-break-inside: avoid;
     }
     .totals-table {
       width: 300px;
@@ -178,6 +192,7 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
       border-top: 2px solid #1e293b;
       padding-top: 10px;
       margin-top: 10px;
+      page-break-inside: avoid;
     }
     .total-row td {
       font-size: 18px;
@@ -191,6 +206,15 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
       margin-top: 30px;
       padding-top: 20px;
       border-top: 1px solid #e2e8f0;
+      page-break-inside: avoid;
+    }
+    /* Ensure critical sections stay together */
+    .items-wrapper {
+      page-break-inside: auto;
+    }
+    .totals-wrapper {
+      page-break-inside: avoid;
+      page-break-before: auto;
     }
     .qr-section {
       flex: 0 0 150px;
@@ -277,35 +301,38 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
       </div>
     </div>
 
-    <table class="items-table">
-      <thead>
-        <tr>
-          <th>#</th>
-          <th>Item Description</th>
-          <th class="text-center">HSN</th>
-          <th class="text-center">Qty</th>
-          <th class="text-right">Rate</th>
-          <th class="text-right">Amount</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${data.items
+    <div class="items-wrapper">
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Item Description</th>
+            <th class="text-center">HSN</th>
+            <th class="text-center">Qty</th>
+            <th class="text-right">Rate</th>
+            <th class="text-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.items
 					.map(
 						(item, index) => `
-        <tr>
-          <td>${index + 1}</td>
-          <td>${item.description}</td>
-          <td class="text-center">${item.hsnCode || "-"}</td>
-          <td class="text-center">${item.quantity}</td>
-          <td class="text-right">${formatCurrency(item.unitPrice)}</td>
-          <td class="text-right">${formatCurrency(item.lineTotal)}</td>
-        </tr>
-        `
+          <tr>
+            <td>${index + 1}</td>
+            <td>${item.description}</td>
+            <td class="text-center">${item.hsnCode || "-"}</td>
+            <td class="text-center">${item.quantity}</td>
+            <td class="text-right">${formatCurrency(item.unitPrice)}</td>
+            <td class="text-right">${formatCurrency(item.lineTotal)}</td>
+          </tr>
+          `
 					)
 					.join("")}
-      </tbody>
-    </table>
+        </tbody>
+      </table>
+    </div>
 
+    <div class="totals-wrapper">
     <div class="totals-section">
       <table class="totals-table">
         <tr>
@@ -367,6 +394,7 @@ export function generateInvoiceHTML(data: InvoicePDFData): string {
           <td>${formatCurrency(data.totalAmount)}</td>
         </tr>
       </table>
+    </div>
     </div>
 
     <div class="payment-section">

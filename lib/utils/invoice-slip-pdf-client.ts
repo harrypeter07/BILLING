@@ -251,13 +251,7 @@ export async function generateInvoiceSlipPDFClient(
 				canvas.height
 			);
 
-			// Create PDF from canvas
-			const pdf = new jsPDF({
-				orientation: "portrait",
-				unit: "mm",
-				format: [80, 200], // Custom slip size
-			});
-
+			// Create PDF from canvas with auto height support for long bills
 			const imgData = canvas.toDataURL("image/png", 1.0);
 			if (!imgData || imgData === "data:," || imgData.length < 100) {
 				throw new Error(
@@ -272,8 +266,68 @@ export async function generateInvoiceSlipPDFClient(
 
 			const imgWidth = 80; // Slip width in mm
 			const imgHeight = (canvas.height * imgWidth) / canvas.width;
+			const pageHeight = 200; // Standard slip page height in mm
+			const pageWidth = 80; // Slip width in mm
+			const margin = 6; // Margin in mm
+			const usableHeight = pageHeight - margin * 2; // Usable height per page
 
-			pdf.addImage(imgData, "PNG", 0, 0, imgWidth, imgHeight);
+			// Create first page
+			const pdf = new jsPDF({
+				orientation: "portrait",
+				unit: "mm",
+				format: [pageWidth, pageHeight],
+			});
+
+			// Split image across multiple pages by cropping canvas sections
+			let yPosition = 0; // Current Y position in the source image
+			let pageNumber = 0;
+
+			while (yPosition < imgHeight) {
+				if (pageNumber > 0) {
+					pdf.addPage([pageWidth, pageHeight], "portrait");
+				}
+
+				// Calculate how much of the image fits on this page
+				const remainingHeight = imgHeight - yPosition;
+				const pageContentHeight = Math.min(usableHeight, remainingHeight);
+				
+				// Calculate source coordinates for cropping
+				const sourceX = 0;
+				const sourceY = (yPosition / imgHeight) * canvas.height;
+				const sourceWidth = canvas.width;
+				const sourceHeight = (pageContentHeight / imgHeight) * canvas.height;
+
+				// Create a temporary canvas for this page's content
+				const pageCanvas = document.createElement("canvas");
+				pageCanvas.width = canvas.width;
+				pageCanvas.height = sourceHeight;
+				const pageCtx = pageCanvas.getContext("2d");
+				
+				if (pageCtx) {
+					// Draw the cropped section to the temporary canvas
+					pageCtx.drawImage(
+						canvas,
+						sourceX, sourceY, sourceWidth, sourceHeight, // Source rectangle
+						0, 0, canvas.width, sourceHeight // Destination rectangle
+					);
+					
+					// Convert cropped canvas to image
+					const pageImgData = pageCanvas.toDataURL("image/png", 1.0);
+					
+					// Add to PDF
+					pdf.addImage(
+						pageImgData,
+						"PNG",
+						margin,
+						margin,
+						imgWidth - margin * 2,
+						pageContentHeight
+					);
+				}
+
+				yPosition += pageContentHeight;
+				pageNumber++;
+			}
 
 			const blob = pdf.output("blob");
 			if (!blob || !(blob instanceof Blob)) {

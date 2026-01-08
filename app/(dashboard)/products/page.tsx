@@ -11,6 +11,8 @@ import { db } from "@/lib/dexie-client"
 import { getDatabaseType, isIndexedDbMode } from "@/lib/utils/db-mode"
 import { storageManager } from "@/lib/storage-manager"
 import { useProducts, useInvalidateQueries } from "@/lib/hooks/use-cached-data"
+import { TableSkeleton } from "@/components/ui/table-skeleton"
+import { Card, CardContent } from "@/components/ui/card"
 
 export default function ProductsPage() {
   const { data: products = [], isLoading } = useProducts()
@@ -94,7 +96,15 @@ export default function ProductsPage() {
           </Button>
         </div>
       </div>
-      <ProductsTable products={products || []} />
+      {isLoading ? (
+        <Card>
+          <CardContent className="p-4 sm:p-6">
+            <TableSkeleton rows={8} columns={7} />
+          </CardContent>
+        </Card>
+      ) : (
+        <ProductsTable products={products || []} />
+      )}
     </div>
   )
 }

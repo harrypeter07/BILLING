@@ -41,6 +41,10 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
       padding: 0;
       box-sizing: border-box;
     }
+    @page {
+      size: 80mm auto;
+      margin: 6mm;
+    }
     body {
       font-family: 'Courier New', monospace;
       color: #0f172a;
@@ -54,6 +58,7 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
       margin: 0 auto;
       background: white;
       padding: 6mm;
+      min-height: 200mm;
     }
     .logo-section {
       text-align: center;
@@ -121,6 +126,17 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
       border-collapse: collapse;
       margin-bottom: 3mm;
       font-size: 7pt;
+      page-break-inside: auto;
+    }
+    .items-table tbody tr {
+      page-break-inside: avoid;
+      page-break-after: auto;
+    }
+    .items-table thead {
+      display: table-header-group;
+    }
+    .items-table tbody {
+      display: table-row-group;
     }
     .items-table thead {
       background: #1e293b;
@@ -155,6 +171,7 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
     .totals {
       margin-top: 3mm;
       font-size: 7.5pt;
+      page-break-inside: avoid;
     }
     .total-row {
       display: flex;
@@ -167,10 +184,12 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
       border-top: 2px solid #1e293b;
       padding-top: 2mm;
       margin-top: 2mm;
+      page-break-inside: avoid;
     }
     .payment-section {
       margin-top: 4mm;
       margin-bottom: 3mm;
+      page-break-inside: avoid;
     }
     .payment-mode {
       font-size: 7pt;
@@ -203,6 +222,15 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
       margin-top: 4mm;
       padding-top: 3mm;
       border-top: 1px dashed #e2e8f0;
+      page-break-inside: avoid;
+    }
+    /* Ensure critical sections stay together */
+    .totals-section-wrapper {
+      page-break-inside: avoid;
+    }
+    /* Prevent items from breaking across pages */
+    .items-wrapper {
+      page-break-inside: auto;
     }
     .footer-line {
       margin-bottom: 1mm;
@@ -279,34 +307,37 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
     ` : ""}
     
     <!-- Items Table -->
-    <table class="items-table">
-      <thead>
-        <tr>
-          <th>Item</th>
-          <th>Qty</th>
-          <th>Rate</th>
-          <th>Amt</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${data.items
+    <div class="items-wrapper">
+      <table class="items-table">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Qty</th>
+            <th>Rate</th>
+            <th>Amt</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${data.items
 					.map(
 						(item, index) => `
-        <tr>
-          <td>${index + 1}. ${item.description.substring(0, 25)}</td>
-          <td>${item.quantity}</td>
-          <td>${formatCurrency(item.unitPrice)}</td>
-          <td>${formatCurrency(item.lineTotal)}</td>
-        </tr>
-        `
+          <tr>
+            <td>${index + 1}. ${item.description.substring(0, 25)}</td>
+            <td>${item.quantity}</td>
+            <td>${formatCurrency(item.unitPrice)}</td>
+            <td>${formatCurrency(item.lineTotal)}</td>
+          </tr>
+          `
 					)
 					.join("")}
-      </tbody>
-    </table>
+        </tbody>
+      </table>
+    </div>
     
     <div class="divider"></div>
     
     <!-- Totals -->
+    <div class="totals-section-wrapper">
     <div class="totals">
       <div class="total-row">
         <span>Total Qty:</span>
@@ -316,6 +347,7 @@ export function generateSlipHTML(data: InvoiceSlipData): string {
         <span>TOTAL AMOUNT:</span>
         <span>${formatCurrency(data.totalAmount)}</span>
       </div>
+    </div>
     </div>
     
     <div class="divider"></div>
