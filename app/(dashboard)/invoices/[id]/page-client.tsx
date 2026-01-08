@@ -34,6 +34,8 @@ import {
 import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf";
 import { createClient } from "@/lib/supabase/client";
 import { getB2BModeStatus } from "@/lib/utils/b2b-mode";
+import { Skeleton } from "@/components/ui/skeleton";
+import { TableSkeleton } from "@/components/ui/table-skeleton";
 
 export default function InvoiceDetailPageClient() {
 	const params = useParams();

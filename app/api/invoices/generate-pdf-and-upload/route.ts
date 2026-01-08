@@ -8,7 +8,7 @@ import puppeteer from "puppeteer-core";
 
 /**
  * Background API endpoint for PDF generation and R2 upload
- * 
+ *
  * This endpoint is called asynchronously (fire-and-forget) after the invoice
  * is saved and WhatsApp is opened. It handles:
  * 1. Fetching invoice data
@@ -17,7 +17,7 @@ import puppeteer from "puppeteer-core";
  * 4. Generating PDF
  * 5. Uploading to R2
  * 6. Saving metadata
- * 
+ *
  * The client does NOT wait for this to complete.
  */
 export const dynamic = "force-dynamic";
@@ -89,12 +89,12 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 		// For employees, invoice.user_id is their store's admin_user_id
 		// For admins, invoice.user_id is their own user_id
 		let userId = invoice.user_id;
-		
+
 		// Try to get authenticated user (for admins)
 		const {
 			data: { user },
 		} = await supabase.auth.getUser();
-		
+
 		// If no auth user but invoice has user_id, use that (employee context)
 		// If auth user exists, verify it matches invoice.user_id (security check)
 		if (user) {
@@ -105,7 +105,7 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 					.select("admin_user_id")
 					.eq("id", invoice.store_id || "")
 					.maybeSingle();
-				
+
 				if (store?.admin_user_id !== user.id && invoice.user_id !== user.id) {
 					throw new Error("Unauthorized access to invoice");
 				}
@@ -208,7 +208,8 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 			customerPhone: customer?.phone || "",
 			customerGSTIN: customer?.gstin || "",
 			customerAddress: customer?.address || customer?.billing_address || "",
-			customerBillingAddress: customer?.billing_address || customer?.address || "",
+			customerBillingAddress:
+				customer?.billing_address || customer?.address || "",
 			customerCity: customer?.city || "",
 			customerState: customer?.state || "",
 			customerPincode: customer?.pincode || "",
@@ -225,7 +226,7 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 				const unitPrice = Number(item.unit_price) || 0;
 				const discountPercent = Number(item.discount_percent || 0);
 				const gstRate = Number(item.gst_rate || 0);
-				
+
 				// Calculate using same formula as unified engine
 				const subtotal = quantity * unitPrice;
 				const discountAmount = (subtotal * discountPercent) / 100;
@@ -259,17 +260,20 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 		console.log(
 			`[GeneratePDFAndUpload] Generating PDF for invoice: ${invoice.invoice_number}`
 		);
-		
+
 		// Ensure logoUrl is present
 		const pdfDataWithLogo = {
 			...pdfData,
-			logoUrl: pdfData.logoUrl || "https://images.unsplash.com/photo-1560179707-f14e90ef3623?w=80&h=40&fit=crop&auto=format",
+			logoUrl:
+				pdfData.logoUrl ||
+				"https://images.unsplash.com/photo-1560179707-f14e90ef3623?w=80&h=40&fit=crop&auto=format",
 		};
-		
+
 		const html = generateSlipHTML(pdfDataWithLogo);
-		
+
 		// Launch Puppeteer
-		const isProduction = process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
+		const isProduction =
+			process.env.VERCEL === "1" || process.env.NODE_ENV === "production";
 		let browser;
 		if (isProduction) {
 			const chromium = await import("@sparticuz/chromium");
@@ -291,7 +295,7 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 		try {
 			const page = await browser.newPage();
 			await page.setContent(html, { waitUntil: "networkidle0" });
-			
+
 			pdfBuffer = Buffer.from(
 				await page.pdf({
 					printBackground: true,
@@ -301,7 +305,7 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 					pageRanges: "1-", // Allow multiple pages
 				})
 			);
-			
+
 			await browser.close();
 		} catch (error) {
 			await browser.close();
@@ -342,7 +346,7 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 		// Calculate expiration date (14 days from now)
 		const expiresAt = new Date();
 		expiresAt.setDate(expiresAt.getDate() + 14);
-		
+
 		await saveInvoiceStorage({
 			invoice_id: invoiceId,
 			r2_object_key: uploadResult.objectKey || "",
@@ -361,4 +365,3 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 		// Don't throw - this is background processing, errors are logged but don't affect user
 	}
 }
-
