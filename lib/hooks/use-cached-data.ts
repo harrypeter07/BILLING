@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { isIndexedDbMode, getActiveDbModeAsync } from "@/lib/utils/db-mode"
 import { getCurrentStoreId } from "@/lib/utils/get-current-store-id"
+import { toast } from "sonner"
 
 // Query keys for consistent caching
 export const queryKeys = {
@@ -49,19 +50,70 @@ export function useCustomers() {
                 if (authType === "employee") {
                     const empSession = localStorage.getItem("employeeSession")
                     if (empSession) {
-                        const session = JSON.parse(empSession)
-                        const sessionStoreId = session.storeId
-                        if (sessionStoreId) {
-                            const { data: store } = await supabase
-                                .from('stores')
-                                .select('admin_user_id')
-                                .eq('id', sessionStoreId)
-                                .single()
-                            if (store?.admin_user_id) {
+                        try {
+                            const session = JSON.parse(empSession)
+                            const sessionStoreId = session.storeId || storeId
+                            if (sessionStoreId) {
+                                // Get store to find admin_user_id
+                                const { data: store, error: storeError } = await supabase
+                                    .from('stores')
+                                    .select('admin_user_id')
+                                    .eq('id', sessionStoreId)
+                                    .maybeSingle()
+                                
+                                if (storeError) {
+                                    toast.error("Data Sync Error", {
+                                        description: "Unable to fetch store information. Please contact your administrator or try refreshing the page."
+                                    })
+                                    console.error("[useCustomers] Error fetching store:", storeError)
+                                }
+                                
+                                if (!store?.admin_user_id) {
+                                    toast.error("Data Sync Error", {
+                                        description: "Store information is incomplete. Please contact your administrator."
+                                    })
+                                    return []
+                                }
+                                
                                 userId = store.admin_user_id
+                                // For employees, query by store_id (RLS will allow access)
+                                let query = supabase
+                                    .from("customers")
+                                    .select("*")
+                                    .eq("user_id", userId)
+                                
+                                // Filter by store_id
+                                query = query.or(`store_id.is.null,store_id.eq.${sessionStoreId}`)
+                                
+                                const { data, error } = await query.order("created_at", { ascending: false })
+                                
+                                if (error) {
+                                    toast.error("Data Sync Error", {
+                                        description: "Unable to load customers. Please check your connection or contact your administrator."
+                                    })
+                                    console.error("[useCustomers] Error fetching customers:", error)
+                                    throw error
+                                }
+                                return data || []
+                            } else {
+                                toast.error("Data Sync Error", {
+                                    description: "Store ID not found in employee session. Please log out and log in again."
+                                })
+                                return []
                             }
+                        } catch (e: any) {
+                            toast.error("Data Sync Error", {
+                                description: "Failed to load customer data. Please try refreshing the page or contact your administrator."
+                            })
+                            console.error("[useCustomers] Error parsing employee session:", e)
                         }
+                    } else {
+                        toast.error("Data Sync Error", {
+                            description: "Employee session not found. Please log out and log in again."
+                        })
                     }
+                    // If no valid employee session, return empty
+                    return []
                 } else {
                     const { data: { user } } = await supabase.auth.getUser()
                     if (user) userId = user.id
@@ -69,7 +121,7 @@ export function useCustomers() {
 
                 if (!userId) return []
 
-                // Build query with store_id filter
+                // Build query with store_id filter (for admin)
                 let query = supabase
                     .from("customers")
                     .select("*")
@@ -82,7 +134,10 @@ export function useCustomers() {
 
                 const { data, error } = await query.order("created_at", { ascending: false })
 
-                if (error) throw error
+                if (error) {
+                    console.error("[useCustomers] Error fetching customers:", error)
+                    throw error
+                }
                 return data || []
             }
         },
@@ -119,19 +174,71 @@ export function useProducts() {
                     // For employees, get admin_user_id from store to share products
                     const empSession = localStorage.getItem("employeeSession")
                     if (empSession) {
-                        const session = JSON.parse(empSession)
-                        const sessionStoreId = session.storeId
-                        if (sessionStoreId) {
-                            const { data: store } = await supabase
-                                .from('stores')
-                                .select('admin_user_id')
-                                .eq('id', sessionStoreId)
-                                .single()
-                            if (store?.admin_user_id) {
+                        try {
+                            const session = JSON.parse(empSession)
+                            const sessionStoreId = session.storeId || storeId
+                            if (sessionStoreId) {
+                                // Get store to find admin_user_id
+                                const { data: store, error: storeError } = await supabase
+                                    .from('stores')
+                                    .select('admin_user_id')
+                                    .eq('id', sessionStoreId)
+                                    .maybeSingle()
+                                
+                                if (storeError) {
+                                    toast.error("Data Sync Error", {
+                                        description: "Unable to fetch store information. Please contact your administrator or try refreshing the page."
+                                    })
+                                    console.error("[useProducts] Error fetching store:", storeError)
+                                }
+                                
+                                if (!store?.admin_user_id) {
+                                    toast.error("Data Sync Error", {
+                                        description: "Store information is incomplete. Please contact your administrator."
+                                    })
+                                    return []
+                                }
+                                
                                 userId = store.admin_user_id
+                                // For employees, query by store_id (RLS will allow access)
+                                let query = supabase
+                                    .from("products")
+                                    .select("*")
+                                    .eq("user_id", userId)
+                                    .eq("is_active", true) // Only active products
+                                
+                                // Filter by store_id
+                                query = query.or(`store_id.is.null,store_id.eq.${sessionStoreId}`)
+                                
+                                const { data, error } = await query.order("created_at", { ascending: false })
+                                
+                                if (error) {
+                                    toast.error("Data Sync Error", {
+                                        description: "Unable to load products. Please check your connection or contact your administrator."
+                                    })
+                                    console.error("[useProducts] Error fetching products:", error)
+                                    throw error
+                                }
+                                return data || []
+                            } else {
+                                toast.error("Data Sync Error", {
+                                    description: "Store ID not found in employee session. Please log out and log in again."
+                                })
+                                return []
                             }
+                        } catch (e: any) {
+                            toast.error("Data Sync Error", {
+                                description: "Failed to load product data. Please try refreshing the page or contact your administrator."
+                            })
+                            console.error("[useProducts] Error parsing employee session:", e)
                         }
+                    } else {
+                        toast.error("Data Sync Error", {
+                            description: "Employee session not found. Please log out and log in again."
+                        })
                     }
+                    // If no valid employee session, return empty
+                    return []
                 } else {
                     // For admin, use their own user_id
                     const { data: { user } } = await supabase.auth.getUser()
@@ -153,7 +260,10 @@ export function useProducts() {
 
                 const { data, error } = await query.order("created_at", { ascending: false })
 
-                if (error) throw error
+                if (error) {
+                    console.error("[useProducts] Error fetching products:", error)
+                    throw error
+                }
                 return data || []
             }
         },
@@ -193,7 +303,7 @@ export function useInvoices() {
                             // Get invoices created by this employee
                             const { data, error } = await supabase
                                 .from('invoices')
-                                .select('*, customers(name), employees!invoices_created_by_employee_id_fkey(name, employee_id)')
+                                .select('*, customers(name)')
                                 .or(`created_by_employee_id.eq.${employeeId},employee_id.eq.${employeeId}`)
                                 .order('created_at', { ascending: false })
                             if (error) throw error
@@ -202,51 +312,38 @@ export function useInvoices() {
                     }
                     return []
                 } else {
-                    // For admin, show all invoices from their stores (including employee invoices)
+                    // For admin, show all invoices where user_id = admin_user_id
+                    // This includes both admin-created and employee-created invoices
+                    // (since employees use admin's user_id when creating invoices)
                     const { data: { user } } = await supabase.auth.getUser()
-                    if (!user) return []
+                    if (!user) {
+                        console.warn("[useInvoices] Admin not authenticated")
+                        return []
+                    }
                     userId = user.id
 
-                    // Build query - include invoices from admin and all employees under their stores
+                    // Simple query: all invoices for this admin's user_id
+                    // Filter by store_id if provided
                     let query = supabase
                         .from('invoices')
-                        .select('*, customers(name), employees!invoices_created_by_employee_id_fkey(name, employee_id)')
+                        .select('*, customers(name)')
+                        .eq('user_id', userId)
                     
-                    // Filter by store_id if available
+                    // Optionally filter by store_id
                     if (storeId) {
-                        // Get invoices for this store (admin's invoices + employee invoices from this store)
-                        const { data: storeData } = await supabase
-                            .from('stores')
-                            .select('id, admin_user_id')
-                            .eq('id', storeId)
-                            .single()
-                        
-                        if (storeData) {
-                            // Get all employee IDs for this store
-                            const { data: employees } = await supabase
-                                .from('employees')
-                                .select('employee_id')
-                                .eq('store_id', storeId)
-                            const employeeIds = employees?.map(e => e.employee_id) || []
-                            
-                            // Query invoices from admin OR employees of this store
-                            const conditions = [`user_id.eq.${userId}`]
-                            if (employeeIds.length > 0) {
-                                conditions.push(`created_by_employee_id.in.(${employeeIds.join(',')})`)
-                                conditions.push(`employee_id.in.(${employeeIds.join(',')})`)
-                            }
-                            query = query.or(conditions.join(','))
-                        } else {
-                            // Fallback: just admin's invoices
-                            query = query.eq('user_id', userId)
-                        }
-                    } else {
-                        // No store selected - show all admin invoices
-                        query = query.eq('user_id', userId)
+                        query = query.eq('store_id', storeId)
                     }
 
                     const { data, error } = await query.order('created_at', { ascending: false })
-                    if (error) throw error
+                    
+                    if (error) {
+                        console.error("[useInvoices] Error fetching invoices:", error)
+                        toast.error("Data Sync Error", {
+                            description: `Unable to fetch invoices: ${error.message}. Please try refreshing the page.`
+                        })
+                        throw error
+                    }
+                    
                     return data || []
                 }
             }
@@ -462,7 +559,7 @@ export function useInvoice(id: string) {
                 const supabase = createClient()
                 const { data, error } = await supabase
                     .from("invoices")
-                    .select("*, customers(*), invoice_items(*), employees!invoices_created_by_employee_id_fkey(name, employee_id)")
+                    .select("*, customers(*), invoice_items(*)")
                     .eq("id", id)
                     .single()
 

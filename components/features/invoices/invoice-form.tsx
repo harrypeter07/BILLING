@@ -348,16 +348,59 @@ export function InvoiceForm({
 					return;
 				}
 
-				// If not in cache, fetch from database
+				// Get admin user_id (for both admin and employee)
 				const supabase = createClient();
-				const { data: { user } } = await supabase.auth.getUser();
-				if (!user) return;
+				const authType = localStorage.getItem("authType");
+				let adminUserId: string | null = null;
 
+				if (authType === "employee") {
+					// For employees, get admin_user_id from store
+					const employeeSession = localStorage.getItem("employeeSession");
+					if (employeeSession) {
+						try {
+							const session = JSON.parse(employeeSession);
+							const sessionStoreId = session.storeId || storeId;
+							if (sessionStoreId) {
+								const { data: store } = await supabase
+									.from("stores")
+									.select("admin_user_id")
+									.eq("id", sessionStoreId)
+									.single();
+								adminUserId = store?.admin_user_id || null;
+							}
+						} catch (e) {
+							console.warn("[InvoiceForm] Error parsing employee session:", e);
+						}
+					}
+				} else {
+					// For admin, use their own user_id
+					const {
+						data: { user },
+					} = await supabase.auth.getUser();
+					if (user) {
+						const { data: profile } = await supabase
+							.from("user_profiles")
+							.select("role")
+							.eq("id", user.id)
+							.maybeSingle();
+
+						if (profile?.role === "admin") {
+							adminUserId = user.id;
+						}
+					}
+				}
+
+				if (!adminUserId) {
+					console.warn("[InvoiceForm] Could not determine admin user ID");
+					return;
+				}
+
+				// Fetch admin's logo from user_profiles
 				const { data: profile } = await supabase
 					.from("user_profiles")
 					.select("logo_url")
-					.eq("id", user.id)
-					.single();
+					.eq("id", adminUserId)
+					.maybeSingle();
 
 				if (profile?.logo_url) {
 					localStorage.setItem("business_logo_url", profile.logo_url);
@@ -375,26 +418,33 @@ export function InvoiceForm({
 	useEffect(() => {
 		// Generate invoice number on mount if we have store/employee
 		if (storeId && employeeId) {
-			const isExcel =
-				typeof window !== "undefined" &&
-				localStorage.getItem("databaseType") !== "supabase";
-			if (isExcel) {
-				import("@/lib/utils/invoice-number").then(
-					({ generateInvoiceNumber }) => {
-						generateInvoiceNumber(storeId, employeeId).then((num) =>
-							setInvoiceNumber(num)
+			// Use the unified function that automatically detects DB mode
+			import("@/lib/utils/invoice-number").then(({ generateInvoiceNumber }) => {
+				generateInvoiceNumber(storeId, employeeId)
+					.then((num) => setInvoiceNumber(num))
+					.catch((error) => {
+						// Extract error message properly
+						const errorMessage =
+							error instanceof Error
+								? error.message
+								: error && typeof error === "object" && "message" in error
+								? String(error.message)
+								: String(error);
+
+						console.error(
+							"[InvoiceForm] Error generating invoice number:",
+							errorMessage,
+							error
 						);
-					}
-				);
-			} else {
-				import("@/lib/utils/invoice-number-supabase").then(
-					({ generateInvoiceNumberSupabase }) => {
-						generateInvoiceNumberSupabase(storeId, employeeId).then((num) =>
-							setInvoiceNumber(num)
+
+						// Fallback to simple format if generation fails
+						setInvoiceNumber(
+							`${settings?.invoice_prefix || "INV"}-${String(
+								settings?.next_invoice_number || 1
+							).padStart(4, "0")}`
 						);
-					}
-				);
-			}
+					});
+			});
 		} else {
 			// Fallback to old format
 			setInvoiceNumber(
@@ -433,7 +483,7 @@ export function InvoiceForm({
 					setIsGstInvoice(true);
 				}
 			} catch (error) {
-				console.error('[InvoiceForm] Failed to load B2B status:', error);
+				console.error("[InvoiceForm] Failed to load B2B status:", error);
 			}
 		};
 		loadB2BStatus();
@@ -690,7 +740,9 @@ export function InvoiceForm({
 			let newCustomer: { id: string; name: string };
 
 			// Get current store ID for store-scoped isolation
-			const { getCurrentStoreId } = await import("@/lib/utils/get-current-store-id");
+			const { getCurrentStoreId } = await import(
+				"@/lib/utils/get-current-store-id"
+			);
 			const currentStoreId = await getCurrentStoreId();
 
 			if (isIndexedDb) {
@@ -738,7 +790,9 @@ export function InvoiceForm({
 				}
 
 				if (!userId) {
-					throw new Error("User not authenticated");
+					throw new Error(
+						"Could not determine admin user. Please ensure you're logged in and have a valid store assignment."
+					);
 				}
 
 				const { data: createdCustomer, error } = await supabase
@@ -1011,7 +1065,18 @@ export function InvoiceForm({
 
 			console.log("[InvoiceForm] Saving invoice", invoiceData, items);
 
-			const isIndexedDb = isIndexedDbMode();
+			// Use async mode detection to ensure employees get correct mode from admin
+			const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode");
+			const dbMode = await getActiveDbModeAsync();
+			const isIndexedDb = dbMode === "indexeddb";
+
+			console.log(
+				"[InvoiceForm] DB Mode detected:",
+				dbMode,
+				"isIndexedDb:",
+				isIndexedDb
+			);
+
 			if (isIndexedDb) {
 				// Save to Dexie
 				await storageManager.addInvoice(invoiceData, items);
@@ -1045,25 +1110,116 @@ export function InvoiceForm({
 			} else {
 				// Save to Supabase
 				const supabase = createClient();
-				const {
-					data: { user },
-				} = await supabase.auth.getUser();
-				if (!user) {
+
+				// Get admin user_id (for employees, this is their admin's id)
+				const { getAdminUserIdForInvoices } = await import(
+					"@/lib/utils/get-admin-user-id-for-employees"
+				);
+				const adminUserId = await getAdminUserIdForInvoices();
+
+				if (!adminUserId) {
+					const authType = localStorage.getItem("authType");
+					const errorMsg =
+						authType === "employee"
+							? "Could not determine admin user. Please ensure you're assigned to a store."
+							: "Could not determine admin user. Please ensure you're logged in.";
+
 					toast({
 						title: "Error",
-						description: "Not authenticated",
+						description: errorMsg,
 						variant: "destructive",
 					});
+					console.error(
+						"[InvoiceForm] Cannot create invoice - adminUserId is null",
+						{
+							authType,
+							employeeSession: localStorage.getItem("employeeSession"),
+						}
+					);
 					return;
 				}
 
+				// Log the user_id being used for debugging
+				console.log("[InvoiceForm] Creating invoice with user_id:", {
+					user_id: adminUserId,
+					authType: localStorage.getItem("authType"),
+					invoiceData: {
+						id: invoiceData.id,
+						store_id: invoiceData.store_id,
+						employee_id: invoiceData.employee_id,
+					},
+				});
+
+				// Prepare invoice data with user_id
+				const invoiceToInsert = { ...invoiceData, user_id: adminUserId };
+				console.log("[InvoiceForm] Invoice data to insert:", {
+					id: invoiceToInsert.id,
+					user_id: invoiceToInsert.user_id,
+					store_id: invoiceToInsert.store_id,
+					customer_id: invoiceToInsert.customer_id,
+					employee_id: invoiceToInsert.employee_id,
+					total_amount: invoiceToInsert.total_amount,
+				});
+
 				const { data: newInvoice, error: invoiceError } = await supabase
 					.from("invoices")
-					.insert({ ...invoiceData, user_id: user.id })
+					.insert(invoiceToInsert)
 					.select()
 					.single();
 
-				if (invoiceError) throw invoiceError;
+				if (invoiceError) {
+					console.error("[InvoiceForm] Invoice insert error details:", {
+						error: invoiceError,
+						message: invoiceError.message,
+						code: invoiceError.code,
+						details: invoiceError.details,
+						hint: invoiceError.hint,
+						invoiceData: invoiceToInsert,
+					});
+
+					if (
+						invoiceError.code === "42501" ||
+						invoiceError.message.includes("row-level security")
+					) {
+						console.error("[InvoiceForm] RLS ERROR - Diagnostic Info:", {
+							user_id_used: adminUserId,
+							store_id: invoiceData.store_id,
+							employee_id: invoiceData.employee_id,
+							authType: localStorage.getItem("authType"),
+							employeeSession: localStorage.getItem("employeeSession"),
+						});
+
+						// Try to verify the store exists and has correct admin_user_id
+						const { data: storeVerify, error: storeVerifyError } =
+							await supabase
+								.from("stores")
+								.select("id, admin_user_id, name")
+								.eq("id", invoiceData.store_id)
+								.maybeSingle();
+
+						if (storeVerifyError) {
+							console.error(
+								"[InvoiceForm] Store verification error:",
+								storeVerifyError
+							);
+						} else if (storeVerify) {
+							console.error("[InvoiceForm] Store verification:", {
+								store_id: storeVerify.id,
+								store_name: storeVerify.name,
+								store_admin_user_id: storeVerify.admin_user_id,
+								invoice_user_id: adminUserId,
+								should_match: storeVerify.admin_user_id === adminUserId,
+							});
+						} else {
+							console.error(
+								"[InvoiceForm] Store not found for store_id:",
+								invoiceData.store_id
+							);
+						}
+					}
+
+					throw invoiceError;
+				}
 
 				const itemsWithInvoiceId = items.map((item) => ({
 					...item,
@@ -1080,7 +1236,7 @@ export function InvoiceForm({
 					items,
 					isIndexedDb,
 					supabase,
-					user.id,
+					adminUserId,
 					initialProducts
 				);
 
@@ -1129,10 +1285,62 @@ export function InvoiceForm({
 		}
 
 		// Check if logo is configured
-		const currentLogoUrl = logoUrl || localStorage.getItem("business_logo_url");
+		// For employees, try to fetch admin's logo if not already loaded
+		const authType = localStorage.getItem("authType");
+		let currentLogoUrl = logoUrl || localStorage.getItem("business_logo_url");
+
+		// If no logo and employee, try to fetch admin's logo one more time
+		if (
+			(!currentLogoUrl || currentLogoUrl.trim() === "") &&
+			authType === "employee"
+		) {
+			try {
+				const supabase = createClient();
+				const employeeSession = localStorage.getItem("employeeSession");
+				if (employeeSession) {
+					const session = JSON.parse(employeeSession);
+					const sessionStoreId = session.storeId || storeId;
+					if (sessionStoreId) {
+						const { data: store } = await supabase
+							.from("stores")
+							.select("admin_user_id")
+							.eq("id", sessionStoreId)
+							.single();
+
+						if (store?.admin_user_id) {
+							const { data: profile } = await supabase
+								.from("user_profiles")
+								.select("logo_url")
+								.eq("id", store.admin_user_id)
+								.maybeSingle();
+
+							if (profile?.logo_url) {
+								currentLogoUrl = profile.logo_url;
+								localStorage.setItem("business_logo_url", profile.logo_url);
+								setLogoUrl(profile.logo_url);
+							}
+						}
+					}
+				}
+			} catch (err) {
+				console.warn(
+					"[InvoiceForm] Failed to fetch admin logo in share handler:",
+					err
+				);
+			}
+		}
+
+		// For employees, don't show logo modal (they can't upload logos)
+		// Allow sharing even without logo
 		if (!currentLogoUrl || currentLogoUrl.trim() === "") {
-			setShowLogoModal(true);
-			return;
+			if (authType === "employee") {
+				// For employees, silently continue without logo (no toast message)
+				// Logo will be empty/placeholder in PDF, which is fine
+			} else {
+				// For admins, show the logo upload modal
+				setShowLogoModal(true);
+				return;
+			}
 		}
 
 		// First, validate and save invoice (same as handleSubmit)
@@ -1190,8 +1398,9 @@ export function InvoiceForm({
 		setIsSharing(true);
 		setIsLoading(true);
 
-		// Declare invoiceId outside try block so it's accessible in catch block
+		// Declare invoiceId and savedInvoice outside try block so they're accessible everywhere
 		let invoiceId: string | undefined;
+		let savedInvoice: any = null;
 
 		try {
 			const t = calculateTotals();
@@ -1258,9 +1467,22 @@ export function InvoiceForm({
 			});
 
 			// Save invoice
-			const isIndexedDb = isIndexedDbMode();
+			// Use async mode detection to ensure employees get correct mode from admin
+			const { getActiveDbModeAsync } = await import("@/lib/utils/db-mode");
+			const dbMode = await getActiveDbModeAsync();
+			const isIndexedDb = dbMode === "indexeddb";
+
+			console.log(
+				"[InvoiceForm] DB Mode for save & share:",
+				dbMode,
+				"isIndexedDb:",
+				isIndexedDb
+			);
+
 			if (isIndexedDb) {
 				await storageManager.addInvoice(invoiceData, items);
+				// For IndexedDB, the invoiceData is the saved invoice
+				savedInvoice = invoiceData;
 				await updateProductStock(
 					items,
 					isIndexedDb,
@@ -1272,27 +1494,161 @@ export function InvoiceForm({
 				await invalidateProducts();
 			} else {
 				const supabase = createClient();
-				const {
-					data: { user },
-				} = await supabase.auth.getUser();
-				if (!user) {
+
+				// Get admin user_id (for employees, this is their admin's id)
+				const { getAdminUserIdForInvoices } = await import(
+					"@/lib/utils/get-admin-user-id-for-employees"
+				);
+				const adminUserId = await getAdminUserIdForInvoices();
+
+				if (!adminUserId) {
+					const authType = localStorage.getItem("authType");
+					const errorMsg =
+						authType === "employee"
+							? "Could not determine admin user. Please ensure you're assigned to a store."
+							: "Could not determine admin user. Please ensure you're logged in.";
+
 					toast({
 						title: "Error",
-						description: "Not authenticated",
+						description: errorMsg,
 						variant: "destructive",
 					});
+					console.error(
+						"[InvoiceForm] Cannot save and share invoice - adminUserId is null",
+						{
+							authType,
+							employeeSession: localStorage.getItem("employeeSession"),
+						}
+					);
 					setIsSharing(false);
 					setIsLoading(false);
 					return;
 				}
 
+				// Log the user_id being used for debugging
+				console.log(
+					"[InvoiceForm] Creating invoice (save & share) with user_id:",
+					{
+						user_id: adminUserId,
+						authType: localStorage.getItem("authType"),
+						invoiceData: {
+							id: invoiceData.id,
+							store_id: invoiceData.store_id,
+							employee_id: invoiceData.employee_id,
+						},
+					}
+				);
+
+				// Verify the store's admin_user_id matches before insert
+				if (invoiceData.store_id) {
+					const { data: storeCheck, error: storeCheckError } = await supabase
+						.from("stores")
+						.select("id, admin_user_id")
+						.eq("id", invoiceData.store_id)
+						.maybeSingle();
+
+					if (storeCheckError) {
+						console.error("[InvoiceForm] Store check error:", storeCheckError);
+					} else if (storeCheck) {
+						console.log("[InvoiceForm] Store verification:", {
+							store_id: storeCheck.id,
+							store_admin_user_id: storeCheck.admin_user_id,
+							invoice_user_id: adminUserId,
+							match: storeCheck.admin_user_id === adminUserId,
+						});
+
+						if (storeCheck.admin_user_id !== adminUserId) {
+							console.error(
+								"[InvoiceForm] MISMATCH! Store admin_user_id doesn't match invoice user_id!"
+							);
+							toast({
+								title: "Error",
+								description: "Store configuration error. Please contact admin.",
+								variant: "destructive",
+							});
+							setIsSharing(false);
+							setIsLoading(false);
+							return;
+						}
+					}
+				}
+
+				// Prepare invoice data with user_id
+				const invoiceToInsert = { ...invoiceData, user_id: adminUserId };
+				console.log("[InvoiceForm] Invoice data to insert:", {
+					id: invoiceToInsert.id,
+					user_id: invoiceToInsert.user_id,
+					store_id: invoiceToInsert.store_id,
+					customer_id: invoiceToInsert.customer_id,
+					employee_id: invoiceToInsert.employee_id,
+					total_amount: invoiceToInsert.total_amount,
+				});
+
 				const { data: newInvoice, error: invoiceError } = await supabase
 					.from("invoices")
-					.insert({ ...invoiceData, user_id: user.id })
+					.insert(invoiceToInsert)
 					.select()
 					.single();
 
-				if (invoiceError) throw invoiceError;
+				if (invoiceError) {
+					console.error("[InvoiceForm] Invoice insert error (regular save):", {
+						error: invoiceError,
+						message: invoiceError.message,
+						code: invoiceError.code,
+						details: invoiceError.details,
+						hint: invoiceError.hint,
+						invoiceData: invoiceToInsert,
+					});
+
+					if (
+						invoiceError.code === "42501" ||
+						invoiceError.message.includes("row-level security")
+					) {
+						console.error(
+							"[InvoiceForm] RLS ERROR (regular save) - Diagnostic Info:",
+							{
+								user_id_used: adminUserId,
+								store_id: invoiceData.store_id,
+								employee_id: invoiceData.employee_id,
+								authType: localStorage.getItem("authType"),
+								employeeSession: localStorage.getItem("employeeSession"),
+							}
+						);
+
+						// Try to verify the store exists and has correct admin_user_id
+						const { data: storeVerify, error: storeVerifyError } =
+							await supabase
+								.from("stores")
+								.select("id, admin_user_id, name")
+								.eq("id", invoiceData.store_id)
+								.maybeSingle();
+
+						if (storeVerifyError) {
+							console.error(
+								"[InvoiceForm] Store verification error (regular save):",
+								storeVerifyError
+							);
+						} else if (storeVerify) {
+							console.error(
+								"[InvoiceForm] Store verification (regular save):",
+								{
+									store_id: storeVerify.id,
+									store_name: storeVerify.name,
+									store_admin_user_id: storeVerify.admin_user_id,
+									invoice_user_id: adminUserId,
+									should_match: storeVerify.admin_user_id === adminUserId,
+								}
+							);
+						} else {
+							console.error(
+								"[InvoiceForm] Store not found (regular save) for store_id:",
+								invoiceData.store_id
+							);
+						}
+					}
+
+					throw invoiceError;
+				}
 
 				const itemsWithInvoiceId = items.map((item) => ({
 					...item,
@@ -1308,7 +1664,7 @@ export function InvoiceForm({
 					items,
 					isIndexedDb,
 					supabase,
-					user.id,
+					adminUserId,
 					initialProducts
 				);
 				await invalidateInvoices();
@@ -1316,11 +1672,12 @@ export function InvoiceForm({
 			}
 
 			// Prepare source data for unified engine
+			// Use the saved invoice if available, otherwise use invoiceData
 			const selectedCustomer = localCustomers.find(
 				(c) => c.id === finalCustomerId
 			);
 			const source = {
-				invoice: invoiceData,
+				invoice: savedInvoice || invoiceData,
 				items,
 				customer: selectedCustomer || null,
 				storeName,
@@ -1361,7 +1718,12 @@ export function InvoiceForm({
 			});
 
 			// Check if WhatsApp opened successfully
-			if (result && typeof result === 'object' && 'success' in result && result.success) {
+			if (
+				result &&
+				typeof result === "object" &&
+				"success" in result &&
+				result.success
+			) {
 				toast({
 					title: "✅ Invoice Created & Shared!",
 					description: "WhatsApp opened with invoice details.",
@@ -1370,7 +1732,8 @@ export function InvoiceForm({
 			} else {
 				toast({
 					title: "⚠️ WhatsApp Blocked",
-					description: "Invoice saved, but WhatsApp was blocked. Please allow popups and try sharing again.",
+					description:
+						"Invoice saved, but WhatsApp was blocked. Please allow popups and try sharing again.",
 					variant: "destructive",
 					duration: 5000,
 				});
@@ -1381,25 +1744,44 @@ export function InvoiceForm({
 			// User can manually navigate away after WhatsApp is opened
 		} catch (error) {
 			console.error("[InvoiceForm] Error saving and sharing invoice:", error);
-			const errorMessage =
-				error instanceof Error
-					? error.message
-					: "Failed to save and share invoice";
-			
+
+			// Get detailed error message with full debugging info
+			let errorMessage = "Failed to save and share invoice";
+			if (error instanceof Error) {
+				errorMessage = error.message;
+				console.error("[InvoiceForm] Full error details:", {
+					message: error.message,
+					stack: error.stack,
+					name: error.name,
+					error: error,
+				});
+			} else if (error && typeof error === "object" && "message" in error) {
+				errorMessage = String(error.message);
+			} else {
+				console.error("[InvoiceForm] Non-Error object:", error);
+			}
+
 			// Check if it's an R2 upload error - show modal instead of toast
-			if (errorMessage.includes("upload") || errorMessage.includes("R2") || errorMessage.includes("PDF") || errorMessage.includes("timeout")) {
+			if (
+				errorMessage.includes("upload") ||
+				errorMessage.includes("R2") ||
+				errorMessage.includes("PDF") ||
+				errorMessage.includes("timeout")
+			) {
 				setR2UploadError(errorMessage);
 				setShowR2ErrorModal(true);
 			} else {
 				// Show specific error message for other errors
 				toast({
 					title: "Error",
-					description: errorMessage,
+					description:
+						errorMessage ||
+						"An unexpected error occurred. Please check the console for details.",
 					variant: "destructive",
 					duration: 5000,
 				});
 			}
-			
+
 			// If invoice was saved but WhatsApp failed, keep user on page
 			// (invoice is already saved at this point)
 			// Do NOT redirect - user can try sharing again or navigate manually
@@ -1411,7 +1793,7 @@ export function InvoiceForm({
 
 	const handleRetryR2Upload = () => {
 		// Retry the share operation
-		handleSaveAndShare(new Event('submit') as any);
+		handleSaveAndShare(new Event("submit") as any);
 	};
 
 	const handleLogoConfigured = (newLogoUrl: string) => {
@@ -1435,272 +1817,223 @@ export function InvoiceForm({
 			/>
 			<div
 				className={
-					isFullscreen ? "fixed inset-0 z-[100] bg-background overflow-auto" : ""
+					isFullscreen
+						? "fixed inset-0 z-[100] bg-background overflow-auto"
+						: ""
 				}
 			>
-			{isFullscreen && (
-				<div className="sticky top-0 z-10 bg-background border-b flex items-center justify-between px-4 py-2">
-					<h2 className="text-lg font-semibold">Create New Invoice</h2>
-					<Button
-						type="button"
-						variant="ghost"
-						size="icon"
-						onClick={() => setIsFullscreen(false)}
-						className="h-8 w-8"
-						title="Exit fullscreen (ESC)"
-					>
-						<X className="h-4 w-4" />
-					</Button>
-				</div>
-			)}
-			<form
-				onSubmit={handleSubmit}
-				className={`space-y-2 ${isFullscreen ? "p-4" : "p-2"}`}
-			>
-				{!isFullscreen && (
-					<div className="flex justify-end mb-2">
+				{isFullscreen && (
+					<div className="sticky top-0 z-10 bg-background border-b flex items-center justify-between px-4 py-2">
+						<h2 className="text-lg font-semibold">Create New Invoice</h2>
 						<Button
 							type="button"
-							variant="outline"
-							size="sm"
-							onClick={() => setIsFullscreen(true)}
-							className="gap-2"
-							title="Maximize invoice form (Fullscreen)"
+							variant="ghost"
+							size="icon"
+							onClick={() => setIsFullscreen(false)}
+							className="h-8 w-8"
+							title="Exit fullscreen (ESC)"
 						>
-							<Maximize2 className="h-4 w-4" />
-							Maximize
+							<X className="h-4 w-4" />
 						</Button>
 					</div>
 				)}
-				<div className="relative">
-					{/* Invoice Number, Date, and Toggles - Top Right */}
-					<div className="absolute top-0 right-0 z-10 flex items-center gap-2">
-						<div className="flex items-center gap-1.5 bg-background border rounded-md px-1.5 py-1 shadow-sm">
-							<div className="flex flex-col">
-								<span className="text-[9px] text-muted-foreground leading-tight">
-									Invoice #
-								</span>
-								<Input
-									value={invoiceNumber}
-									onChange={(e) => setInvoiceNumber(e.target.value)}
-									required
-									className="h-6 text-[11px] font-semibold w-24 px-1 py-0"
-								/>
-							</div>
-							<div className="flex flex-col">
-								<span className="text-[9px] text-muted-foreground leading-tight">
-									Date
-								</span>
-								<Input
-									type="date"
-									value={invoiceDate}
-									onChange={(e) => setInvoiceDate(e.target.value)}
-									required
-									className="h-6 text-[11px] w-20 px-1 py-0"
-								/>
-							</div>
+				<form
+					onSubmit={handleSubmit}
+					className={`space-y-2 ${isFullscreen ? "p-4" : "p-2"}`}
+				>
+					{!isFullscreen && (
+						<div className="flex justify-end mb-2">
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								onClick={() => setIsFullscreen(true)}
+								className="gap-2"
+								title="Maximize invoice form (Fullscreen)"
+							>
+								<Maximize2 className="h-4 w-4" />
+								Maximize
+							</Button>
 						</div>
-						{/* GST Invoice and Same State toggles */}
-						<div className="flex items-center gap-2 bg-background border rounded-md px-2 py-1 shadow-sm">
-							<div className="flex items-center gap-1">
-								<Switch
-									id="gst_invoice"
-									checked={isGstInvoice}
-									onCheckedChange={(checked) => {
-										// Prevent disabling GST when B2B is enabled
-										if (!isB2BEnabled || checked) {
-											setIsGstInvoice(checked);
-										}
-									}}
-									disabled={isB2BEnabled}
-									className="scale-75"
-								/>
-								<Label
-									htmlFor="gst_invoice"
-									className="text-[10px] cursor-pointer leading-tight"
-									title={isB2BEnabled ? "GST Invoice is required when B2B mode is enabled" : ""}
-								>
-									GST Invoice {isB2BEnabled && <span className="text-destructive">*</span>}
-								</Label>
+					)}
+					<div className="relative">
+						{/* Invoice Number, Date, and Toggles - Top Right */}
+						<div className="absolute top-0 right-0 z-10 flex items-center gap-2">
+							<div className="flex items-center gap-1.5 bg-background border rounded-md px-1.5 py-1 shadow-sm">
+								<div className="flex flex-col">
+									<span className="text-[9px] text-muted-foreground leading-tight">
+										Invoice #
+									</span>
+									<Input
+										value={invoiceNumber}
+										onChange={(e) => setInvoiceNumber(e.target.value)}
+										required
+										className="h-6 text-[11px] font-semibold w-24 px-1 py-0"
+									/>
+								</div>
+								<div className="flex flex-col">
+									<span className="text-[9px] text-muted-foreground leading-tight">
+										Date
+									</span>
+									<Input
+										type="date"
+										value={invoiceDate}
+										onChange={(e) => setInvoiceDate(e.target.value)}
+										required
+										className="h-6 text-[11px] w-20 px-1 py-0"
+									/>
+								</div>
 							</div>
-							{isGstInvoice && (
+							{/* GST Invoice and Same State toggles */}
+							<div className="flex items-center gap-2 bg-background border rounded-md px-2 py-1 shadow-sm">
 								<div className="flex items-center gap-1">
 									<Switch
-										id="same_state"
-										checked={isSameState}
-										onCheckedChange={setIsSameState}
+										id="gst_invoice"
+										checked={isGstInvoice}
+										onCheckedChange={(checked) => {
+											// Prevent disabling GST when B2B is enabled
+											if (!isB2BEnabled || checked) {
+												setIsGstInvoice(checked);
+											}
+										}}
+										disabled={isB2BEnabled}
 										className="scale-75"
 									/>
 									<Label
-										htmlFor="same_state"
+										htmlFor="gst_invoice"
 										className="text-[10px] cursor-pointer leading-tight"
+										title={
+											isB2BEnabled
+												? "GST Invoice is required when B2B mode is enabled"
+												: ""
+										}
 									>
-										Same State
+										GST Invoice{" "}
+										{isB2BEnabled && (
+											<span className="text-destructive">*</span>
+										)}
 									</Label>
 								</div>
-							)}
+								{isGstInvoice && (
+									<div className="flex items-center gap-1">
+										<Switch
+											id="same_state"
+											checked={isSameState}
+											onCheckedChange={setIsSameState}
+											className="scale-75"
+										/>
+										<Label
+											htmlFor="same_state"
+											className="text-[10px] cursor-pointer leading-tight"
+										>
+											Same State
+										</Label>
+									</div>
+								)}
+							</div>
 						</div>
-					</div>
 
-					<div className="pt-12 h-[calc(100vh-180px)] min-h-[600px]">
-						<ResizablePanelGroup direction="horizontal" className="h-full">
-							{/* Left side: Customer form and Products (stacked vertically) */}
-							<ResizablePanel defaultSize={40} minSize={25} maxSize={60}>
-								<ResizablePanelGroup direction="vertical" className="h-full">
-									{/* Top: Customer form */}
-									<ResizablePanel defaultSize={45} minSize={30} maxSize={70}>
-										<div className="h-full space-y-2 pr-2 overflow-y-auto rounded-lg p-2">
-											<InlineCustomerForm
-												onCustomerCreated={(newCustomer) => {
-													console.log(
-														"[InvoiceForm] Customer created:",
-														newCustomer
-													);
-													setLocalCustomers((prev) => {
+						<div className="pt-12 h-[calc(100vh-180px)] min-h-[600px]">
+							<ResizablePanelGroup direction="horizontal" className="h-full">
+								{/* Left side: Customer form and Products (stacked vertically) */}
+								<ResizablePanel defaultSize={40} minSize={25} maxSize={60}>
+									<ResizablePanelGroup direction="vertical" className="h-full">
+										{/* Top: Customer form */}
+										<ResizablePanel defaultSize={45} minSize={30} maxSize={70}>
+											<div className="h-full space-y-2 pr-2 overflow-y-auto rounded-lg p-2">
+												<InlineCustomerForm
+													onCustomerCreated={(newCustomer) => {
+														console.log(
+															"[InvoiceForm] Customer created:",
+															newCustomer
+														);
+														setLocalCustomers((prev) => {
+															const nextList = [
+																newCustomer,
+																...prev.filter((c) => c.id !== newCustomer.id),
+															];
+															console.log(
+																"[InvoiceForm] Updated customer list:",
+																nextList.length
+															);
+															return nextList;
+														});
+														setTimeout(() => {
+															console.log(
+																"[InvoiceForm] Setting customer ID:",
+																newCustomer.id
+															);
+															setCustomerId(newCustomer.id);
+														}, 50);
 														const nextList = [
 															newCustomer,
-															...prev.filter((c) => c.id !== newCustomer.id),
+															...localCustomers.filter(
+																(c) => c.id !== newCustomer.id
+															),
 														];
-														console.log(
-															"[InvoiceForm] Updated customer list:",
-															nextList.length
-														);
-														return nextList;
-													});
-													setTimeout(() => {
-														console.log(
-															"[InvoiceForm] Setting customer ID:",
-															newCustomer.id
-														);
-														setCustomerId(newCustomer.id);
-													}, 50);
-													const nextList = [
-														newCustomer,
-														...localCustomers.filter(
-															(c) => c.id !== newCustomer.id
-														),
-													];
-													onCustomersUpdate?.(nextList);
-												}}
-												onCustomerDataChange={(data) => {
-													setCustomerData(data);
-													if (data.isNewCustomer) {
-														setCustomerId("");
-													}
-												}}
-											/>
-										</div>
-									</ResizablePanel>
+														onCustomersUpdate?.(nextList);
+													}}
+													onCustomerDataChange={(data) => {
+														setCustomerData(data);
+														if (data.isNewCustomer) {
+															setCustomerId("");
+														}
+													}}
+												/>
+											</div>
+										</ResizablePanel>
 
-									<ResizableHandle withHandle />
+										<ResizableHandle withHandle />
 
-									{/* Bottom: Products (limited to 1-2 rows) */}
-									<ResizablePanel defaultSize={55} minSize={30} maxSize={70}>
-										<div className="h-full pr-2">
-											<Card className="h-full flex flex-col">
-												<CardHeader className="pb-0.5 pt-1 px-4 flex-shrink-0 mt-[-1vh]">
-													<CardTitle className="text-xs leading-tight">
-														Select Products
-													</CardTitle>
-													<p className="text-[9px] text-muted-foreground leading-tight mt-0">
-														Search or tap to add items instantly
-													</p>
-												</CardHeader>
-												<CardContent className="space-y-1 p-1.5 flex-1 flex flex-col overflow-hidden mt-[-2vh]">
-													<div className="relative flex-shrink-0">
-														<Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
-														<Input
-															placeholder="Search name, SKU, or category"
-															value={productSearchTerm}
-															onChange={(e) =>
-																setProductSearchTerm(e.target.value)
-															}
-															className="pl-7 h-7 text-xs"
-														/>
-													</div>
-
-													{recentProducts.length > 0 && !productSearchTerm && (
-														<div className="flex-shrink-0">
-															<div className="flex items-center justify-between text-[9px] text-muted-foreground mb-0.5">
-																<span>Recently added</span>
-																<span>{recentProducts.length} items</span>
-															</div>
-															<div className="grid grid-cols-2 gap-1 max-h-[70px] overflow-y-auto">
-																{recentProducts.map((product) => (
-																	<button
-																		key={product.id}
-																		type="button"
-																		onClick={() => addProductToInvoice(product)}
-																		className="rounded-md border px-1.5 py-1 text-left text-[9px] hover:bg-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-primary bg-white dark:bg-slate-800"
-																	>
-																		<p className="font-medium truncate text-[10px] leading-tight">
-																			{product.name}
-																		</p>
-																		<div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
-																			<Tooltip>
-																				<TooltipTrigger asChild>
-																					<span className="truncate block max-w-[65px] cursor-help">
-																						₹{product.price.toLocaleString()}
-																					</span>
-																				</TooltipTrigger>
-																				<TooltipContent>
-																					Price: ₹
-																					{product.price.toLocaleString(
-																						"en-IN",
-																						{
-																							minimumFractionDigits: 2,
-																							maximumFractionDigits: 2,
-																						}
-																					)}
-																				</TooltipContent>
-																			</Tooltip>
-																			{product.unit && (
-																				<span className="text-[8px]">
-																					{product.unit}
-																				</span>
-																			)}
-																		</div>
-																	</button>
-																))}
-															</div>
+										{/* Bottom: Products (limited to 1-2 rows) */}
+										<ResizablePanel defaultSize={55} minSize={30} maxSize={70}>
+											<div className="h-full pr-2">
+												<Card className="h-full flex flex-col">
+													<CardHeader className="pb-0.5 pt-1 px-4 flex-shrink-0 mt-[-1vh]">
+														<CardTitle className="text-xs leading-tight">
+															Select Products
+														</CardTitle>
+														<p className="text-[9px] text-muted-foreground leading-tight mt-0">
+															Search or tap to add items instantly
+														</p>
+													</CardHeader>
+													<CardContent className="space-y-1 p-1.5 flex-1 flex flex-col overflow-hidden mt-[-2vh]">
+														<div className="relative flex-shrink-0">
+															<Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-muted-foreground" />
+															<Input
+																placeholder="Search name, SKU, or category"
+																value={productSearchTerm}
+																onChange={(e) =>
+																	setProductSearchTerm(e.target.value)
+																}
+																className="pl-7 h-7 text-xs"
+															/>
 														</div>
-													)}
 
-													<div className="space-y-0.5 flex-1 flex flex-col overflow-hidden min-h-0">
-														<div className="flex items-center justify-between text-[9px] text-muted-foreground flex-shrink-0 px-0.5">
-															<span>
-																{productSearchTerm
-																	? "Matching products"
-																	: "All products (A-Z)"}
-															</span>
-															<span>{filteredProducts.length} items</span>
-														</div>
-														<div className="flex-1 overflow-y-auto pr-0.5 min-h-0">
-															{filteredProducts.length === 0 ? (
-																<div className="py-3 text-center text-[9px] text-muted-foreground">
-																	{productSearchTerm
-																		? "No products found"
-																		: "No products available"}
-																</div>
-															) : (
-																<div className="grid grid-cols-2 gap-1 h-full">
-																	{filteredProducts.map((product) => (
-																		<button
-																			key={product.id}
-																			type="button"
-																			onClick={() =>
-																				addProductToInvoice(product)
-																			}
-																			className="rounded-md border px-1.5 py-1 text-left hover:bg-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-primary bg-white dark:bg-slate-800 flex flex-col justify-between"
-																		>
-																			<p className="text-[10px] font-medium truncate leading-tight">
-																				{product.name}
-																			</p>
-																			<div className="mt-0.5 text-[9px] text-muted-foreground space-y-0.5">
-																				<div className="flex items-center justify-between">
+														{recentProducts.length > 0 &&
+															!productSearchTerm && (
+																<div className="flex-shrink-0">
+																	<div className="flex items-center justify-between text-[9px] text-muted-foreground mb-0.5">
+																		<span>Recently added</span>
+																		<span>{recentProducts.length} items</span>
+																	</div>
+																	<div className="grid grid-cols-2 gap-1 max-h-[70px] overflow-y-auto">
+																		{recentProducts.map((product) => (
+																			<button
+																				key={product.id}
+																				type="button"
+																				onClick={() =>
+																					addProductToInvoice(product)
+																				}
+																				className="rounded-md border px-1.5 py-1 text-left text-[9px] hover:bg-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-primary bg-white dark:bg-slate-800"
+																			>
+																				<p className="font-medium truncate text-[10px] leading-tight">
+																					{product.name}
+																				</p>
+																				<div className="flex items-center justify-between text-[9px] text-muted-foreground mt-0.5">
 																					<Tooltip>
 																						<TooltipTrigger asChild>
-																							<span className="truncate block max-w-[45px] cursor-help">
+																							<span className="truncate block max-w-[65px] cursor-help">
 																								₹
 																								{product.price.toLocaleString()}
 																							</span>
@@ -1716,363 +2049,307 @@ export function InvoiceForm({
 																							)}
 																						</TooltipContent>
 																					</Tooltip>
-																					{product.category && (
-																						<span className="truncate max-w-[55px] text-[8px]">
-																							{product.category}
+																					{product.unit && (
+																						<span className="text-[8px]">
+																							{product.unit}
 																						</span>
 																					)}
 																				</div>
-																				{product.stock_quantity !==
-																					undefined && (
-																					<Badge
-																						variant={
-																							product.stock_quantity > 10
-																								? "default"
-																								: product.stock_quantity > 0
-																								? "secondary"
-																								: "destructive"
-																						}
-																						className="text-[8px] font-normal h-3 px-0.5 leading-tight"
-																					>
-																						{product.unit === "piece"
-																							? `${Math.round(
-																									product.stock_quantity
-																							  )} ${product.unit}`
-																							: `${Number(
-																									product.stock_quantity
-																							  ).toLocaleString("en-IN")} ${
-																									product.unit
-																							  }`}
-																					</Badge>
-																				)}
-																			</div>
-																		</button>
-																	))}
+																			</button>
+																		))}
+																	</div>
 																</div>
 															)}
-														</div>
-													</div>
-												</CardContent>
-											</Card>
-										</div>
-									</ResizablePanel>
-								</ResizablePanelGroup>
-							</ResizablePanel>
 
-							<ResizableHandle withHandle />
-
-							{/* Right side: Invoice Items */}
-							<ResizablePanel defaultSize={60} minSize={40} maxSize={75}>
-								<div className="h-full space-y-2 pl-2 overflow-y-auto rounded-lg p-2">
-									<Card className="h-full">
-										<CardHeader className="pb-1 pt-2 px-3">
-											<CardTitle className="text-sm">Invoice Items</CardTitle>
-										</CardHeader>
-										<CardContent className="space-y-1 p-2">
-											{lineItems.length === 0 && (
-												<div className="text-center py-6 space-y-2">
-													<p className="text-xs text-muted-foreground">
-														No items added
-													</p>
-													<Button
-														type="button"
-														variant="outline"
-														size="sm"
-														onClick={addLineItem}
-														className="text-xs h-7"
-													>
-														<Plus className="h-3 w-3 mr-1" />
-														Add Item
-													</Button>
-												</div>
-											)}
-											{lineItems.length > 0 && (
-												<div className="rounded-md border">
-													<div className="max-h-[380px] overflow-y-auto">
-														<Table className="text-xs">
-															<TableHeader className="bg-muted/30 sticky top-0 z-10">
-																<TableRow className="h-9">
-																	<TableHead className="w-[120px] px-2 py-2 text-xs font-semibold">
-																		Product
-																	</TableHead>
-																	<TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">
-																		Qty
-																	</TableHead>
-																	<TableHead className="w-[90px] text-center px-1.5 py-2 text-xs font-semibold">
-																		Rate
-																	</TableHead>
-																	<TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">
-																		Disc%
-																	</TableHead>
-																	{isGstInvoice && (
-																		<TableHead className="w-[70px] text-center px-1.5 py-2 text-xs font-semibold">
-																			GST
-																		</TableHead>
-																	)}
-																	<TableHead className="w-[100px] text-right px-2 py-2 text-xs font-semibold">
-																		Amount
-																	</TableHead>
-																	<TableHead className="w-[40px] px-1 py-2"></TableHead>
-																</TableRow>
-															</TableHeader>
-															<TableBody>
-																{lineItems.map((item) => {
-																	const calc = calculateLineItem({
-																		unitPrice: item.unit_price,
-																		discountPercent: item.discount_percent,
-																		gstRate: item.gst_rate,
-																		quantity: item.quantity,
-																	});
-																	return (
-																		<TableRow key={item.id} className="h-12">
-																			<TableCell className="px-2 py-1.5">
-																				{!item.product_id ? (
-																					<Input
-																						value={item.description || ""}
-																						onChange={(e) =>
-																							updateLineItem(
-																								item.id,
-																								"description",
-																								e.target.value
-																							)
-																						}
-																						placeholder="Enter description"
-																						className="h-8 text-xs px-2"
-																					/>
-																				) : (
-																					<Select
-																						value={item.product_id || ""}
-																						onValueChange={(value) => {
-																							updateLineItem(
-																								item.id,
-																								"product_id",
-																								value
-																							);
-																							// Auto-add new line item if this is the last row and a product is selected
-																							if (
-																								lineItems.length > 0 &&
-																								lineItems[lineItems.length - 1]
-																									.id === item.id &&
-																								value
-																							) {
-																								setTimeout(() => {
-																									addLineItem();
-																								}, 100);
+														<div className="space-y-0.5 flex-1 flex flex-col overflow-hidden min-h-0">
+															<div className="flex items-center justify-between text-[9px] text-muted-foreground flex-shrink-0 px-0.5">
+																<span>
+																	{productSearchTerm
+																		? "Matching products"
+																		: "All products (A-Z)"}
+																</span>
+																<span>{filteredProducts.length} items</span>
+															</div>
+															<div className="flex-1 overflow-y-auto pr-0.5 min-h-0">
+																{filteredProducts.length === 0 ? (
+																	<div className="py-3 text-center text-[9px] text-muted-foreground">
+																		{productSearchTerm
+																			? "No products found"
+																			: "No products available"}
+																	</div>
+																) : (
+																	<div className="grid grid-cols-2 gap-1 h-full">
+																		{filteredProducts.map((product) => (
+																			<button
+																				key={product.id}
+																				type="button"
+																				onClick={() =>
+																					addProductToInvoice(product)
+																				}
+																				className="rounded-md border px-1.5 py-1 text-left hover:bg-primary/10 focus-visible:outline focus-visible:ring-2 focus-visible:ring-primary bg-white dark:bg-slate-800 flex flex-col justify-between"
+																			>
+																				<p className="text-[10px] font-medium truncate leading-tight">
+																					{product.name}
+																				</p>
+																				<div className="mt-0.5 text-[9px] text-muted-foreground space-y-0.5">
+																					<div className="flex items-center justify-between">
+																						<Tooltip>
+																							<TooltipTrigger asChild>
+																								<span className="truncate block max-w-[45px] cursor-help">
+																									₹
+																									{product.price.toLocaleString()}
+																								</span>
+																							</TooltipTrigger>
+																							<TooltipContent>
+																								Price: ₹
+																								{product.price.toLocaleString(
+																									"en-IN",
+																									{
+																										minimumFractionDigits: 2,
+																										maximumFractionDigits: 2,
+																									}
+																								)}
+																							</TooltipContent>
+																						</Tooltip>
+																						{product.category && (
+																							<span className="truncate max-w-[55px] text-[8px]">
+																								{product.category}
+																							</span>
+																						)}
+																					</div>
+																					{product.stock_quantity !==
+																						undefined && (
+																						<Badge
+																							variant={
+																								product.stock_quantity > 10
+																									? "default"
+																									: product.stock_quantity > 0
+																									? "secondary"
+																									: "destructive"
 																							}
-																						}}
-																					>
-																						<SelectTrigger className="h-8 text-xs px-2">
-																							<SelectValue placeholder="Select Product" />
-																						</SelectTrigger>
-																						<SelectContent className="max-h-60">
-																							{products.map((product) => (
-																								<SelectItem
-																									key={product.id}
-																									value={product.id}
-																								>
-																									{product.name}
-																								</SelectItem>
-																							))}
-																						</SelectContent>
-																					</Select>
-																				)}
-																			</TableCell>
-																			{(() => {
-																				const fieldId = `${item.id}-qty`;
-																				const qtyFocused =
-																					focusedField === fieldId;
-																				const rateFieldId = `${item.id}-rate`;
-																				const rateFocused =
-																					focusedField === rateFieldId;
-																				const discFieldId = `${item.id}-disc`;
-																				const discFocused =
-																					focusedField === discFieldId;
-																				const gstFieldId = `${item.id}-gst`;
-																				const gstFocused =
-																					focusedField === gstFieldId;
+																							className="text-[8px] font-normal h-3 px-0.5 leading-tight"
+																						>
+																							{product.unit === "piece"
+																								? `${Math.round(
+																										product.stock_quantity
+																								  )} ${product.unit}`
+																								: `${Number(
+																										product.stock_quantity
+																								  ).toLocaleString("en-IN")} ${
+																										product.unit
+																								  }`}
+																						</Badge>
+																					)}
+																				</div>
+																			</button>
+																		))}
+																	</div>
+																)}
+															</div>
+														</div>
+													</CardContent>
+												</Card>
+											</div>
+										</ResizablePanel>
+									</ResizablePanelGroup>
+								</ResizablePanel>
 
-																				return (
-																					<>
-																						<TableCell
-																							className={`px-1.5 py-1 transition-all duration-300 ${
-																								qtyFocused
-																									? "w-[110px]"
-																									: "w-[75px]"
-																							}`}
+								<ResizableHandle withHandle />
+
+								{/* Right side: Invoice Items */}
+								<ResizablePanel defaultSize={60} minSize={40} maxSize={75}>
+									<div className="h-full space-y-2 pl-2 overflow-y-auto rounded-lg p-2">
+										<Card className="h-full">
+											<CardHeader className="pb-1 pt-2 px-3">
+												<CardTitle className="text-sm">Invoice Items</CardTitle>
+											</CardHeader>
+											<CardContent className="space-y-1 p-2">
+												{lineItems.length === 0 && (
+													<div className="text-center py-6 space-y-2">
+														<p className="text-xs text-muted-foreground">
+															No items added
+														</p>
+														<Button
+															type="button"
+															variant="outline"
+															size="sm"
+															onClick={addLineItem}
+															className="text-xs h-7"
+														>
+															<Plus className="h-3 w-3 mr-1" />
+															Add Item
+														</Button>
+													</div>
+												)}
+												{lineItems.length > 0 && (
+													<div className="rounded-md border">
+														<div className="max-h-[380px] overflow-y-auto">
+															<Table className="text-xs">
+																<TableHeader className="bg-muted/30 sticky top-0 z-10">
+																	<TableRow className="h-9">
+																		<TableHead className="w-[120px] px-2 py-2 text-xs font-semibold">
+																			Product
+																		</TableHead>
+																		<TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">
+																			Qty
+																		</TableHead>
+																		<TableHead className="w-[90px] text-center px-1.5 py-2 text-xs font-semibold">
+																			Rate
+																		</TableHead>
+																		<TableHead className="w-[75px] text-center px-1.5 py-2 text-xs font-semibold">
+																			Disc%
+																		</TableHead>
+																		{isGstInvoice && (
+																			<TableHead className="w-[70px] text-center px-1.5 py-2 text-xs font-semibold">
+																				GST
+																			</TableHead>
+																		)}
+																		<TableHead className="w-[100px] text-right px-2 py-2 text-xs font-semibold">
+																			Amount
+																		</TableHead>
+																		<TableHead className="w-[40px] px-1 py-2"></TableHead>
+																	</TableRow>
+																</TableHeader>
+																<TableBody>
+																	{lineItems.map((item) => {
+																		const calc = calculateLineItem({
+																			unitPrice: item.unit_price,
+																			discountPercent: item.discount_percent,
+																			gstRate: item.gst_rate,
+																			quantity: item.quantity,
+																		});
+																		return (
+																			<TableRow key={item.id} className="h-12">
+																				<TableCell className="px-2 py-1.5">
+																					{!item.product_id ? (
+																						<Input
+																							value={item.description || ""}
+																							onChange={(e) =>
+																								updateLineItem(
+																									item.id,
+																									"description",
+																									e.target.value
+																								)
+																							}
+																							placeholder="Enter description"
+																							className="h-8 text-xs px-2"
+																						/>
+																					) : (
+																						<Select
+																							value={item.product_id || ""}
+																							onValueChange={(value) => {
+																								updateLineItem(
+																									item.id,
+																									"product_id",
+																									value
+																								);
+																								// Auto-add new line item if this is the last row and a product is selected
+																								if (
+																									lineItems.length > 0 &&
+																									lineItems[
+																										lineItems.length - 1
+																									].id === item.id &&
+																									value
+																								) {
+																									setTimeout(() => {
+																										addLineItem();
+																									}, 100);
+																								}
+																							}}
 																						>
-																							<div className="flex flex-col">
-																								<Input
-																									type="number"
-																									min="0"
-																									step="1"
-																									value={item.quantity || ""}
-																									onChange={(e) =>
-																										updateLineItem(
-																											item.id,
-																											"quantity",
-																											Number.parseInt(
-																												e.target.value
-																											) || 0
-																										)
-																									}
-																									onFocus={() =>
-																										setFocusedField(fieldId)
-																									}
-																									onBlur={() =>
-																										setFocusedField(null)
-																									}
-																									onMouseEnter={() =>
-																										setFocusedField(fieldId)
-																									}
-																									onMouseLeave={() => {
-																										const activeEl =
-																											document.activeElement as HTMLElement;
-																										if (
-																											activeEl?.dataset
-																												?.fieldId !== fieldId
-																										) {
-																											setFocusedField(null);
-																										}
-																									}}
-																									data-field-id={fieldId}
-																									required
-																									className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
-																										qtyFocused
-																											? "px-3 bg-primary/5 border-primary/50 shadow-sm"
-																											: "px-1.5"
-																									}`}
-																								/>
-																								<div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
-																									{item.quantity
-																										? item.quantity
-																										: ""}
-																								</div>
-																							</div>
-																						</TableCell>
-																						<TableCell
-																							className={`px-1.5 py-1 transition-all duration-300 ${
-																								rateFocused
-																									? "w-[120px]"
-																									: "w-[90px]"
-																							}`}
-																						>
-																							<div className="flex flex-col">
-																								<Input
-																									type="number"
-																									min="0"
-																									step="0.01"
-																									value={item.unit_price || ""}
-																									onChange={(e) =>
-																										updateLineItem(
-																											item.id,
-																											"unit_price",
-																											Number.parseFloat(
-																												e.target.value
-																											) || 0
-																										)
-																									}
-																									onFocus={() =>
-																										setFocusedField(rateFieldId)
-																									}
-																									onBlur={() =>
-																										setFocusedField(null)
-																									}
-																									onMouseEnter={() =>
-																										setFocusedField(rateFieldId)
-																									}
-																									onMouseLeave={() => {
-																										const activeEl =
-																											document.activeElement as HTMLElement;
-																										if (
-																											activeEl?.dataset
-																												?.fieldId !==
-																											rateFieldId
-																										) {
-																											setFocusedField(null);
-																										}
-																									}}
-																									data-field-id={rateFieldId}
-																									required
-																									className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
-																										rateFocused
-																											? "px-3 bg-primary/5 border-primary/50 shadow-sm"
-																											: "px-1.5"
-																									}`}
-																								/>
-																								<div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
-																									{item.unit_price
-																										? `₹${item.unit_price.toFixed(
-																												2
-																										  )}`
-																										: ""}
-																								</div>
-																							</div>
-																						</TableCell>
-																						<TableCell
-																							className={`px-1.5 py-1 transition-all duration-300 ${
-																								discFocused
-																									? "w-[110px]"
-																									: "w-[75px]"
-																							}`}
-																						>
-																							<div className="flex flex-col">
-																								<Input
-																									type="number"
-																									min="0"
-																									max="100"
-																									step="0.01"
-																									value={
-																										item.discount_percent || ""
-																									}
-																									onChange={(e) =>
-																										updateLineItem(
-																											item.id,
-																											"discount_percent",
-																											Number.parseFloat(
-																												e.target.value
-																											) || 0
-																										)
-																									}
-																									onFocus={() =>
-																										setFocusedField(discFieldId)
-																									}
-																									onBlur={() =>
-																										setFocusedField(null)
-																									}
-																									onMouseEnter={() =>
-																										setFocusedField(discFieldId)
-																									}
-																									onMouseLeave={() => {
-																										const activeEl =
-																											document.activeElement as HTMLElement;
-																										if (
-																											activeEl?.dataset
-																												?.fieldId !==
-																											discFieldId
-																										) {
-																											setFocusedField(null);
-																										}
-																									}}
-																									data-field-id={discFieldId}
-																									className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
-																										discFocused
-																											? "px-3 bg-primary/5 border-primary/50 shadow-sm"
-																											: "px-1.5"
-																									}`}
-																								/>
-																								<div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
-																									{item.discount_percent
-																										? `${item.discount_percent}%`
-																										: ""}
-																								</div>
-																							</div>
-																						</TableCell>
-																						{isGstInvoice && (
+																							<SelectTrigger className="h-8 text-xs px-2">
+																								<SelectValue placeholder="Select Product" />
+																							</SelectTrigger>
+																							<SelectContent className="max-h-60">
+																								{products.map((product) => (
+																									<SelectItem
+																										key={product.id}
+																										value={product.id}
+																									>
+																										{product.name}
+																									</SelectItem>
+																								))}
+																							</SelectContent>
+																						</Select>
+																					)}
+																				</TableCell>
+																				{(() => {
+																					const fieldId = `${item.id}-qty`;
+																					const qtyFocused =
+																						focusedField === fieldId;
+																					const rateFieldId = `${item.id}-rate`;
+																					const rateFocused =
+																						focusedField === rateFieldId;
+																					const discFieldId = `${item.id}-disc`;
+																					const discFocused =
+																						focusedField === discFieldId;
+																					const gstFieldId = `${item.id}-gst`;
+																					const gstFocused =
+																						focusedField === gstFieldId;
+
+																					return (
+																						<>
 																							<TableCell
 																								className={`px-1.5 py-1 transition-all duration-300 ${
-																									gstFocused
-																										? "w-[100px]"
-																										: "w-[70px]"
+																									qtyFocused
+																										? "w-[110px]"
+																										: "w-[75px]"
+																								}`}
+																							>
+																								<div className="flex flex-col">
+																									<Input
+																										type="number"
+																										min="0"
+																										step="1"
+																										value={item.quantity || ""}
+																										onChange={(e) =>
+																											updateLineItem(
+																												item.id,
+																												"quantity",
+																												Number.parseInt(
+																													e.target.value
+																												) || 0
+																											)
+																										}
+																										onFocus={() =>
+																											setFocusedField(fieldId)
+																										}
+																										onBlur={() =>
+																											setFocusedField(null)
+																										}
+																										onMouseEnter={() =>
+																											setFocusedField(fieldId)
+																										}
+																										onMouseLeave={() => {
+																											const activeEl =
+																												document.activeElement as HTMLElement;
+																											if (
+																												activeEl?.dataset
+																													?.fieldId !== fieldId
+																											) {
+																												setFocusedField(null);
+																											}
+																										}}
+																										data-field-id={fieldId}
+																										required
+																										className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
+																											qtyFocused
+																												? "px-3 bg-primary/5 border-primary/50 shadow-sm"
+																												: "px-1.5"
+																										}`}
+																									/>
+																									<div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
+																										{item.quantity
+																											? item.quantity
+																											: ""}
+																									</div>
+																								</div>
+																							</TableCell>
+																							<TableCell
+																								className={`px-1.5 py-1 transition-all duration-300 ${
+																									rateFocused
+																										? "w-[120px]"
+																										: "w-[90px]"
 																								}`}
 																							>
 																								<div className="flex flex-col">
@@ -2080,11 +2357,13 @@ export function InvoiceForm({
 																										type="number"
 																										min="0"
 																										step="0.01"
-																										value={item.gst_rate || ""}
+																										value={
+																											item.unit_price || ""
+																										}
 																										onChange={(e) =>
 																											updateLineItem(
 																												item.id,
-																												"gst_rate",
+																												"unit_price",
 																												Number.parseFloat(
 																													e.target.value
 																												) || 0
@@ -2092,7 +2371,7 @@ export function InvoiceForm({
 																										}
 																										onFocus={() =>
 																											setFocusedField(
-																												gstFieldId
+																												rateFieldId
 																											)
 																										}
 																										onBlur={() =>
@@ -2100,7 +2379,7 @@ export function InvoiceForm({
 																										}
 																										onMouseEnter={() =>
 																											setFocusedField(
-																												gstFieldId
+																												rateFieldId
 																											)
 																										}
 																										onMouseLeave={() => {
@@ -2109,123 +2388,253 @@ export function InvoiceForm({
 																											if (
 																												activeEl?.dataset
 																													?.fieldId !==
-																												gstFieldId
+																												rateFieldId
 																											) {
 																												setFocusedField(null);
 																											}
 																										}}
-																										data-field-id={gstFieldId}
+																										data-field-id={rateFieldId}
+																										required
 																										className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
-																											gstFocused
+																											rateFocused
 																												? "px-3 bg-primary/5 border-primary/50 shadow-sm"
 																												: "px-1.5"
 																										}`}
 																									/>
 																									<div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
-																										{item.gst_rate
-																											? `${item.gst_rate}%`
+																										{item.unit_price
+																											? `₹${item.unit_price.toFixed(
+																													2
+																											  )}`
 																											: ""}
 																									</div>
 																								</div>
 																							</TableCell>
-																						)}
-																					</>
-																				);
-																			})()}
-																			<TableCell className="text-right font-bold text-sm px-2 py-1.5">
-																				₹{calc.lineTotal.toFixed(2)}
-																			</TableCell>
-																			<TableCell className="px-1 py-1.5">
-																				<Button
-																					type="button"
-																					variant="ghost"
-																					size="icon"
-																					onClick={() =>
-																						removeLineItem(item.id)
-																					}
-																					className="h-7 w-7"
-																				>
-																					<Trash2 className="h-3.5 w-3.5" />
-																				</Button>
-																			</TableCell>
-																		</TableRow>
-																	);
-																})}
-															</TableBody>
-														</Table>
-													</div>
-												</div>
-											)}
-										</CardContent>
-									</Card>
-
-									<Card>
-										<CardContent className="space-y-1.5 p-3 text-xs">
-											<div className="flex justify-between">
-												<span>Subtotal</span>
-												<span className="font-medium">
-													₹{totals.subtotal.toFixed(2)}
-												</span>
-											</div>
-											{isGstInvoice && (
-												<>
-													{isSameState ? (
-														<>
-															<div className="flex justify-between text-xs text-muted-foreground">
-																<span>CGST</span>
-																<span>₹{totals.cgst.toFixed(2)}</span>
-															</div>
-															<div className="flex justify-between text-xs text-muted-foreground">
-																<span>SGST</span>
-																<span>₹{totals.sgst.toFixed(2)}</span>
-															</div>
-														</>
-													) : (
-														<div className="flex justify-between text-xs text-muted-foreground">
-															<span>IGST</span>
-															<span>₹{totals.igst.toFixed(2)}</span>
+																							<TableCell
+																								className={`px-1.5 py-1 transition-all duration-300 ${
+																									discFocused
+																										? "w-[110px]"
+																										: "w-[75px]"
+																								}`}
+																							>
+																								<div className="flex flex-col">
+																									<Input
+																										type="number"
+																										min="0"
+																										max="100"
+																										step="0.01"
+																										value={
+																											item.discount_percent ||
+																											""
+																										}
+																										onChange={(e) =>
+																											updateLineItem(
+																												item.id,
+																												"discount_percent",
+																												Number.parseFloat(
+																													e.target.value
+																												) || 0
+																											)
+																										}
+																										onFocus={() =>
+																											setFocusedField(
+																												discFieldId
+																											)
+																										}
+																										onBlur={() =>
+																											setFocusedField(null)
+																										}
+																										onMouseEnter={() =>
+																											setFocusedField(
+																												discFieldId
+																											)
+																										}
+																										onMouseLeave={() => {
+																											const activeEl =
+																												document.activeElement as HTMLElement;
+																											if (
+																												activeEl?.dataset
+																													?.fieldId !==
+																												discFieldId
+																											) {
+																												setFocusedField(null);
+																											}
+																										}}
+																										data-field-id={discFieldId}
+																										className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
+																											discFocused
+																												? "px-3 bg-primary/5 border-primary/50 shadow-sm"
+																												: "px-1.5"
+																										}`}
+																									/>
+																									<div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
+																										{item.discount_percent
+																											? `${item.discount_percent}%`
+																											: ""}
+																									</div>
+																								</div>
+																							</TableCell>
+																							{isGstInvoice && (
+																								<TableCell
+																									className={`px-1.5 py-1 transition-all duration-300 ${
+																										gstFocused
+																											? "w-[100px]"
+																											: "w-[70px]"
+																									}`}
+																								>
+																									<div className="flex flex-col">
+																										<Input
+																											type="number"
+																											min="0"
+																											step="0.01"
+																											value={
+																												item.gst_rate || ""
+																											}
+																											onChange={(e) =>
+																												updateLineItem(
+																													item.id,
+																													"gst_rate",
+																													Number.parseFloat(
+																														e.target.value
+																													) || 0
+																												)
+																											}
+																											onFocus={() =>
+																												setFocusedField(
+																													gstFieldId
+																												)
+																											}
+																											onBlur={() =>
+																												setFocusedField(null)
+																											}
+																											onMouseEnter={() =>
+																												setFocusedField(
+																													gstFieldId
+																												)
+																											}
+																											onMouseLeave={() => {
+																												const activeEl =
+																													document.activeElement as HTMLElement;
+																												if (
+																													activeEl?.dataset
+																														?.fieldId !==
+																													gstFieldId
+																												) {
+																													setFocusedField(null);
+																												}
+																											}}
+																											data-field-id={gstFieldId}
+																											className={`h-9 text-sm text-center font-semibold transition-all duration-300 ${
+																												gstFocused
+																													? "px-3 bg-primary/5 border-primary/50 shadow-sm"
+																													: "px-1.5"
+																											}`}
+																										/>
+																										<div className="text-[10px] text-muted-foreground text-center mt-0.5 h-3">
+																											{item.gst_rate
+																												? `${item.gst_rate}%`
+																												: ""}
+																										</div>
+																									</div>
+																								</TableCell>
+																							)}
+																						</>
+																					);
+																				})()}
+																				<TableCell className="text-right font-bold text-sm px-2 py-1.5">
+																					₹{calc.lineTotal.toFixed(2)}
+																				</TableCell>
+																				<TableCell className="px-1 py-1.5">
+																					<Button
+																						type="button"
+																						variant="ghost"
+																						size="icon"
+																						onClick={() =>
+																							removeLineItem(item.id)
+																						}
+																						className="h-7 w-7"
+																					>
+																						<Trash2 className="h-3.5 w-3.5" />
+																					</Button>
+																				</TableCell>
+																			</TableRow>
+																		);
+																	})}
+																</TableBody>
+															</Table>
 														</div>
-													)}
-												</>
-											)}
-											<div className="flex justify-between border-t pt-2 text-sm font-semibold">
-												<span>Total</span>
-												<span>₹{totals.total.toFixed(2)}</span>
-											</div>
-										</CardContent>
-									</Card>
+													</div>
+												)}
+											</CardContent>
+										</Card>
 
-									<div className="flex flex-col gap-2">
-										<Button
-											type="button"
-											onClick={handleSaveAndShare}
-											disabled={isLoading || isSharing || !navigator.onLine}
-											className="gap-2"
-										>
-											<MessageCircle className="h-4 w-4" />
-											{isSharing
-												? "Saving & Sharing..."
-												: "Save & Share on WhatsApp"}
-										</Button>
-										<Button type="submit" disabled={isLoading || isSharing}>
-											{isLoading ? "Creating..." : "Create Invoice"}
-										</Button>
-										<Button
-											type="button"
-											variant="outline"
-											onClick={() => router.back()}
-											disabled={isLoading || isSharing}
-										>
-											Cancel
-										</Button>
+										<Card>
+											<CardContent className="space-y-1.5 p-3 text-xs">
+												<div className="flex justify-between">
+													<span>Subtotal</span>
+													<span className="font-medium">
+														₹{totals.subtotal.toFixed(2)}
+													</span>
+												</div>
+												{isGstInvoice && (
+													<>
+														{isSameState ? (
+															<>
+																<div className="flex justify-between text-xs text-muted-foreground">
+																	<span>CGST</span>
+																	<span>₹{totals.cgst.toFixed(2)}</span>
+																</div>
+																<div className="flex justify-between text-xs text-muted-foreground">
+																	<span>SGST</span>
+																	<span>₹{totals.sgst.toFixed(2)}</span>
+																</div>
+															</>
+														) : (
+															<div className="flex justify-between text-xs text-muted-foreground">
+																<span>IGST</span>
+																<span>₹{totals.igst.toFixed(2)}</span>
+															</div>
+														)}
+													</>
+												)}
+												<div className="flex justify-between border-t pt-2 text-sm font-semibold">
+													<span>Total</span>
+													<span>₹{totals.total.toFixed(2)}</span>
+												</div>
+											</CardContent>
+										</Card>
+
+										<div className="flex flex-col gap-2">
+											<Button
+												type="button"
+												onClick={handleSaveAndShare}
+												disabled={isLoading || isSharing || !navigator.onLine}
+												className="gap-2"
+											>
+												<MessageCircle className="h-4 w-4" />
+												{isSharing
+													? "Saving & Sharing..."
+													: "Save & Share on WhatsApp"}
+											</Button>
+											<Button type="submit" disabled={isLoading || isSharing}>
+												{isLoading ? "Creating..." : "Create Invoice"}
+											</Button>
+											<Button
+												type="button"
+												variant="outline"
+												onClick={() => router.back()}
+												disabled={isLoading || isSharing}
+											>
+												Cancel
+											</Button>
+										</div>
 									</div>
-								</div>
-							</ResizablePanel>
-						</ResizablePanelGroup>
+								</ResizablePanel>
+							</ResizablePanelGroup>
+						</div>
 					</div>
-				</div>
-			</form>
-		</div>
+				</form>
+			</div>
 		</>
 	);
 }

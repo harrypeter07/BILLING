@@ -36,7 +36,7 @@ export async function saveInvoiceStorage(
         updated_at: new Date().toISOString(),
       })
     } else {
-      // Save to Supabase
+      // Save to Supabase (if table exists)
       const supabase = createClient()
       const { error } = await supabase.from('invoice_storage').insert({
         invoice_id: data.invoice_id,
@@ -45,7 +45,12 @@ export async function saveInvoiceStorage(
         expires_at: data.expires_at,
       })
 
+      // If table doesn't exist, just log and continue (non-critical)
       if (error) {
+        if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+          console.warn('[SaveInvoiceStorage] invoice_storage table does not exist. Skipping metadata save. This is non-critical.')
+          return { success: true } // Return success since R2 upload already succeeded
+        }
         throw error
       }
     }
@@ -89,9 +94,18 @@ export async function getInvoiceStorage(
         .from('invoice_storage')
         .select('*')
         .eq('invoice_id', invoiceId)
-        .single()
+        .maybeSingle()
 
-      if (error || !data) return null
+      // If table doesn't exist, return null (non-critical)
+      if (error) {
+        if (error.code === 'PGRST205' || error.message?.includes('Could not find the table')) {
+          return null
+        }
+        console.error('[GetInvoiceStorage] Error:', error)
+        return null
+      }
+      
+      if (!data) return null
 
       return {
         invoice_id: data.invoice_id,

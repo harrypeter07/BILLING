@@ -582,65 +582,65 @@ export default function BusinessSettingsPage() {
 				</CardHeader>
 				<CardContent className="space-y-4">
 					<div className="grid gap-4">
-						<div>
-							<Label htmlFor="business_name">Business Name</Label>
-							<Input
-								id="business_name"
-								name="business_name"
-								value={businessData.business_name}
-								onChange={handleBusinessChange}
-								placeholder="Your business name"
-								className="mt-1"
-							/>
-						</div>
+					<div>
+						<Label htmlFor="business_name">Business Name</Label>
+						<Input
+							id="business_name"
+							name="business_name"
+							value={businessData.business_name}
+							onChange={handleBusinessChange}
+							placeholder="Your business name"
+							className="mt-1"
+						/>
+					</div>
 
-						<div>
-							<Label htmlFor="business_gstin">GSTIN</Label>
-							<Input
-								id="business_gstin"
-								name="business_gstin"
-								value={businessData.business_gstin}
-								onChange={handleBusinessChange}
-								placeholder="27AABCT1234H1Z0"
-								className="mt-1"
-							/>
-						</div>
+					<div>
+						<Label htmlFor="business_gstin">GSTIN</Label>
+						<Input
+							id="business_gstin"
+							name="business_gstin"
+							value={businessData.business_gstin}
+							onChange={handleBusinessChange}
+							placeholder="27AABCT1234H1Z0"
+							className="mt-1"
+						/>
+					</div>
 
-						<div>
-							<Label htmlFor="business_phone">Phone Number</Label>
-							<Input
-								id="business_phone"
-								name="business_phone"
-								value={businessData.business_phone}
-								onChange={handleBusinessChange}
-								placeholder="+91 9876543210"
-								className="mt-1"
-							/>
-						</div>
+					<div>
+						<Label htmlFor="business_phone">Phone Number</Label>
+						<Input
+							id="business_phone"
+							name="business_phone"
+							value={businessData.business_phone}
+							onChange={handleBusinessChange}
+							placeholder="+91 9876543210"
+							className="mt-1"
+						/>
+					</div>
 
-						<div>
-							<Label htmlFor="business_email">Email</Label>
-							<Input
-								id="business_email"
-								name="business_email"
-								type="email"
-								value={businessData.business_email}
-								onChange={handleBusinessChange}
-								placeholder="business@example.com"
-								className="mt-1"
-							/>
-						</div>
+					<div>
+						<Label htmlFor="business_email">Email</Label>
+						<Input
+							id="business_email"
+							name="business_email"
+							type="email"
+							value={businessData.business_email}
+							onChange={handleBusinessChange}
+							placeholder="business@example.com"
+							className="mt-1"
+						/>
+					</div>
 
-						<div>
-							<Label htmlFor="business_address">Business Address</Label>
-							<Input
-								id="business_address"
-								name="business_address"
-								value={businessData.business_address}
-								onChange={handleBusinessChange}
-								placeholder="123 Business Street, City, State"
-								className="mt-1"
-							/>
+					<div>
+						<Label htmlFor="business_address">Business Address</Label>
+						<Input
+							id="business_address"
+							name="business_address"
+							value={businessData.business_address}
+							onChange={handleBusinessChange}
+							placeholder="123 Business Street, City, State"
+							className="mt-1"
+						/>
 						</div>
 					</div>
 

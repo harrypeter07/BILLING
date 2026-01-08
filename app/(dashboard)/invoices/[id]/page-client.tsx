@@ -122,14 +122,61 @@ export default function InvoiceDetailPageClient() {
     const fetchSettings = async () => {
       try {
         const supabase = createClient()
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return
+        
+        // Get admin user_id (for both admin and employee)
+        const authType = localStorage.getItem("authType")
+        let adminUserId: string | null = null
 
+        if (authType === "employee") {
+          // For employees, get admin_user_id from store
+          const employeeSession = localStorage.getItem("employeeSession")
+          if (employeeSession) {
+            try {
+              const session = JSON.parse(employeeSession)
+              const storeId = session.storeId || localStorage.getItem("currentStoreId")
+              if (storeId) {
+                const { data: store } = await supabase
+                  .from("stores")
+                  .select("admin_user_id")
+                  .eq("id", storeId)
+                  .single()
+                adminUserId = store?.admin_user_id || null
+              }
+            } catch (e) {
+              console.warn("[InvoiceDetail] Error parsing employee session:", e)
+            }
+          }
+        } else {
+          // For admin, use their own user_id
+          const { data: { user } } = await supabase.auth.getUser()
+          if (user) {
+            const { data: profile } = await supabase
+              .from("user_profiles")
+              .select("role")
+              .eq("id", user.id)
+              .maybeSingle()
+            
+            if (profile?.role === "admin") {
+              adminUserId = user.id
+            }
+          }
+        }
+
+        if (!adminUserId) {
+          // Try to get from cache
+          const cachedLogo = localStorage.getItem("business_logo_url")
+          if (cachedLogo) {
+            setLogoUrl(cachedLogo)
+          }
+          return
+        }
+
+        // Fetch admin's profile (business settings)
         const { data: profile } = await supabase
           .from("user_profiles")
           .select("*")
-          .eq("id", user.id)
-          .single()
+          .eq("id", adminUserId)
+          .maybeSingle()
 
         if (profile) {
           setSettings(profile)

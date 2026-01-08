@@ -201,17 +201,19 @@ async function fetchInvoiceData(
 		}
 
 		// Fetch profile in parallel with store
+		// For employees, get admin's profile; for admins, get their own
 		let profile: any = null;
 		try {
-			const {
-				data: { user },
-			} = await supabase.auth.getUser();
-			if (user) {
+			// Get admin user_id (for employees, this is their admin's id)
+			const { getAdminUserIdForInvoices } = await import("@/lib/utils/get-admin-user-id-for-employees");
+			const adminUserId = await getAdminUserIdForInvoices();
+			
+			if (adminUserId) {
 				const { data: prof } = await supabase
 					.from("user_profiles")
 					.select("*")
-					.eq("id", user.id)
-					.single();
+					.eq("id", adminUserId)
+					.maybeSingle();
 				profile = prof;
 			}
 		} catch (err) {
@@ -341,16 +343,11 @@ export async function prepareInvoiceDocumentData(
 	const businessEmail = profile?.business_email || "";
 	let logoUrl = profile?.logo_url || "";
 
-	// Cache logo URL in localStorage for faster access
-	if (logoUrl && typeof window !== "undefined") {
+	// Fetch admin's logo if not in profile (for employees)
+	// This is CRITICAL for print - must fetch synchronously
+	if (!logoUrl && typeof window !== "undefined") {
 		try {
-			localStorage.setItem("business_logo_url", logoUrl);
-		} catch (e) {
-			// Ignore localStorage errors
-		}
-	} else if (typeof window !== "undefined") {
-		// Try to get from cache if not in profile
-		try {
+			// First check cache
 			const cachedLogo = localStorage.getItem("business_logo_url");
 			if (cachedLogo) {
 				logoUrl = cachedLogo;
@@ -358,6 +355,48 @@ export async function prepareInvoiceDocumentData(
 		} catch (e) {
 			// Ignore localStorage errors
 		}
+	}
+	
+	// If still no logo, try to fetch from admin's profile (SYNC - blocking for print)
+	// This ensures logo is available when generating PDF
+	if (!logoUrl && typeof window !== "undefined") {
+		try {
+			const { getAdminUserIdForInvoices } = await import("@/lib/utils/get-admin-user-id-for-employees");
+			const adminUserId = await getAdminUserIdForInvoices();
+			if (adminUserId) {
+				const supabase = createClient();
+				const { data: adminProfile } = await supabase
+					.from("user_profiles")
+					.select("logo_url")
+					.eq("id", adminUserId)
+					.maybeSingle();
+				
+				if (adminProfile?.logo_url) {
+					logoUrl = adminProfile.logo_url;
+					// Cache for future use
+					try {
+						localStorage.setItem("business_logo_url", logoUrl);
+					} catch (e) {
+						// Ignore localStorage errors
+					}
+				}
+			}
+		} catch (e) {
+			// Log but don't fail - logo is optional
+			console.warn("[InvoiceDocumentEngine] Failed to fetch logo:", e);
+		}
+	} else if (logoUrl && typeof window !== "undefined") {
+		// Cache logo URL in localStorage for faster access
+		try {
+			localStorage.setItem("business_logo_url", logoUrl);
+		} catch (e) {
+			// Ignore localStorage errors
+		}
+	}
+	
+	// Log logo status for debugging
+	if (typeof window !== "undefined") {
+		console.log("[InvoiceDocumentEngine] Logo URL:", logoUrl ? "✓ Found" : "✗ Not found");
 	}
 
 	// Normalize items - SINGLE SOURCE OF TRUTH for item mapping
@@ -657,24 +696,30 @@ async function handleWhatsApp(
 			// Generate PDF (slip format for WhatsApp)
 			const pdfBlob = await generatePDF(data, format, "whatsapp");
 
-			// Get admin ID for upload
-			const supabase = createClient();
-			const {
-				data: { user },
-			} = await supabase.auth.getUser();
-			if (!user) {
-				throw new Error("Not authenticated");
-			}
+		// Get admin ID for upload (for employees, this is their store's admin_user_id)
+		const { getAdminUserIdForInvoices } = await import(
+			"@/lib/utils/get-admin-user-id-for-employees"
+		);
+		const adminUserId = await getAdminUserIdForInvoices();
 
-			// Start upload and wait for completion (with extended timeout for production)
-			// Production environments (Vercel) may have cold starts, so we allow more time
-			onProgress?.("Uploading PDF to cloud storage...");
-			const uploadPromise = uploadInvoicePDFToR2Client(
-				pdfBlob,
-				user.id,
-				invoiceId,
-				data.invoiceNumber
-			)
+		if (!adminUserId) {
+			const authType = typeof window !== 'undefined' ? localStorage.getItem("authType") : null;
+			const errorMsg =
+				authType === "employee"
+					? "Could not determine admin user. Please ensure you're assigned to a store."
+					: "Could not determine admin user. Please ensure you're logged in.";
+			throw new Error(errorMsg);
+		}
+
+		// Start upload and wait for completion (with extended timeout for production)
+		// Production environments (Vercel) may have cold starts, so we allow more time
+		onProgress?.("Uploading PDF to cloud storage...");
+		const uploadPromise = uploadInvoicePDFToR2Client(
+			pdfBlob,
+			adminUserId,
+			invoiceId,
+			data.invoiceNumber
+		)
 				.then((uploadResult) => {
 					// Log upload result for debugging
 					console.log("[InvoiceDocumentEngine] R2 Upload Result:", {

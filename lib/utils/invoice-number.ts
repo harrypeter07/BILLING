@@ -1,4 +1,5 @@
 import { db } from "@/lib/dexie-client"
+import { getActiveDbModeAsync } from "@/lib/utils/db-mode"
 
 /**
  * Generates invoice number in format: STORE4-EMP4-YYYYMMDDHHmmss-SEQ
@@ -6,10 +7,30 @@ import { db } from "@/lib/dexie-client"
  * EMP4: Employee ID (4-char)
  * YYYYMMDDHHmmss: Current timestamp
  * SEQ: 3-digit daily sequence (000-999) per store, resets at midnight
+ * 
+ * This function automatically detects the database mode and uses the appropriate method
  */
 export async function generateInvoiceNumber(storeId: string, employeeId: string): Promise<string> {
-  const store = await db.stores.get(storeId)
-  if (!store) throw new Error("Store not found")
+  try {
+    // Validate inputs
+    if (!storeId) {
+      throw new Error("Store ID is required")
+    }
+    
+    // Check the active database mode
+    const dbMode = await getActiveDbModeAsync()
+    
+    // If Supabase mode, use Supabase function
+    if (dbMode === 'supabase') {
+      const { generateInvoiceNumberSupabase } = await import("@/lib/utils/invoice-number-supabase")
+      return await generateInvoiceNumberSupabase(storeId, employeeId)
+    }
+    
+    // IndexedDB mode - use local database
+    const store = await db.stores.get(storeId)
+    if (!store) {
+      throw new Error(`Store not found in IndexedDB: ${storeId}`)
+    }
   
   const storeCode = store.store_code.toUpperCase().slice(0, 4).padEnd(4, "X")
   const empId = (employeeId || "ADMN").toUpperCase().slice(0, 4).padEnd(4, "X")
@@ -41,8 +62,15 @@ export async function generateInvoiceNumber(storeId: string, employeeId: string)
   
   await db.invoice_sequences.put(sequence)
   
-  const seqStr = String(sequence.sequence).padStart(3, "0")
-  
-  return `${storeCode}-${empId}-${dateStr}${timeStr}-${seqStr}`
+    const seqStr = String(sequence.sequence).padStart(3, "0")
+    
+    return `${storeCode}-${empId}-${dateStr}${timeStr}-${seqStr}`
+  } catch (error) {
+    // Wrap error to provide better context
+    if (error instanceof Error) {
+      throw new Error(`Invoice number generation failed: ${error.message}`)
+    }
+    throw new Error(`Invoice number generation failed: ${String(error)}`)
+  }
 }
 
