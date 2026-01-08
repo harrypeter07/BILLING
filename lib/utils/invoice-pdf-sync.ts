@@ -233,13 +233,17 @@ async function fetchInvoiceFromSupabase(invoiceId: string): Promise<InvoicePDFDa
   }
 
   // Fetch business settings
+  // Use invoice.user_id (which is admin_user_id for employees) instead of auth user
   let settings: any = null
-  const { data: { user } } = await supabase.auth.getUser()
-  if (user) {
+  if (invoice.user_id) {
+    // Try auth user first (for admins)
+    const { data: { user } } = await supabase.auth.getUser()
+    const userId = user?.id || invoice.user_id // Fallback to invoice.user_id for employees
+    
     const { data: profileData } = await supabase
       .from("profiles")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", userId)
       .maybeSingle()
     settings = profileData
   }

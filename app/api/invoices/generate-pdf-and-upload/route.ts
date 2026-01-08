@@ -74,15 +74,7 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 
 		const supabase = await createClient();
 
-		// 1. Get authenticated user
-		const {
-			data: { user },
-		} = await supabase.auth.getUser();
-		if (!user) {
-			throw new Error("Not authenticated");
-		}
-
-		// 2. Fetch invoice data
+		// 1. Fetch invoice data first (to get user_id for both admin and employee contexts)
 		const { data: invoice, error: invoiceError } = await supabase
 			.from("invoices")
 			.select("*")
@@ -91,6 +83,36 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 
 		if (invoiceError || !invoice) {
 			throw new Error(`Invoice not found: ${invoiceError?.message}`);
+		}
+
+		// 2. Get user context - use invoice.user_id (which is admin_user_id for employees)
+		// For employees, invoice.user_id is their store's admin_user_id
+		// For admins, invoice.user_id is their own user_id
+		let userId = invoice.user_id;
+		
+		// Try to get authenticated user (for admins)
+		const {
+			data: { user },
+		} = await supabase.auth.getUser();
+		
+		// If no auth user but invoice has user_id, use that (employee context)
+		// If auth user exists, verify it matches invoice.user_id (security check)
+		if (user) {
+			if (user.id !== invoice.user_id) {
+				// Admin accessing invoice - verify they own it via store relationship
+				const { data: store } = await supabase
+					.from("stores")
+					.select("admin_user_id")
+					.eq("id", invoice.store_id || "")
+					.maybeSingle();
+				
+				if (store?.admin_user_id !== user.id && invoice.user_id !== user.id) {
+					throw new Error("Unauthorized access to invoice");
+				}
+			}
+			userId = user.id;
+		} else if (!invoice.user_id) {
+			throw new Error("Invoice missing user_id");
 		}
 
 		// 3. Fetch invoice items
@@ -114,11 +136,11 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 			customer = customerData;
 		}
 
-		// 5. Fetch business profile
+		// 5. Fetch business profile (use userId which is admin_user_id for employees)
 		const { data: businessProfile } = await supabase
 			.from("user_profiles")
 			.select("*")
-			.eq("id", user.id)
+			.eq("id", userId)
 			.single();
 
 		// 6. Get store name (if store_id exists)
@@ -164,13 +186,13 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 			}
 		}
 
-		// Check B2B mode
+		// Check B2B mode (use userId which is admin_user_id for employees)
 		let isB2B = false;
 		try {
 			const { data: b2bSettings } = await supabase
 				.from("business_settings")
 				.select("is_b2b_enabled")
-				.eq("user_id", user.id)
+				.eq("user_id", userId)
 				.single();
 			isB2B = b2bSettings?.is_b2b_enabled || false;
 		} catch (error) {
@@ -299,7 +321,7 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 		);
 		const uploadResult = await uploadInvoicePDFToR2(
 			pdfBuffer,
-			user.id,
+			userId, // Use userId (admin_user_id for employees)
 			invoiceId,
 			invoice.invoice_number,
 			invoice.store_id || undefined

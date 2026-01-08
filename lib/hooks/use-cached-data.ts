@@ -294,21 +294,77 @@ export function useInvoices() {
                 const storeId = await getCurrentStoreId()
 
                 if (authType === "employee") {
-                    // For employees, show only their own invoices
+                    // For employees, show ALL invoices from their store (shared-store model)
                     const empSession = localStorage.getItem("employeeSession")
                     if (empSession) {
-                        const session = JSON.parse(empSession)
-                        const employeeId = session.employeeId
-                        if (employeeId) {
-                            // Get invoices created by this employee
-                            const { data, error } = await supabase
-                                .from('invoices')
-                                .select('*, customers(name)')
-                                .or(`created_by_employee_id.eq.${employeeId},employee_id.eq.${employeeId}`)
-                                .order('created_at', { ascending: false })
-                            if (error) throw error
-                            return data || []
+                        try {
+                            const session = JSON.parse(empSession)
+                            const sessionStoreId = session.storeId || storeId
+                            
+                            if (sessionStoreId) {
+                                // Get store to find admin_user_id
+                                const { data: store, error: storeError } = await supabase
+                                    .from('stores')
+                                    .select('admin_user_id')
+                                    .eq('id', sessionStoreId)
+                                    .maybeSingle()
+                                
+                                if (storeError) {
+                                    toast.error("Data Sync Error", {
+                                        description: "Unable to fetch store information. Please contact your administrator or try refreshing the page."
+                                    })
+                                    console.error("[useInvoices] Error fetching store:", storeError)
+                                    throw storeError
+                                }
+                                
+                                if (!store?.admin_user_id) {
+                                    toast.error("Data Sync Error", {
+                                        description: "Store information is incomplete. Please contact your administrator."
+                                    })
+                                    return []
+                                }
+                                
+                                userId = store.admin_user_id
+                                
+                                // Query all invoices for this store (RLS will allow access)
+                                // Filter by user_id (admin) and store_id to get all store invoices
+                                // Include NULL store_id for legacy B2C invoices
+                                let query = supabase
+                                    .from('invoices')
+                                    .select('*, customers(name)')
+                                    .eq('user_id', userId)
+                                
+                                // Filter by store_id (include NULL for legacy data)
+                                query = query.or(`store_id.is.null,store_id.eq.${sessionStoreId}`)
+                                
+                                const { data, error } = await query.order('created_at', { ascending: false })
+                                
+                                if (error) {
+                                    toast.error("Data Sync Error", {
+                                        description: "Unable to load invoices. Please check your connection or contact your administrator."
+                                    })
+                                    console.error("[useInvoices] Error fetching invoices:", error)
+                                    throw error
+                                }
+                                
+                                return data || []
+                            } else {
+                                toast.error("Data Sync Error", {
+                                    description: "Store ID not found in employee session. Please log out and log in again."
+                                })
+                                return []
+                            }
+                        } catch (e: any) {
+                            toast.error("Data Sync Error", {
+                                description: "Failed to load invoice data. Please try refreshing the page or contact your administrator."
+                            })
+                            console.error("[useInvoices] Error parsing employee session:", e)
+                            return []
                         }
+                    } else {
+                        toast.error("Data Sync Error", {
+                            description: "Employee session not found. Please log out and log in again."
+                        })
                     }
                     return []
                 } else {

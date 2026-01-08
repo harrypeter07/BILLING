@@ -1010,6 +1010,17 @@ export function InvoiceForm({
 				}
 			}
 
+			// Validate store_id is present (required after RLS rebuild)
+			if (!storeId) {
+				toast({
+					title: "Error",
+					description: "Store ID is required. Please select a store or contact your administrator.",
+					variant: "destructive",
+				});
+				setIsLoading(false);
+				return;
+			}
+
 			const invoiceId = crypto.randomUUID();
 			console.log(
 				"[InvoiceForm] Creating invoice with customer_id:",
@@ -1028,7 +1039,7 @@ export function InvoiceForm({
 				igst_amount: t.igst,
 				total_amount: t.total,
 				created_at: new Date().toISOString(),
-				store_id: storeId || undefined,
+				store_id: storeId, // Required - validated above
 				employee_id: employeeId || undefined,
 				created_by_employee_id: employeeId || undefined,
 			};
@@ -1418,6 +1429,18 @@ export function InvoiceForm({
 				return;
 			}
 
+			// Validate store_id is present (required after RLS rebuild)
+			if (!storeId) {
+				toast({
+					title: "Error",
+					description: "Store ID is required. Please select a store or contact your administrator.",
+					variant: "destructive",
+				});
+				setIsSharing(false);
+				setIsLoading(false);
+				return;
+			}
+
 			invoiceId = crypto.randomUUID();
 			const invoiceData = {
 				id: invoiceId,
@@ -1432,7 +1455,7 @@ export function InvoiceForm({
 				igst_amount: t.igst,
 				total_amount: t.total,
 				created_at: new Date().toISOString(),
-				store_id: storeId || undefined,
+				store_id: storeId, // Required - validated above
 				employee_id: employeeId || undefined,
 				created_by_employee_id: employeeId || undefined,
 			};

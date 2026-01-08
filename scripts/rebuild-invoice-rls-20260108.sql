@@ -29,28 +29,28 @@ BEGIN
   END LOOP;
 END$$;
 
--- STEP 3: invoices policies
-CREATE POLICY "Admins and employees can insert invoices"
+-- STEP 3: invoices policies (shared between admin & employees)
+CREATE POLICY "Store members insert invoices"
 ON public.invoices
 FOR INSERT
 WITH CHECK (
-  -- Admin inserting own invoice
+  -- Admin inserting for own store
   auth.uid() = user_id
 
   OR
 
-  -- Employee inserting invoice for their store's admin
+  -- Employee inserting for their store
   EXISTS (
     SELECT 1
     FROM public.employees e
     JOIN public.stores s ON s.id = e.store_id
     WHERE
-      s.admin_user_id = invoices.user_id
-      AND e.store_id = invoices.store_id
+      e.store_id = invoices.store_id
+      AND s.admin_user_id = invoices.user_id
   )
 );
 
-CREATE POLICY "Admins and employees manage invoices"
+CREATE POLICY "Store members manage invoices"
 ON public.invoices
 FOR ALL
 USING (
@@ -59,62 +59,174 @@ USING (
 
   OR
 
-  -- Employee scoped to store
+  -- Employees: invoices from their store's admin (matching user_id AND store_id)
   EXISTS (
     SELECT 1
     FROM public.employees e
-    WHERE e.store_id = invoices.store_id
+    JOIN public.stores s ON s.id = e.store_id
+    WHERE 
+      -- Invoice belongs to employee's admin
+      invoices.user_id = s.admin_user_id
+      AND (
+        -- Invoice has matching store_id
+        invoices.store_id = e.store_id
+        OR
+        -- Invoice has NULL store_id (legacy data, shared with all employees of that admin)
+        invoices.store_id IS NULL
+      )
   )
 );
 
--- STEP 4: invoice_items policies (inherit invoice authority)
-CREATE POLICY "Admins and employees manage invoice items"
+-- STEP 4: invoice_items policies (follow invoice visibility)
+CREATE POLICY "Store members manage invoice items"
 ON public.invoice_items
 FOR ALL
 USING (
   EXISTS (
     SELECT 1
     FROM public.invoices i
-    JOIN public.stores s ON s.id = i.store_id
-    LEFT JOIN public.employees e ON e.store_id = s.id
     WHERE
       i.id = invoice_items.invoice_id
       AND (
+        -- Admin sees own invoices
         i.user_id = auth.uid()
-        OR s.admin_user_id = i.user_id
+        OR
+        -- Employees see invoices from their store
+        EXISTS (
+          SELECT 1
+          FROM public.employees e
+          WHERE e.store_id = i.store_id
+        )
       )
   )
 )
 WITH CHECK (TRUE);
 
--- STEP 5: invoice_sequences (required for numbering)
-CREATE POLICY "Employees manage invoice sequences"
+-- STEP 5: invoice_sequences (shared counter per store)
+CREATE POLICY "Store members manage invoice sequences"
 ON public.invoice_sequences
 FOR ALL
 USING (
+  -- Admin accessing own store's sequences
   EXISTS (
     SELECT 1
     FROM public.stores s
-    JOIN public.employees e ON e.store_id = s.id
     WHERE s.id = invoice_sequences.store_id
+      AND s.admin_user_id = auth.uid()
+  )
+  OR
+  -- Employees accessing their store's sequences
+  EXISTS (
+    SELECT 1
+    FROM public.employees e
+    WHERE e.store_id = invoice_sequences.store_id
   )
 );
 
--- STEP 6: products & customers (store scoped reads)
-CREATE POLICY "Employees read store products"
+-- STEP 6: products (shared store catalog)
+CREATE POLICY "Store members read products"
 ON public.products
 FOR SELECT
 USING (
+  -- Admin
+  auth.uid() = user_id
+
+  OR
+
+  -- Employees: products from their store's admin (matching user_id AND store_id)
+  EXISTS (
+    SELECT 1
+    FROM public.employees e
+    JOIN public.stores s ON s.id = e.store_id
+    WHERE 
+      -- Product belongs to employee's admin
+      products.user_id = s.admin_user_id
+      AND (
+        -- Product has matching store_id
+        products.store_id = e.store_id
+        OR
+        -- Product has NULL store_id (legacy data, shared with all employees of that admin)
+        products.store_id IS NULL
+      )
+  )
+);
+
+-- Products INSERT policy (admins and employees can create products)
+CREATE POLICY "Store members insert products"
+ON public.products
+FOR INSERT
+WITH CHECK (
+  -- Admin inserting own product
+  auth.uid() = user_id
+
+  OR
+
+  -- Employee inserting product for their store's admin
+  -- Check that the product's user_id matches any store's admin_user_id where an employee exists
+  EXISTS (
+    SELECT 1
+    FROM public.employees e
+    JOIN public.stores s ON s.id = e.store_id
+    WHERE 
+      -- Product's user_id matches store's admin_user_id
+      s.admin_user_id = products.user_id
+      AND (
+        -- Product's store_id matches employee's store_id
+        products.store_id = e.store_id
+        OR
+        -- Product's store_id is NULL (allowed for employees)
+        products.store_id IS NULL
+      )
+  )
+);
+
+-- Products UPDATE/DELETE policy (admins and employees can manage products)
+CREATE POLICY "Store members manage products"
+ON public.products
+FOR ALL
+USING (
+  -- Admin
+  auth.uid() = user_id
+
+  OR
+
+  -- Employees: products from their store's admin
+  EXISTS (
+    SELECT 1
+    FROM public.employees e
+    JOIN public.stores s ON s.id = e.store_id
+    WHERE 
+      -- Product belongs to employee's admin
+      products.user_id = s.admin_user_id
+      AND (
+        -- Product has matching store_id
+        products.store_id = e.store_id
+        OR
+        -- Product has NULL store_id (legacy data)
+        products.store_id IS NULL
+      )
+  )
+)
+WITH CHECK (
+  -- Same check for updates
   auth.uid() = user_id
   OR
   EXISTS (
     SELECT 1
     FROM public.employees e
-    WHERE e.store_id = products.store_id
+    JOIN public.stores s ON s.id = e.store_id
+    WHERE 
+      s.admin_user_id = products.user_id
+      AND (
+        products.store_id = e.store_id
+        OR
+        products.store_id IS NULL
+      )
   )
 );
 
-CREATE POLICY "Employees read store customers"
+-- STEP 7: customers (shared store customers)
+CREATE POLICY "Store members read customers"
 ON public.customers
 FOR SELECT
 USING (
@@ -123,11 +235,95 @@ USING (
   EXISTS (
     SELECT 1
     FROM public.employees e
-    WHERE e.store_id = customers.store_id
+    JOIN public.stores s ON s.id = e.store_id
+    WHERE 
+      -- Customer belongs to employee's admin
+      customers.user_id = s.admin_user_id
+      AND (
+        -- Customer has matching store_id
+        customers.store_id = e.store_id
+        OR
+        -- Customer has NULL store_id (legacy data, shared with all employees of that admin)
+        customers.store_id IS NULL
+      )
   )
 );
 
--- STEP 7: Verification
+-- Customers INSERT policy (admins and employees can create customers)
+CREATE POLICY "Store members insert customers"
+ON public.customers
+FOR INSERT
+WITH CHECK (
+  -- Admin inserting own customer
+  auth.uid() = user_id
+
+  OR
+
+  -- Employee inserting customer for their store's admin
+  -- Check that the customer's user_id matches any store's admin_user_id where an employee exists
+  EXISTS (
+    SELECT 1
+    FROM public.employees e
+    JOIN public.stores s ON s.id = e.store_id
+    WHERE 
+      -- Customer's user_id matches store's admin_user_id
+      s.admin_user_id = customers.user_id
+      AND (
+        -- Customer's store_id matches employee's store_id
+        customers.store_id = e.store_id
+        OR
+        -- Customer's store_id is NULL (allowed for employees)
+        customers.store_id IS NULL
+      )
+  )
+);
+
+-- Customers UPDATE/DELETE policy (admins and employees can manage customers)
+CREATE POLICY "Store members manage customers"
+ON public.customers
+FOR ALL
+USING (
+  -- Admin
+  auth.uid() = user_id
+
+  OR
+
+  -- Employees: customers from their store's admin
+  EXISTS (
+    SELECT 1
+    FROM public.employees e
+    JOIN public.stores s ON s.id = e.store_id
+    WHERE 
+      -- Customer belongs to employee's admin
+      customers.user_id = s.admin_user_id
+      AND (
+        -- Customer has matching store_id
+        customers.store_id = e.store_id
+        OR
+        -- Customer has NULL store_id (legacy data)
+        customers.store_id IS NULL
+      )
+  )
+)
+WITH CHECK (
+  -- Same check for updates
+  auth.uid() = user_id
+  OR
+  EXISTS (
+    SELECT 1
+    FROM public.employees e
+    JOIN public.stores s ON s.id = e.store_id
+    WHERE 
+      s.admin_user_id = customers.user_id
+      AND (
+        customers.store_id = e.store_id
+        OR
+        customers.store_id IS NULL
+      )
+  )
+);
+
+-- STEP 8: Verification
 SELECT tablename, policyname, cmd, qual, with_check
 FROM pg_policies
 WHERE tablename IN (
