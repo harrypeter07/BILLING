@@ -148,17 +148,23 @@ export default function InvoiceDetailPageClient() {
 				const supabase = createClient();
 
 				// Get admin user_id (for both admin and employee)
+				// Priority: 1. invoice.user_id (admin_user_id for employee-created invoices)
+				//           2. From employee session/store
+				//           3. From auth user (for admins)
 				const authType = localStorage.getItem("authType");
 				let adminUserId: string | null = null;
 
-				if (authType === "employee") {
+				// First, try to use invoice.user_id (which is admin_user_id for employees)
+				if (invoice?.user_id) {
+					adminUserId = invoice.user_id;
+				} else if (authType === "employee") {
 					// For employees, get admin_user_id from store
 					const employeeSession = localStorage.getItem("employeeSession");
 					if (employeeSession) {
 						try {
 							const session = JSON.parse(employeeSession);
 							const storeId =
-								session.storeId || localStorage.getItem("currentStoreId");
+								session.storeId || localStorage.getItem("currentStoreId") || invoice?.store_id;
 							if (storeId) {
 								const { data: store } = await supabase
 									.from("stores")
@@ -228,10 +234,10 @@ export default function InvoiceDetailPageClient() {
 				console.warn("Failed to fetch business settings:", err);
 			}
 		};
-		if (invoiceId) {
+		if (invoiceId && invoice) {
 			fetchSettings();
 		}
-	}, [invoiceId]);
+	}, [invoiceId, invoice]);
 
 	if (loading) {
 		return (

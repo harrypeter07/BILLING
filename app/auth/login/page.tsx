@@ -156,45 +156,31 @@ export default function LoginPage() {
           
           // Auto-redirect based on role
           if (userRole === "admin" || !profile) {
-            console.log("[Login] Admin user authenticated, checking stores...")
+            console.log("[Login] Admin user authenticated")
             
-            // Check for stores and redirect accordingly
+            // On login, don't check for stores - just redirect to dashboard/analytics
+            // Store setup should only happen on first signup, not on every login
             if (isExcel) {
               const stores = await db.stores.toArray()
-              console.log("[Login] Excel mode - Stores found:", stores?.length || 0)
-              if (!stores || stores.length === 0) {
-                console.log("[Login] No stores found, redirecting to store setup")
-                router.push("/settings/store")
-                router.refresh()
-                setCheckingAuth(false)
-                return
+              if (stores && stores.length > 0) {
+                const store = stores[0]
+                localStorage.setItem("currentStoreId", store.id)
               }
-              // Store exists
-              const store = stores[0]
-              localStorage.setItem("currentStoreId", store.id)
               console.log("[Login] Redirecting admin to /admin/analytics")
               router.push("/admin/analytics")
             } else {
-              // Supabase mode
+              // Supabase mode - check for stores but don't redirect to setup
               const { data: stores } = await supabase
                 .from("stores")
                 .select("*")
                 .eq("admin_user_id", user.id)
                 .limit(1)
               
-              console.log("[Login] Supabase mode - Stores found:", stores?.length || 0)
-              
-              if (!stores || stores.length === 0) {
-                console.log("[Login] No stores found, redirecting to store setup")
-                router.push("/settings/store")
-                router.refresh()
-                setCheckingAuth(false)
-                return
+              if (stores && stores.length > 0) {
+                const store = stores[0]
+                localStorage.setItem("currentStoreId", store.id)
               }
               
-              // Store exists
-              const store = stores[0]
-              localStorage.setItem("currentStoreId", store.id)
               console.log("[Login] Redirecting admin to /admin/analytics")
               router.push("/admin/analytics")
             }
@@ -276,42 +262,51 @@ export default function LoginPage() {
           if (isExcel) {
             // Excel mode - check Dexie for stores
             const stores = await db.stores.toArray()
-            console.log("[Login] Excel mode - Stores found:", stores?.length || 0)
-            if (!stores || stores.length === 0) {
-              console.log("[Login] No stores found, redirecting to store setup")
-              router.push("/settings/store")
-              router.refresh()
-              return
+            
+            // Don't redirect to store setup on every login - only on first signup
+            // For Excel mode, we can't easily detect first signup, so just don't redirect
+            // Users can manually navigate to settings if they need to set up a store
+            if (stores && stores.length > 0) {
+              // Store exists, save first store to localStorage
+              const store = stores[0]
+              localStorage.setItem("currentStoreId", store.id)
+              resolvedStoreId = store.id
             }
-            // Store exists, save first store to localStorage
-            const store = stores[0]
-            localStorage.setItem("currentStoreId", store.id)
-            resolvedStoreId = store.id
-            console.log("[Login] Store found, redirecting admin to /admin/analytics")
+            console.log("[Login] Redirecting admin to /admin/analytics")
             router.push("/admin/analytics")
           } else {
-            // Supabase mode - check Supabase for stores
+            // Supabase mode - check for stores but only redirect to setup on first signup
             const { data: stores } = await supabase
               .from("stores")
               .select("*")
               .eq("admin_user_id", user.id)
               .limit(1)
             
-            console.log("[Login] Supabase mode - Stores found:", stores?.length || 0)
+            // Check if this is a new account (created within last hour) - first login after signup
+            const { data: userProfile } = await supabase
+              .from("user_profiles")
+              .select("created_at")
+              .eq("id", user.id)
+              .single()
             
-            // If no store exists, redirect to store setup
-            if (!stores || stores.length === 0) {
-              console.log("[Login] No stores found, redirecting to store setup")
+            const isNewAccount = userProfile?.created_at && 
+              (new Date().getTime() - new Date(userProfile.created_at).getTime()) < 3600000 // 1 hour
+            
+            // Only redirect to store setup if: no stores exist AND it's a new account (first login)
+            if ((!stores || stores.length === 0) && isNewAccount) {
+              console.log("[Login] New account with no stores, redirecting to store setup")
               router.push("/settings/store")
               router.refresh()
               return
             }
             
-            // Store exists, save to localStorage and go to admin analytics
-            const store = stores[0]
-            localStorage.setItem("currentStoreId", store.id)
-            resolvedStoreId = store.id
-            console.log("[Login] Store found, redirecting admin to /admin/analytics")
+            // Store exists or not a new account - save store if exists and go to analytics
+            if (stores && stores.length > 0) {
+              const store = stores[0]
+              localStorage.setItem("currentStoreId", store.id)
+              resolvedStoreId = store.id
+            }
+            console.log("[Login] Redirecting admin to /admin/analytics")
             router.push("/admin/analytics")
           }
         } else {

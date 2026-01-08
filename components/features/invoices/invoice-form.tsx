@@ -462,6 +462,11 @@ export function InvoiceForm({
 		name: "",
 		phone: "",
 		email: "",
+		gstin: "",
+		billing_address: "",
+		city: "",
+		state: "",
+		pincode: "",
 		isNewCustomer: false,
 	});
 	const [isGstInvoice, setIsGstInvoice] = useState(true);
@@ -734,6 +739,11 @@ export function InvoiceForm({
 		name: string;
 		phone: string;
 		email: string;
+		gstin?: string;
+		billing_address?: string;
+		city?: string;
+		state?: string;
+		pincode?: string;
 	}) => {
 		try {
 			const isIndexedDb = isIndexedDbMode();
@@ -748,18 +758,23 @@ export function InvoiceForm({
 			if (isIndexedDb) {
 				// Create customer in IndexedDB
 				const customerId = crypto.randomUUID();
-				const customerData = {
+				const customerDataToSave = {
 					id: customerId,
 					name: data.name,
 					phone: data.phone,
 					email: data.email || null,
+					gstin: data.gstin || null,
+					billing_address: data.billing_address || null,
+					city: data.city || null,
+					state: data.state || null,
+					pincode: data.pincode || null,
 					store_id: currentStoreId || null, // Store-scoped isolation
 					created_at: new Date().toISOString(),
 					updated_at: new Date().toISOString(),
 				};
 
-				await db.customers.add(customerData);
-				newCustomer = { id: customerId, name: customerData.name };
+				await db.customers.add(customerDataToSave);
+				newCustomer = { id: customerId, name: customerDataToSave.name };
 			} else {
 				// Create customer in Supabase
 				const supabase = createClient();
@@ -801,6 +816,11 @@ export function InvoiceForm({
 						name: data.name,
 						phone: data.phone,
 						email: data.email || null,
+						gstin: data.gstin || null,
+						billing_address: data.billing_address || null,
+						city: data.city || null,
+						state: data.state || null,
+						pincode: data.pincode || null,
 						user_id: userId,
 						store_id: currentStoreId || null, // Store-scoped isolation
 						created_at: new Date().toISOString(),
@@ -842,6 +862,11 @@ export function InvoiceForm({
 					name: customerData.name,
 					phone: customerData.phone,
 					email: customerData.email,
+					gstin: customerData.gstin,
+					billing_address: customerData.billing_address,
+					city: customerData.city,
+					state: customerData.state,
+					pincode: customerData.pincode,
 				});
 				finalCustomerId = newCustomer.id;
 				setCustomerId(finalCustomerId);
@@ -1368,6 +1393,11 @@ export function InvoiceForm({
 					name: customerData.name,
 					phone: customerData.phone,
 					email: customerData.email,
+					gstin: customerData.gstin,
+					billing_address: customerData.billing_address,
+					city: customerData.city,
+					state: customerData.state,
+					pincode: customerData.pincode,
 				});
 				finalCustomerId = newCustomer.id;
 				setCustomerId(finalCustomerId);

@@ -9,10 +9,21 @@ import { createClient } from "@/lib/supabase/client"
 import { db } from "@/lib/dexie-client"
 import { isIndexedDbMode } from "@/lib/utils/db-mode"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { getB2BModeStatus } from "@/lib/utils/b2b-mode"
 
 interface InlineCustomerFormProps {
   onCustomerCreated?: (customer: { id: string; name: string }) => void
-  onCustomerDataChange?: (data: { name: string; phone: string; email: string; isNewCustomer: boolean }) => void
+  onCustomerDataChange?: (data: { 
+    name: string
+    phone: string
+    email: string
+    gstin?: string
+    billing_address?: string
+    city?: string
+    state?: string
+    pincode?: string
+    isNewCustomer: boolean 
+  }) => void
   invoiceNumber?: string
   invoiceDate?: string
   dueDate?: string
@@ -32,6 +43,12 @@ export function InlineCustomerForm({ onCustomerCreated, onCustomerDataChange }: 
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
+  const [gstin, setGstin] = useState("")
+  const [billingAddress, setBillingAddress] = useState("")
+  const [city, setCity] = useState("")
+  const [state, setState] = useState("")
+  const [pincode, setPincode] = useState("")
+  const [isB2BEnabled, setIsB2BEnabled] = useState(false)
   const [phoneMatches, setPhoneMatches] = useState<CustomerMatch[]>([])
   const [showPhoneDropdown, setShowPhoneDropdown] = useState(false)
   const [nameMatches, setNameMatches] = useState<CustomerMatch[]>([])
@@ -39,6 +56,19 @@ export function InlineCustomerForm({ onCustomerCreated, onCustomerDataChange }: 
   const phoneInputRef = useRef<HTMLInputElement>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
   const { toast } = useToast()
+
+  // Load B2B mode status
+  useEffect(() => {
+    const loadB2BStatus = async () => {
+      try {
+        const b2bEnabled = await getB2BModeStatus()
+        setIsB2BEnabled(b2bEnabled)
+      } catch (error) {
+        console.error('Failed to load B2B status:', error)
+      }
+    }
+    loadB2BStatus()
+  }, [])
 
   // Listen for customer selection from main dropdown
   useEffect(() => {
@@ -254,11 +284,43 @@ export function InlineCustomerForm({ onCustomerCreated, onCustomerDataChange }: 
   }
 
   // Handle customer selection from dropdown
-  const handleSelectCustomer = (customer: CustomerMatch) => {
+  const handleSelectCustomer = async (customer: CustomerMatch) => {
     // Auto-fill all form fields with customer data
     setName(customer.name)
     setPhone(customer.phone || "")
     setEmail(customer.email || "")
+    
+    // Fetch full customer data to get B2B fields
+    try {
+      const isIndexedDb = isIndexedDbMode()
+      if (isIndexedDb) {
+        const fullCustomer = await db.customers.get(customer.id)
+        if (fullCustomer) {
+          setGstin(fullCustomer.gstin || "")
+          setBillingAddress(fullCustomer.billing_address || "")
+          setCity(fullCustomer.city || "")
+          setState(fullCustomer.state || "")
+          setPincode(fullCustomer.pincode || "")
+        }
+      } else {
+        const supabase = createClient()
+        const { data: fullCustomer } = await supabase
+          .from('customers')
+          .select('gstin, billing_address, city, state, pincode')
+          .eq('id', customer.id)
+          .single()
+        if (fullCustomer) {
+          setGstin(fullCustomer.gstin || "")
+          setBillingAddress(fullCustomer.billing_address || "")
+          setCity(fullCustomer.city || "")
+          setState(fullCustomer.state || "")
+          setPincode(fullCustomer.pincode || "")
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching full customer data:', error)
+    }
+    
     setPhoneMatches([])
     setShowPhoneDropdown(false)
     setNameMatches([])
@@ -272,7 +334,17 @@ export function InlineCustomerForm({ onCustomerCreated, onCustomerDataChange }: 
   }
 
   // Notify parent component about customer data changes
-  const prevCustomerDataRef = useRef({ name: "", phone: "", email: "", isNewCustomer: false })
+  const prevCustomerDataRef = useRef({ 
+    name: "", 
+    phone: "", 
+    email: "", 
+    gstin: "",
+    billing_address: "",
+    city: "",
+    state: "",
+    pincode: "",
+    isNewCustomer: false 
+  })
   
   useEffect(() => {
     const hasValidName = name.trim().length > 0
@@ -285,6 +357,11 @@ export function InlineCustomerForm({ onCustomerCreated, onCustomerDataChange }: 
       name: name.trim(),
       phone: phone.trim(),
       email: email.trim(),
+      gstin: gstin.trim(),
+      billing_address: billingAddress.trim(),
+      city: city.trim(),
+      state: state.trim(),
+      pincode: pincode.trim(),
       isNewCustomer
     }
     
@@ -294,14 +371,14 @@ export function InlineCustomerForm({ onCustomerCreated, onCustomerDataChange }: 
       onCustomerDataChange?.(currentCustomerData)
       prevCustomerDataRef.current = currentCustomerData
     }
-  }, [name, phone, email, nameMatches, phoneMatches, onCustomerDataChange])
+  }, [name, phone, email, gstin, billingAddress, city, state, pincode, nameMatches, phoneMatches, onCustomerDataChange])
 
   return (
     <Card className="border-dashed ">
       <CardHeader className="pb-0.5 pt-0 px-4">
         <CardTitle className="text-sm">Customer & Invoice Details</CardTitle>
       </CardHeader>
-      <CardContent className="p-2 mt-[-2vh]">
+      <CardContent className="p-2 mt-[-2vh] space-y-2">
         <div className="grid grid-cols-3 gap-2">
           <div className="space-y-0.5 relative">
             <Label htmlFor="quick-name" className="text-xs">
@@ -411,6 +488,72 @@ export function InlineCustomerForm({ onCustomerCreated, onCustomerDataChange }: 
             />
           </div>
         </div>
+        
+        {/* B2B Fields - Show when B2B mode is enabled */}
+        {isB2BEnabled && (
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-0.5">
+                <Label htmlFor="quick-gstin" className="text-xs">
+                  GSTIN <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="quick-gstin"
+                  value={gstin}
+                  onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                  placeholder="15-digit GSTIN"
+                  maxLength={15}
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="space-y-0.5">
+                <Label htmlFor="quick-pincode" className="text-xs">Pincode</Label>
+                <Input
+                  id="quick-pincode"
+                  value={pincode}
+                  onChange={(e) => setPincode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="6-digit pincode"
+                  maxLength={6}
+                  className="h-8 text-xs"
+                />
+              </div>
+            </div>
+            <div className="space-y-0.5">
+              <Label htmlFor="quick-billing-address" className="text-xs">
+                Billing Address <span className="text-destructive">*</span>
+              </Label>
+              <Input
+                id="quick-billing-address"
+                value={billingAddress}
+                onChange={(e) => setBillingAddress(e.target.value)}
+                placeholder="Street address"
+                className="h-8 text-xs"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-0.5">
+                <Label htmlFor="quick-city" className="text-xs">City</Label>
+                <Input
+                  id="quick-city"
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="City"
+                  className="h-8 text-xs"
+                />
+              </div>
+              <div className="space-y-0.5">
+                <Label htmlFor="quick-state" className="text-xs">State</Label>
+                <Input
+                  id="quick-state"
+                  value={state}
+                  onChange={(e) => setState(e.target.value)}
+                  placeholder="State"
+                  className="h-8 text-xs"
+                />
+              </div>
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   )

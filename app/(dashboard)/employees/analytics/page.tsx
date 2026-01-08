@@ -87,11 +87,77 @@ export default function EmployeeAnalyticsPage() {
               totalRevenue: allInvoices.reduce((sum: number, inv: any) => sum + (inv.total_amount || 0), 0),
             })
           } else {
-            // Fetch employees
-            const { data: employeesData } = await supabase
+            // Get admin_user_id (for both admin and employee views)
+            const authType = localStorage.getItem("authType")
+            let adminUserId: string | null = null
+            let storeIds: string[] = []
+
+            if (authType === "employee") {
+              // For employees, get admin_user_id from store
+              const empSession = localStorage.getItem("employeeSession")
+              if (empSession) {
+                try {
+                  const session = JSON.parse(empSession)
+                  const storeId = session.storeId || localStorage.getItem("currentStoreId")
+                  if (storeId) {
+                    const { data: store } = await supabase
+                      .from("stores")
+                      .select("admin_user_id")
+                      .eq("id", storeId)
+                      .single()
+                    if (store?.admin_user_id) {
+                      adminUserId = store.admin_user_id
+                      storeIds = [storeId]
+                    }
+                  }
+                } catch (e) {
+                  console.warn("[EmployeeAnalytics] Error parsing employee session:", e)
+                }
+              }
+            } else {
+              // For admin, use their own user_id and get all their stores
+              adminUserId = user.id
+              const { data: stores } = await supabase
+                .from("stores")
+                .select("id")
+                .eq("admin_user_id", user.id)
+              storeIds = stores?.map(s => s.id) || []
+            }
+
+            if (!adminUserId) {
+              setEmployees([])
+              setOverallStats({
+                totalEmployees: 0,
+                activeEmployees: 0,
+                totalInvoices: 0,
+                totalRevenue: 0,
+              })
+              setIsLoading(false)
+              return
+            }
+
+            // Fetch employees for this admin (from all stores)
+            let employeesQuery = supabase
               .from("employees")
               .select("*")
-              .eq("user_id", user.id)
+            
+            if (storeIds.length > 0) {
+              employeesQuery = employeesQuery.in("store_id", storeIds)
+            } else {
+              // If no stores, try to get employees by checking stores with this admin_user_id
+              const { data: allStores } = await supabase
+                .from("stores")
+                .select("id")
+                .eq("admin_user_id", adminUserId)
+              const allStoreIds = allStores?.map(s => s.id) || []
+              if (allStoreIds.length > 0) {
+                employeesQuery = employeesQuery.in("store_id", allStoreIds)
+              } else {
+                employeesQuery = employeesQuery.eq("store_id", "00000000-0000-0000-0000-000000000000") // No results
+              }
+            }
+
+            const { data: employeesData } = await employeesQuery
 
             if (!employeesData || employeesData.length === 0) {
               setEmployees([])
@@ -105,17 +171,34 @@ export default function EmployeeAnalyticsPage() {
               return
             }
 
-            // Fetch all invoices
-            const { data: invoicesData } = await supabase
+            // Get all stores for this admin if not already fetched
+            let allStoreIds = storeIds
+            if (allStoreIds.length === 0) {
+              const { data: allStores } = await supabase
+                .from("stores")
+                .select("id")
+                .eq("admin_user_id", adminUserId)
+              allStoreIds = allStores?.map(s => s.id) || []
+            }
+
+            // Fetch all invoices for this admin (includes employee-created invoices)
+            // Invoices where user_id = admin_user_id AND (store_id IN storeIds OR store_id IS NULL)
+            let invoicesQuery = supabase
               .from("invoices")
               .select("*")
-              .eq("user_id", user.id)
+              .eq("user_id", adminUserId)
+            
+            if (allStoreIds.length > 0) {
+              invoicesQuery = invoicesQuery.or(`store_id.is.null,store_id.in.(${allStoreIds.join(',')})`)
+            }
+
+            const { data: invoicesData } = await invoicesQuery
 
             employeeStats = (employeesData || []).map((emp) => {
               const empInvoices = (invoicesData || []).filter(
                 (inv) => inv.created_by_employee_id === emp.employee_id || inv.employee_id === emp.employee_id
               )
-              const revenue = empInvoices.reduce((sum, inv) => sum + (inv.total_amount || 0), 0)
+              const revenue = empInvoices.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0)
               const latestInvoice = empInvoices.sort(
                 (a, b) => new Date(b.invoice_date || b.created_at).getTime() - new Date(a.invoice_date || a.created_at).getTime()
               )[0]
@@ -136,7 +219,7 @@ export default function EmployeeAnalyticsPage() {
               totalEmployees: employeesData.length,
               activeEmployees: employeesData.filter((e) => e.is_active).length,
               totalInvoices: invoicesData?.length || 0,
-              totalRevenue: (invoicesData || []).reduce((sum, inv) => sum + (inv.total_amount || 0), 0),
+              totalRevenue: (invoicesData || []).reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0),
             })
           }
         } catch (error) {

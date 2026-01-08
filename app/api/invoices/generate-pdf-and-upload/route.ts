@@ -137,11 +137,18 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 		}
 
 		// 5. Fetch business profile (use userId which is admin_user_id for employees)
-		const { data: businessProfile } = await supabase
+		const { data: businessProfile, error: profileError } = await supabase
 			.from("user_profiles")
 			.select("*")
 			.eq("id", userId)
-			.single();
+			.maybeSingle();
+
+		if (profileError) {
+			console.warn(
+				`[GeneratePDFAndUpload] Error fetching business profile for userId ${userId}:`,
+				profileError
+			);
+		}
 
 		// 6. Get store name (if store_id exists)
 		let storeName = "Business";
@@ -181,7 +188,7 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 				servedBy = profile.full_name;
 			} else if (profile?.business_name) {
 				servedBy = profile.business_name;
-			} else if (user.email) {
+			} else if (user?.email) {
 				servedBy = user.email.split("@")[0];
 			}
 		}
@@ -261,11 +268,19 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 			`[GeneratePDFAndUpload] Generating PDF for invoice: ${invoice.invoice_number}`
 		);
 
-		// Ensure logoUrl is present
+		// Ensure logoUrl is present - use businessProfile logo or fallback
+		// Log logo status for debugging
+		console.log(
+			`[GeneratePDFAndUpload] Logo status - businessProfile.logo_url: ${
+				businessProfile?.logo_url || "null"
+			}, pdfData.logoUrl: ${pdfData.logoUrl || "null"}`
+		);
+
 		const pdfDataWithLogo = {
 			...pdfData,
 			logoUrl:
 				pdfData.logoUrl ||
+				businessProfile?.logo_url ||
 				"https://images.unsplash.com/photo-1560179707-f14e90ef3623?w=80&h=40&fit=crop&auto=format",
 		};
 
@@ -278,10 +293,10 @@ async function processInvoicePDFInBackground(invoiceId: string) {
 		if (isProduction) {
 			const chromium = await import("@sparticuz/chromium");
 			browser = await puppeteer.launch({
-				args: chromium.args,
-				defaultViewport: chromium.defaultViewport,
-				executablePath: await chromium.executablePath(),
-				headless: chromium.headless,
+				args: chromium.default.args,
+				defaultViewport: chromium.default.defaultViewport,
+				executablePath: await chromium.default.executablePath(),
+				headless: chromium.default.headless,
 			});
 		} else {
 			browser = await puppeteer.launch({

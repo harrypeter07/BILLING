@@ -145,12 +145,20 @@ export async function ensureInvoiceInSupabaseForPDF(
     console.log("[InvoicePDFSync] Successfully uploaded invoice to Supabase")
 
     // Fetch settings if available
+    // Use invoice.user_id (which is admin_user_id for employees) instead of auth user
     let settings = null
     try {
+      // Use invoice.user_id as the primary identifier for RLS if auth.uid() is null
+      const effectiveUserId = user?.id || invoice.user_id
+      if (!effectiveUserId) {
+        console.warn("[InvoicePDFSync] No user ID available for fetching settings")
+        return
+      }
+      
       const { data: profileData } = await supabase
-        .from("profiles")
+        .from("user_profiles")
         .select("*")
-        .eq("user_id", user.id)
+        .eq("id", effectiveUserId)
         .maybeSingle()
       settings = profileData
     } catch (err) {
@@ -236,14 +244,13 @@ async function fetchInvoiceFromSupabase(invoiceId: string): Promise<InvoicePDFDa
   // Use invoice.user_id (which is admin_user_id for employees) instead of auth user
   let settings: any = null
   if (invoice.user_id) {
-    // Try auth user first (for admins)
-    const { data: { user } } = await supabase.auth.getUser()
-    const userId = user?.id || invoice.user_id // Fallback to invoice.user_id for employees
+    // Use invoice.user_id directly (this is admin_user_id for employees)
+    const userId = invoice.user_id
     
     const { data: profileData } = await supabase
-      .from("profiles")
+      .from("user_profiles")
       .select("*")
-      .eq("user_id", userId)
+      .eq("id", userId)
       .maybeSingle()
     settings = profileData
   }

@@ -108,22 +108,13 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
             }
           }
           
-          // Only redirect to store setup if:
-          // 1. No store exists in local database (Dexie)
-          // 2. Not already on the store setup page or any settings page
-          // 3. Not on the dashboard page (allow dashboard to show even without store)
-          if (!hasStore) {
-            // Allow access to store setup and all settings pages
-            if (pathname?.includes("/settings")) {
-              // Already on settings page, allow it
-              return
-            }
-            // Only redirect if trying to access other pages (not dashboard, not settings)
-            if (pathname !== "/dashboard" && pathname !== "/") {
-              router.push("/settings/store")
-              return
-            }
-            // Allow dashboard to show even without store (it can show a message)
+          // Don't redirect to store setup on every page load
+          // Store setup should only happen on first signup, not on every navigation
+          // Users can manually navigate to settings/store if they need to set up a store
+          
+          // Store exists - ensure currentStoreId is set in localStorage
+          if (hasStore && storeId) {
+            localStorage.setItem("currentStoreId", storeId)
           }
           
           // Store exists - ensure currentStoreId is set in localStorage

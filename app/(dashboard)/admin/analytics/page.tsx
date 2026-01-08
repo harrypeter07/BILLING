@@ -182,14 +182,15 @@ export default function AdminAnalyticsPage() {
             customers = await db.customers.toArray()
             invoiceItems = await db.invoice_items.toArray()
           } else {
-            // For admin, get all invoices from their stores (including employee invoices)
+            // For admin, get all invoices where user_id = admin.id
+            // This includes all invoices created by admin and employees (since employee invoices have user_id = admin_user_id)
             const { data: { user: adminUser } } = await supabase.auth.getUser()
             if (!adminUser) {
               invoices = []
               customers = []
               invoiceItems = []
             } else {
-              // Get all stores for this admin
+              // Get all stores for this admin to include store-scoped data
               const { data: stores } = await supabase
                 .from("stores")
                 .select("id")
@@ -197,32 +198,31 @@ export default function AdminAnalyticsPage() {
               
               const storeIds = stores?.map(s => s.id) || []
               
-              // Get all employees under these stores
-              let employeeIds: string[] = []
+              // Build query for invoices - all invoices where user_id = admin.id
+              // This includes both admin-created and employee-created invoices
+              let invoiceQuery = supabase
+                .from("invoices")
+                .select("*")
+                .eq("user_id", adminUser.id)
+              
+              // Also include legacy B2C invoices (store_id IS NULL) and store-scoped invoices
               if (storeIds.length > 0) {
-                const { data: employees } = await supabase
-                  .from("employees")
-                  .select("employee_id")
-                  .in("store_id", storeIds)
-                employeeIds = employees?.map(e => e.employee_id) || []
+                invoiceQuery = invoiceQuery.or(`store_id.is.null,store_id.in.(${storeIds.join(',')})`)
               }
               
-              // Build query for invoices - admin's invoices + employee invoices
-              let invoiceQuery = supabase.from("invoices").select("*")
+              // Build query for customers - all customers where user_id = admin.id
+              let customerQuery = supabase
+                .from("customers")
+                .select("*")
+                .eq("user_id", adminUser.id)
               
-              if (employeeIds.length > 0) {
-                // Include admin invoices and employee invoices
-                invoiceQuery = invoiceQuery.or(
-                  `user_id.eq.${adminUser.id},created_by_employee_id.in.(${employeeIds.join(',')}),employee_id.in.(${employeeIds.join(',')})`
-                )
-              } else {
-                // Just admin invoices
-                invoiceQuery = invoiceQuery.eq("user_id", adminUser.id)
+              if (storeIds.length > 0) {
+                customerQuery = customerQuery.or(`store_id.is.null,store_id.in.(${storeIds.join(',')})`)
               }
               
               const [{ data: invData }, { data: custData }, { data: itemsData }] = await Promise.all([
                 invoiceQuery,
-                supabase.from("customers").select("*").eq("user_id", adminUser.id),
+                customerQuery,
                 supabase.from("invoice_items").select("*"),
               ])
 

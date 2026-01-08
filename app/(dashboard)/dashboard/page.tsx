@@ -75,50 +75,137 @@ export default function DashboardPage() {
 			(async () => {
 				setLoading(true);
 				const supabase = createClient();
-				const {
-					data: { user },
-				} = await supabase.auth.getUser();
-				const { count: productsCount } = await supabase
+				const authType = localStorage.getItem("authType");
+				let userId: string | null = null;
+				let storeId: string | null = null;
+
+				// Get the correct user_id (admin_user_id for employees, user.id for admins)
+				if (authType === "employee") {
+					const empSession = localStorage.getItem("employeeSession");
+					if (empSession) {
+						try {
+							const session = JSON.parse(empSession);
+							storeId = session.storeId || localStorage.getItem("currentStoreId");
+							if (storeId) {
+								const { data: store } = await supabase
+									.from("stores")
+									.select("admin_user_id")
+									.eq("id", storeId)
+									.single();
+								if (store?.admin_user_id) {
+									userId = store.admin_user_id;
+								}
+							}
+						} catch (e) {
+							console.warn("[Dashboard] Error parsing employee session:", e);
+						}
+					}
+				} else {
+					const {
+						data: { user },
+					} = await supabase.auth.getUser();
+					if (user) {
+						userId = user.id;
+					}
+				}
+
+				if (!userId) {
+					console.warn("[Dashboard] Could not determine user ID");
+					setSbStats({
+						totalRevenue: 0,
+						productsCount: 0,
+						customersCount: 0,
+						invoicesCount: 0,
+						recentInvoices: [],
+						lowStockProducts: [],
+					});
+					setLoading(false);
+					return;
+				}
+
+				// Build queries with proper filters for employees (store-scoped)
+				// Products: user_id = admin_user_id AND (store_id = employee.store_id OR store_id IS NULL)
+				let productsQuery = supabase
 					.from("products")
 					.select("*", { count: "exact", head: true })
-					.eq("user_id", user?.id);
-				const { count: customersCount } = await supabase
+					.eq("user_id", userId);
+				if (storeId) {
+					productsQuery = productsQuery.or(`store_id.is.null,store_id.eq.${storeId}`);
+				}
+
+				// Customers: user_id = admin_user_id AND (store_id = employee.store_id OR store_id IS NULL)
+				let customersQuery = supabase
 					.from("customers")
 					.select("*", { count: "exact", head: true })
-					.eq("user_id", user?.id);
-				const { count: invoicesCount } = await supabase
+					.eq("user_id", userId);
+				if (storeId) {
+					customersQuery = customersQuery.or(`store_id.is.null,store_id.eq.${storeId}`);
+				}
+
+				// Invoices: user_id = admin_user_id AND (store_id = employee.store_id OR store_id IS NULL)
+				let invoicesQuery = supabase
 					.from("invoices")
 					.select("*", { count: "exact", head: true })
-					.eq("user_id", user?.id);
-				const { data: invoices } = await supabase
+					.eq("user_id", userId);
+				if (storeId) {
+					invoicesQuery = invoicesQuery.or(`store_id.is.null,store_id.eq.${storeId}`);
+				}
+
+				// Execute count queries
+				const [
+					{ count: productsCount },
+					{ count: customersCount },
+					{ count: invoicesCount },
+				] = await Promise.all([
+					productsQuery,
+					customersQuery,
+					invoicesQuery,
+				]);
+
+				// Fetch invoices for revenue calculation (all invoices, not just paid)
+				let invoicesForRevenueQuery = supabase
 					.from("invoices")
 					.select("total_amount")
-					.eq("user_id", user?.id)
-					.eq("status", "paid");
+					.eq("user_id", userId);
+				if (storeId) {
+					invoicesForRevenueQuery = invoicesForRevenueQuery.or(`store_id.is.null,store_id.eq.${storeId}`);
+				}
+				const { data: invoices } = await invoicesForRevenueQuery;
+
 				const totalRevenue =
-					invoices?.reduce((sum, inv) => sum + Number(inv.total_amount), 0) ||
-					0;
-				const { data: recentInvoices } = await supabase
+					invoices?.reduce((sum, inv) => sum + Number(inv.total_amount || 0), 0) || 0;
+
+				// Fetch recent invoices
+				let recentInvoicesQuery = supabase
 					.from("invoices")
-					.select(
-						"id, invoice_number, total_amount, status, created_at, customers(name)"
-					)
-					.eq("user_id", user?.id)
+					.select("id, invoice_number, total_amount, status, created_at, customers(name)")
+					.eq("user_id", userId)
 					.order("created_at", { ascending: false })
 					.limit(5);
-				const { data: lowStockProducts } = await supabase
+				if (storeId) {
+					recentInvoicesQuery = recentInvoicesQuery.or(`store_id.is.null,store_id.eq.${storeId}`);
+				}
+				const { data: recentInvoices } = await recentInvoicesQuery;
+
+				// Fetch low stock products
+				let lowStockQuery = supabase
 					.from("products")
 					.select("id, name, stock_quantity")
-					.eq("user_id", user?.id)
+					.eq("user_id", userId)
 					.lte("stock_quantity", 10)
 					.limit(5);
+				if (storeId) {
+					lowStockQuery = lowStockQuery.or(`store_id.is.null,store_id.eq.${storeId}`);
+				}
+				const { data: lowStockProducts } = await lowStockQuery;
+
 				setSbStats({
 					totalRevenue,
-					productsCount,
-					customersCount,
-					invoicesCount,
-					recentInvoices,
-					lowStockProducts,
+					productsCount: productsCount || 0,
+					customersCount: customersCount || 0,
+					invoicesCount: invoicesCount || 0,
+					recentInvoices: recentInvoices || [],
+					lowStockProducts: lowStockProducts || [],
 				});
 				setLoading(false);
 			})();
@@ -337,7 +424,7 @@ export default function DashboardPage() {
 								Total Revenue: ₹{totalRevenue.toLocaleString("en-IN")}
 							</TooltipContent>
 						</Tooltip>
-						<p className="text-xs text-muted-foreground">From paid invoices</p>
+						<p className="text-xs text-muted-foreground">Total from all invoices</p>
 					</CardContent>
 				</Card>
 				<Card
