@@ -100,9 +100,9 @@ export async function generateInvoicePDFClient(
 			console.log("[InvoicePDFClient] Container ready, generating canvas...");
 
 			// Convert HTML to canvas
-			// Configure html2canvas to handle color parsing issues
+			// Configure html2canvas for optimized size: scale 1.0, JPEG compression
 			const canvas = await html2canvas(container, {
-				scale: 1.5, // Reduced from 2 to reduce PDF size
+				scale: 1.0, // CRITICAL: Reduced to 1.0 for smaller PDF size (target < 1MB)
 				useCORS: true,
 				allowTaint: false, // Prevent tainted canvas
 				logging: false,
@@ -228,7 +228,8 @@ export async function generateInvoicePDFClient(
 			}
 
 			// Create PDF from canvas with multi-page support for long invoices
-			const imgData = canvas.toDataURL("image/png", 1.0);
+			// CRITICAL: Use JPEG instead of PNG for 70% size reduction (target < 1MB)
+			const imgData = canvas.toDataURL("image/jpeg", 0.65); // JPEG quality 0.65
 			if (!imgData || imgData === "data:,") {
 				throw new Error("Failed to convert canvas to image data");
 			}
@@ -239,11 +240,12 @@ export async function generateInvoicePDFClient(
 			const pageWidth = 210; // A4 width in mm
 			const margin = 0; // No margin for invoices
 
-			// Create first page
+			// Create first page with compression enabled
 			const pdf = new jsPDF({
 				orientation: "portrait",
 				unit: "mm",
 				format: "a4",
+				compress: true, // CRITICAL: Enable PDF compression for smaller file size
 			});
 
 			// Split image across multiple pages by cropping canvas sections
@@ -279,13 +281,13 @@ export async function generateInvoicePDFClient(
 						0, 0, canvas.width, sourceHeight // Destination rectangle
 					);
 					
-					// Convert cropped canvas to image
-					const pageImgData = pageCanvas.toDataURL("image/png", 1.0);
+					// Convert cropped canvas to JPEG for smaller size
+					const pageImgData = pageCanvas.toDataURL("image/jpeg", 0.65); // JPEG quality 0.65
 					
 					// Add to PDF
 					pdf.addImage(
 						pageImgData,
-						"PNG",
+						"JPEG", // Changed from PNG to JPEG
 						margin,
 						margin,
 						imgWidth,

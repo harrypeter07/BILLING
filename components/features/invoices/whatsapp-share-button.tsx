@@ -21,9 +21,10 @@ import {
 } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { getInvoiceStorage } from "@/lib/utils/save-invoice-storage";
-import { executeInvoiceAction } from "@/lib/invoice-document-engine";
-import { R2UploadErrorModal } from "@/components/features/invoices/r2-upload-error-modal";
+// DORMANT: R2 imports kept for future fallback
+// import { getInvoiceStorage } from "@/lib/utils/save-invoice-storage";
+// import { executeInvoiceAction } from "@/lib/invoice-document-engine";
+// import { R2UploadErrorModal } from "@/components/features/invoices/r2-upload-error-modal";
 import { uploadInvoicePDFToSupabase } from "@/lib/utils/invoice-supabase-client";
 import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf";
 import { prepareInvoiceDocumentData } from "@/lib/invoice-document-engine";
@@ -88,19 +89,20 @@ export function WhatsAppShareButton({
 	const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
 	const [showLinkModal, setShowLinkModal] = useState(false);
 	const [linkCopied, setLinkCopied] = useState(false);
-	const [showErrorModal, setShowErrorModal] = useState(false);
-	const [uploadError, setUploadError] = useState<string | null>(null);
+	// DORMANT: R2 error modal state removed
+	// const [showErrorModal, setShowErrorModal] = useState(false);
+	// const [uploadError, setUploadError] = useState<string | null>(null);
 	const [showStorageRLSErrorModal, setShowStorageRLSErrorModal] = useState(false);
 	const [storageRLSErrorDetails, setStorageRLSErrorDetails] = useState<any>(null);
-	const [useServerSide, setUseServerSide] = useState(() => {
-		// Default to server-side for faster WhatsApp sharing
-		if (typeof window !== "undefined") {
-			const saved = localStorage.getItem("whatsapp-pdf-use-server-side");
-			return saved !== null ? saved === "true" : true;
-		}
-		return true;
-	});
-	const [showSettings, setShowSettings] = useState(false);
+	// DORMANT: Server-side toggle removed - Supabase flow uses client-side only
+	// const [useServerSide, setUseServerSide] = useState(() => {
+	// 	if (typeof window !== "undefined") {
+	// 		const saved = localStorage.getItem("whatsapp-pdf-use-server-side");
+	// 		return saved !== null ? saved === "true" : true;
+	// 	}
+	// 	return true;
+	// });
+	// const [showSettings, setShowSettings] = useState(false);
 
 	useEffect(() => {
 		// Check initial online status
@@ -119,9 +121,11 @@ export function WhatsAppShareButton({
 		};
 	}, []);
 
+	// PRIMARY: Supabase Storage WhatsApp share handler
+	// R2 flow is now dormant (kept for future fallback)
 	const handleShare = async () => {
 		// Prevent double-clicks and multiple simultaneous shares
-		if (isSharing) {
+		if (isSharing || isSharingSupabase) {
 			console.warn("[WhatsAppShare] Share already in progress, ignoring duplicate click");
 			return;
 		}
@@ -139,7 +143,7 @@ export function WhatsAppShareButton({
 		setIsSharing(true);
 
 		try {
-			// Prepare source data
+			// Step 1: Prepare invoice document data
 			const source = {
 				invoice,
 				items,
@@ -148,60 +152,121 @@ export function WhatsAppShareButton({
 				storeName,
 			};
 
-			// Use unified document engine
-			// This handles: PDF generation → R2 upload → WhatsApp message → WhatsApp opening
-			// All steps are awaited to ensure R2 URL is available before opening WhatsApp
-			// CRITICAL: WhatsApp opens synchronously to preserve user gesture
-			const result = await executeInvoiceAction({
-				invoiceId: invoice.id,
-				action: "whatsapp",
-				format: "slip",
-				source,
-				onProgress: (message) => {
-					console.log(`[WhatsAppShare] ${message}`);
-					// Show progress messages to user
-					toast({
-						title: "Processing...",
-						description: message,
-						duration: 2000,
-					});
-				},
-				onWarning: (title, description) => {
-					toast({
-						title,
-						description,
-						variant: "default",
-						duration: 6000,
-					});
-				},
+			const pdfData = await prepareInvoiceDocumentData(source);
+
+			// Step 2: Generate PDF (client-side for consistency)
+			toast({
+				title: "Generating PDF...",
+				description: "Please wait while we generate your invoice PDF",
+				duration: 2000,
 			});
 
-			// Verify WhatsApp opened successfully
-			const whatsappOpened = result && typeof result === 'object' && 'success' in result && result.success === true;
+			const pdfBlob = await generateInvoiceSlipPDF(pdfData, {
+				useServerSide: false, // Use client-side for consistency
+			});
 
-			if (!whatsappOpened) {
-				toast({
-					title: "⚠️ WhatsApp Failed to Open",
-					description: "PDF uploaded, but WhatsApp could not be opened. Please check your popup blocker settings.",
-					variant: "destructive",
-					duration: 5000,
-				});
-				return;
+			// Step 3: Get userId (admin's ID for employees)
+			const supabase = createClient();
+			const authType = localStorage.getItem("authType");
+			let userId: string | null = null;
+
+			if (authType === "employee") {
+				const empSession = localStorage.getItem("employeeSession");
+				if (empSession) {
+					const session = JSON.parse(empSession);
+					const sessionStoreId = session.storeId;
+					if (sessionStoreId) {
+						const { data: store } = await supabase
+							.from("stores")
+							.select("admin_user_id")
+							.eq("id", sessionStoreId)
+							.single();
+						if (store?.admin_user_id) {
+							userId = store.admin_user_id;
+						}
+					}
+				}
+			} else {
+				const { data: { user } } = await supabase.auth.getUser();
+				if (user) userId = user.id;
 			}
 
-			// Get R2 URL for UI feedback (after upload completes)
-			const storage = await getInvoiceStorage(invoice.id);
-			if (storage?.public_url) {
-				const expiresAt = new Date(storage.expires_at).getTime();
-				const now = Date.now();
-				if (expiresAt > now) {
-					setUploadedUrl(storage.public_url);
+			if (!userId) {
+				throw new Error("Could not determine user ID. Please ensure you're logged in.");
+			}
+
+			// Step 4: Upload to Supabase Storage
+			toast({
+				title: "Uploading to Supabase...",
+				description: "Uploading PDF to cloud storage",
+				duration: 2000,
+			});
+
+			const uploadResult = await uploadInvoicePDFToSupabase(
+				pdfBlob,
+				userId,
+				invoice.id,
+				invoice.invoice_number
+			);
+
+			if (!uploadResult.success || !uploadResult.publicUrl) {
+				// Check if it's an RLS error from the API response
+				const errorMessage = uploadResult.error || "Failed to upload PDF to Supabase";
+				const isRLSError = errorMessage.toLowerCase().includes("row-level security") ||
+								   errorMessage.toLowerCase().includes("policy") ||
+								   errorMessage.toLowerCase().includes("rls");
+
+				// If the error response includes errorDetails, use it
+				if (isRLSError && (uploadResult as any).errorDetails) {
+					setStorageRLSErrorDetails({
+						errorCode: (uploadResult as any).errorDetails.errorCode || "STORAGE_RLS_ERROR",
+						errorMessage: errorMessage,
+						policyName: "Storage bucket RLS policy",
+						bucket: (uploadResult as any).errorDetails.bucket || "invoice-pdfs",
+						storagePath: (uploadResult as any).errorDetails.storagePath,
+						userId,
+						diagnostics: (uploadResult as any).errorDetails.diagnostics,
+						attemptedValues: {
+							user_id: userId,
+							storage_path: (uploadResult as any).errorDetails.storagePath,
+						},
+					});
+					setShowStorageRLSErrorModal(true);
 				}
+				
+				throw new Error(errorMessage);
+			}
+
+			// Step 5: Generate WhatsApp message with Supabase URL
+			const whatsappMessage = generateWhatsAppBillMessage({
+				storeName: pdfData.businessName || storeName,
+				invoiceNumber: invoice.invoice_number,
+				invoiceDate: invoice.invoice_date,
+				items: items.map((item) => ({
+					name: item.description,
+					quantity: item.quantity,
+					unitPrice: item.unit_price,
+				})),
+				totalAmount: invoice.total_amount,
+				pdfR2Url: uploadResult.publicUrl, // Reuse same key for compatibility
+			});
+
+			// Step 6: Open WhatsApp ONCE after upload completes (inside click handler to preserve user gesture)
+			toast({
+				title: "Opening WhatsApp...",
+				description: "PDF uploaded successfully",
+				duration: 1000,
+			});
+
+			const shareResult = await shareOnWhatsApp(whatsappMessage);
+
+			if (!shareResult.success) {
+				throw new Error("Failed to open WhatsApp. Please check your popup blocker settings.");
 			}
 
 			toast({
 				title: "✅ WhatsApp Opened",
-				description: "PDF uploaded and WhatsApp opened with PDF link.",
+				description: "PDF uploaded to Supabase and WhatsApp opened with PDF link.",
 				duration: 3000,
 			});
 		} catch (error) {
@@ -210,12 +275,13 @@ export function WhatsAppShareButton({
 				error instanceof Error
 					? error.message
 					: "Failed to prepare WhatsApp message. Please try again.";
-			
-			// Check if it's an R2 upload error - show modal instead of toast
-			if (errorMessage.includes("upload") || errorMessage.includes("R2") || errorMessage.includes("PDF")) {
-				setUploadError(errorMessage);
-				setShowErrorModal(true);
-			} else {
+
+			// Check if RLS modal is already shown
+			const isRLSError = errorMessage.toLowerCase().includes("row-level security") ||
+							   errorMessage.toLowerCase().includes("policy") ||
+							   errorMessage.toLowerCase().includes("rls");
+
+			if (!isRLSError || !showStorageRLSErrorModal) {
 				toast({
 					title: "Error",
 					description: errorMessage,
@@ -228,13 +294,15 @@ export function WhatsAppShareButton({
 		}
 	};
 
-	const handleRetryUpload = () => {
-		// Retry the share operation
-		handleShare();
-	};
+	// DORMANT: R2 retry handler removed
+	// const handleRetryUpload = () => {
+	// 	handleShare();
+	// };
 
-	// Supabase WhatsApp share handler (completely isolated from R2 flow)
-	const handleShareSupabase = async () => {
+	// DORMANT: R2 WhatsApp share handler (kept for future fallback)
+	// NOTE: This function is inactive - Supabase is now primary
+	// To reactivate: uncomment and update handleShare to call this instead
+	const handleShareSupabase_DORMANT = async () => {
 		// Prevent double-clicks
 		if (isSharingSupabase) {
 			console.warn("[WhatsAppShareSupabase] Share already in progress, ignoring duplicate click");
@@ -427,12 +495,7 @@ export function WhatsAppShareButton({
 
 	return (
 		<>
-			<R2UploadErrorModal
-				open={showErrorModal}
-				onOpenChange={setShowErrorModal}
-				error={uploadError ?? ""}
-				onRetry={handleRetryUpload}
-			/>
+			{/* DORMANT: R2 error modal removed - Supabase uses RLS error modal */}
 			<RLSErrorModal
 				open={showStorageRLSErrorModal}
 				onOpenChange={setShowStorageRLSErrorModal}
@@ -451,7 +514,7 @@ export function WhatsAppShareButton({
 					title={
 						!isOnline
 							? "Internet required to share invoice"
-							: "Share invoice on WhatsApp (R2)"
+							: "Share invoice on WhatsApp"
 					}
 				>
 					{!isOnline ? (
@@ -468,40 +531,8 @@ export function WhatsAppShareButton({
 						</>
 					)}
 				</Button>
-				<Button
-					onClick={handleShareSupabase}
-					disabled={!isOnline || isSharing || isSharingSupabase}
-					variant="outline"
-					className="gap-2"
-					title={
-						!isOnline
-							? "Internet required to share invoice"
-							: "Share invoice on WhatsApp (Supabase)"
-					}
-				>
-					{!isOnline ? (
-						<>
-							<WifiOff className="h-4 w-4" />
-							<span className="hidden sm:inline">Offline</span>
-						</>
-					) : (
-						<>
-							<MessageCircle className="h-4 w-4" />
-							<span className="hidden sm:inline">
-								{isSharingSupabase ? "Opening..." : "Share via Supabase"}
-							</span>
-						</>
-					)}
-				</Button>
-				<Button
-					onClick={() => setShowSettings(true)}
-					variant="ghost"
-					size="icon"
-					className="h-9 w-9"
-					title="PDF Generation Settings"
-				>
-					<Settings className="h-4 w-4" />
-				</Button>
+				{/* DORMANT: R2 button removed - Supabase is now primary */}
+				{/* Settings button removed - no longer needed without R2 toggle */}
 			</div>
 
 			<Dialog open={showLinkModal} onOpenChange={setShowLinkModal}>
@@ -543,44 +574,7 @@ export function WhatsAppShareButton({
 				</DialogContent>
 			</Dialog>
 
-			<Dialog open={showSettings} onOpenChange={setShowSettings}>
-				<DialogContent className="sm:max-w-md">
-					<DialogHeader>
-						<DialogTitle>PDF Generation Settings</DialogTitle>
-						<DialogDescription>
-							Choose how PDFs are generated for WhatsApp sharing
-						</DialogDescription>
-					</DialogHeader>
-					<div className="space-y-4 py-4">
-						<div className="flex items-center justify-between">
-							<div className="space-y-0.5">
-								<Label htmlFor="server-side-toggle">
-									Server-Side Generation (Recommended)
-								</Label>
-								<p className="text-sm text-muted-foreground">
-									Faster, higher quality. Requires internet connection.
-								</p>
-							</div>
-							<Switch
-								id="server-side-toggle"
-								checked={useServerSide}
-								onCheckedChange={setUseServerSide}
-							/>
-						</div>
-						{!useServerSide && (
-							<div className="rounded-lg bg-muted p-3">
-								<p className="text-sm text-muted-foreground">
-									Client-side generation is slower but works offline. Use
-									server-side for better performance.
-								</p>
-							</div>
-						)}
-					</div>
-					<DialogFooter>
-						<Button onClick={() => setShowSettings(false)}>Done</Button>
-					</DialogFooter>
-				</DialogContent>
-			</Dialog>
+			{/* DORMANT: Settings dialog removed - no longer needed without R2 toggle */}
 		</>
 	);
 }

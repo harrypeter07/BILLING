@@ -50,9 +50,13 @@ import {
 } from "@/components/ui/tooltip";
 import { db } from "@/lib/dexie-client";
 import { useInvalidateQueries } from "@/lib/hooks/use-cached-data";
-import { executeInvoiceAction } from "@/lib/invoice-document-engine";
+// DORMANT: R2 engine removed - Supabase is now primary
+// import { executeInvoiceAction } from "@/lib/invoice-document-engine";
+import { prepareInvoiceDocumentData } from "@/lib/invoice-document-engine";
+import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf";
 import { LogoConfigModal } from "@/components/features/invoices/logo-config-modal";
-import { R2UploadErrorModal } from "@/components/features/invoices/r2-upload-error-modal";
+// DORMANT: R2 error modal removed - Supabase uses RLS error modal
+// import { R2UploadErrorModal } from "@/components/features/invoices/r2-upload-error-modal";
 import { RLSErrorModal } from "@/components/features/customers/rls-error-modal";
 import {
 	ResizablePanelGroup,
@@ -272,8 +276,9 @@ export function InvoiceForm({
 	const [storeName, setStoreName] = useState<string>("Business");
 	const [showLogoModal, setShowLogoModal] = useState(false);
 	const [logoUrl, setLogoUrl] = useState<string | null>(null);
-	const [showR2ErrorModal, setShowR2ErrorModal] = useState(false);
-	const [r2UploadError, setR2UploadError] = useState<string>("");
+	// DORMANT: R2 error modal state removed
+	// const [showR2ErrorModal, setShowR2ErrorModal] = useState(false);
+	// const [r2UploadError, setR2UploadError] = useState<string>("");
 	const [showRLSErrorModal, setShowRLSErrorModal] = useState(false);
 	const [rlsErrorDetails, setRlsErrorDetails] = useState<any>(null);
 
@@ -1868,8 +1873,8 @@ export function InvoiceForm({
 				await invalidateProducts();
 			}
 
-			// Prepare source data for unified engine
-			// Use the saved invoice if available, otherwise use invoiceData
+			// PRIMARY: Supabase Storage WhatsApp share flow
+			// Step 1: Prepare invoice document data
 			const selectedCustomer = localCustomers.find(
 				(c) => c.id === finalCustomerId
 			);
@@ -1877,56 +1882,107 @@ export function InvoiceForm({
 				invoice: savedInvoice || invoiceData,
 				items,
 				customer: selectedCustomer || null,
+				profile: settings || null, // Use settings as profile (contains business info)
 				storeName,
 			};
 
-			// OPTIMIZED: Let the engine handle WhatsApp opening (prevents duplicates)
-			// The engine will open WhatsApp immediately after PDF generation (non-blocking upload)
+			const pdfData = await prepareInvoiceDocumentData(source);
+
+			// Step 2: Generate PDF (client-side for consistency)
 			toast({
-				title: "Preparing PDF...",
-				description: "Generating PDF and opening WhatsApp...",
+				title: "Generating PDF...",
+				description: "Please wait while we generate your invoice PDF",
 				duration: 2000,
 			});
 
-			// Execute action - this will handle PDF generation, upload, and WhatsApp opening
-			// The engine now opens WhatsApp immediately (upload happens in background)
-			const result = await executeInvoiceAction({
-				invoiceId,
-				action: "whatsapp",
-				format: "slip",
-				source,
-				onProgress: (message) => {
-					console.log(`[InvoiceForm] ${message}`);
-					// Show progress messages to user
-					toast({
-						title: "Processing...",
-						description: message,
-						duration: 2000,
-					});
-				},
-				onWarning: (title, description) => {
-					toast({
-						title,
-						description,
-						variant: "default",
-						duration: 6000,
-					});
-				},
+			const pdfBlob = await generateInvoiceSlipPDF(pdfData, {
+				useServerSide: false, // Use client-side for consistency
 			});
 
-			// Check if WhatsApp opened successfully
-			if (
-				result &&
-				typeof result === "object" &&
-				"success" in result &&
-				result.success
-			) {
-				toast({
-					title: "✅ Invoice Created & Shared!",
-					description: "WhatsApp opened with invoice details.",
-					duration: 3000,
-				});
+			// Step 3: Get userId (admin's ID for employees)
+			const supabase = createClient();
+			const authType = localStorage.getItem("authType");
+			let userId: string | null = null;
+
+			if (authType === "employee") {
+				const empSession = localStorage.getItem("employeeSession");
+				if (empSession) {
+					const session = JSON.parse(empSession);
+					const sessionStoreId = session.storeId;
+					if (sessionStoreId) {
+						const { data: store } = await supabase
+							.from("stores")
+							.select("admin_user_id")
+							.eq("id", sessionStoreId)
+							.single();
+						if (store?.admin_user_id) {
+							userId = store.admin_user_id;
+						}
+					}
+				}
 			} else {
+				const {
+					data: { user },
+				} = await supabase.auth.getUser();
+				if (user) userId = user.id;
+			}
+
+			if (!userId) {
+				throw new Error(
+					"Could not determine user ID. Please ensure you're logged in."
+				);
+			}
+
+			// Step 4: Upload to Supabase Storage
+			toast({
+				title: "Uploading to Supabase...",
+				description: "Uploading PDF to cloud storage",
+				duration: 2000,
+			});
+
+			const { uploadInvoicePDFToSupabase } = await import(
+				"@/lib/utils/invoice-supabase-client"
+			);
+			const uploadResult = await uploadInvoicePDFToSupabase(
+				pdfBlob,
+				userId,
+				invoiceId,
+				(savedInvoice || invoiceData).invoice_number
+			);
+
+			if (!uploadResult.success || !uploadResult.publicUrl) {
+				const errorMessage =
+					uploadResult.error || "Failed to upload PDF to Supabase";
+				throw new Error(errorMessage);
+			}
+
+			// Step 5: Generate WhatsApp message with Supabase URL
+			const { generateWhatsAppBillMessage, shareOnWhatsApp } = await import(
+				"@/lib/utils/whatsapp-bill"
+			);
+			const whatsappMessage = generateWhatsAppBillMessage({
+				storeName: pdfData.businessName || storeName,
+				invoiceNumber: (savedInvoice || invoiceData).invoice_number,
+				invoiceDate: (savedInvoice || invoiceData).invoice_date,
+				items: items.map((item) => ({
+					name: item.description,
+					quantity: item.quantity,
+					unitPrice: item.unit_price,
+				})),
+				totalAmount: (savedInvoice || invoiceData).total_amount,
+				pdfR2Url: uploadResult.publicUrl, // Reuse same key for compatibility
+			});
+
+			// Step 6: Open WhatsApp ONCE after upload completes (inside click handler to preserve user gesture)
+			toast({
+				title: "Opening WhatsApp...",
+				description: "PDF uploaded successfully",
+				duration: 1000,
+			});
+
+			const shareResult = await shareOnWhatsApp(whatsappMessage);
+
+			if (!shareResult.success) {
 				toast({
 					title: "⚠️ WhatsApp Blocked",
 					description:
@@ -1934,11 +1990,21 @@ export function InvoiceForm({
 					variant: "destructive",
 					duration: 5000,
 				});
+			} else {
+				toast({
+					title: "✅ Invoice Created & Shared!",
+					description: "WhatsApp opened with invoice details.",
+					duration: 3000,
+				});
 			}
 
-			// CRITICAL: Do NOT redirect - keep user on this page
-			// Navigation/redirect causes loss of user gesture context and blocks WhatsApp popup
-			// User can manually navigate away after WhatsApp is opened
+			// CRITICAL: Wait for WhatsApp to open, then redirect after a short delay
+			// This ensures WhatsApp opens before navigation interrupts it
+			await new Promise((resolve) => setTimeout(resolve, 1500)); // Wait 1.5s for WhatsApp to fully open
+
+			// Now safe to redirect
+			router.push("/invoices");
+			router.refresh();
 		} catch (error) {
 			console.error("[InvoiceForm] Error saving and sharing invoice:", error);
 
@@ -1958,26 +2024,15 @@ export function InvoiceForm({
 				console.error("[InvoiceForm] Non-Error object:", error);
 			}
 
-			// Check if it's an R2 upload error - show modal instead of toast
-			if (
-				errorMessage.includes("upload") ||
-				errorMessage.includes("R2") ||
-				errorMessage.includes("PDF") ||
-				errorMessage.includes("timeout")
-			) {
-				setR2UploadError(errorMessage);
-				setShowR2ErrorModal(true);
-			} else {
-				// Show specific error message for other errors
-				toast({
-					title: "Error",
-					description:
-						errorMessage ||
-						"An unexpected error occurred. Please check the console for details.",
-					variant: "destructive",
-					duration: 5000,
-				});
-			}
+			// Show error toast (Supabase errors are handled by RLS modal if applicable)
+			toast({
+				title: "Error",
+				description:
+					errorMessage ||
+					"An unexpected error occurred. Please check the console for details.",
+				variant: "destructive",
+				duration: 5000,
+			});
 
 			// If invoice was saved but WhatsApp failed, keep user on page
 			// (invoice is already saved at this point)
@@ -1988,10 +2043,10 @@ export function InvoiceForm({
 		}
 	};
 
-	const handleRetryR2Upload = () => {
-		// Retry the share operation
-		handleSaveAndShare(new Event("submit") as any);
-	};
+	// DORMANT: R2 retry handler removed
+	// const handleRetryR2Upload = () => {
+	// 	handleSaveAndShare(new Event("submit") as any);
+	// };
 
 	const handleLogoConfigured = (newLogoUrl: string) => {
 		setLogoUrl(newLogoUrl);
@@ -2006,12 +2061,7 @@ export function InvoiceForm({
 				onOpenChange={setShowLogoModal}
 				onLogoConfigured={handleLogoConfigured}
 			/>
-			<R2UploadErrorModal
-				open={showR2ErrorModal}
-				onOpenChange={setShowR2ErrorModal}
-				error={r2UploadError}
-				onRetry={handleRetryR2Upload}
-			/>
+			{/* DORMANT: R2 error modal removed - Supabase uses RLS error modal */}
 			<RLSErrorModal
 				open={showRLSErrorModal}
 				onOpenChange={setShowRLSErrorModal}

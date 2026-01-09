@@ -102,9 +102,9 @@ export async function generateInvoiceSlipPDFClient(
 			);
 
 			// Convert HTML to canvas
-			// Configure html2canvas to handle color parsing issues
+			// Configure html2canvas for optimized size: scale 1.0, JPEG compression
 			const canvas = await html2canvas(container, {
-				scale: 1.5, // Reduced from 2 to reduce PDF size
+				scale: 1.0, // CRITICAL: Reduced to 1.0 for smaller PDF size (target < 500KB)
 				useCORS: true,
 				allowTaint: false, // Prevent tainted canvas
 				logging: false,
@@ -252,7 +252,8 @@ export async function generateInvoiceSlipPDFClient(
 			);
 
 			// Create PDF from canvas with auto height support for long bills
-			const imgData = canvas.toDataURL("image/png", 1.0);
+			// CRITICAL: Use JPEG instead of PNG for 70% size reduction
+			const imgData = canvas.toDataURL("image/jpeg", 0.65); // JPEG quality 0.65 (target < 500KB)
 			if (!imgData || imgData === "data:," || imgData.length < 100) {
 				throw new Error(
 					"Failed to convert canvas to image data - canvas may be blank"
@@ -271,11 +272,12 @@ export async function generateInvoiceSlipPDFClient(
 			const margin = 6; // Margin in mm
 			const usableHeight = pageHeight - margin * 2; // Usable height per page
 
-			// Create first page
+			// Create first page with compression enabled
 			const pdf = new jsPDF({
 				orientation: "portrait",
 				unit: "mm",
 				format: [pageWidth, pageHeight],
+				compress: true, // CRITICAL: Enable PDF compression for smaller file size
 			});
 
 			// Split image across multiple pages by cropping canvas sections
@@ -311,13 +313,13 @@ export async function generateInvoiceSlipPDFClient(
 						0, 0, canvas.width, sourceHeight // Destination rectangle
 					);
 					
-					// Convert cropped canvas to image
-					const pageImgData = pageCanvas.toDataURL("image/png", 1.0);
+					// Convert cropped canvas to JPEG for smaller size
+					const pageImgData = pageCanvas.toDataURL("image/jpeg", 0.65); // JPEG quality 0.65
 					
 					// Add to PDF
 					pdf.addImage(
 						pageImgData,
-						"PNG",
+						"JPEG", // Changed from PNG to JPEG
 						margin,
 						margin,
 						imgWidth - margin * 2,
