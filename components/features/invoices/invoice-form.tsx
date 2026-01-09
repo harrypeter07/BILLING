@@ -53,6 +53,7 @@ import { useInvalidateQueries } from "@/lib/hooks/use-cached-data";
 import { executeInvoiceAction } from "@/lib/invoice-document-engine";
 import { LogoConfigModal } from "@/components/features/invoices/logo-config-modal";
 import { R2UploadErrorModal } from "@/components/features/invoices/r2-upload-error-modal";
+import { RLSErrorModal } from "@/components/features/customers/rls-error-modal";
 import {
 	ResizablePanelGroup,
 	ResizablePanel,
@@ -273,6 +274,8 @@ export function InvoiceForm({
 	const [logoUrl, setLogoUrl] = useState<string | null>(null);
 	const [showR2ErrorModal, setShowR2ErrorModal] = useState(false);
 	const [r2UploadError, setR2UploadError] = useState<string>("");
+	const [showRLSErrorModal, setShowRLSErrorModal] = useState(false);
+	const [rlsErrorDetails, setRlsErrorDetails] = useState<any>(null);
 
 	// Merge prop customers with local additions without removing new ones
 	useEffect(() => {
@@ -810,27 +813,154 @@ export function InvoiceForm({
 					);
 				}
 
+				// Ensure store_id is set (required for RLS)
+				if (!currentStoreId) {
+					console.warn(
+						"[InvoiceForm] No store_id available, customer will be created without store_id"
+					);
+				}
+
+				// Build insert object - only include fields that exist in schema
+				const customerInsert: any = {
+					name: data.name,
+					phone: data.phone,
+					email: data.email || null,
+					gstin: data.gstin || null,
+					billing_address: data.billing_address || null,
+					user_id: userId,
+					store_id: currentStoreId || null, // Store-scoped isolation
+					created_at: new Date().toISOString(),
+					updated_at: new Date().toISOString(),
+				};
+
+				// Add B2B fields only if they exist in schema (check by trying to insert them)
+				// If schema doesn't have these columns, they'll be ignored
+				if (
+					data.city !== undefined &&
+					data.city !== null &&
+					data.city.trim() !== ""
+				) {
+					customerInsert.city = data.city;
+				}
+				if (
+					data.state !== undefined &&
+					data.state !== null &&
+					data.state.trim() !== ""
+				) {
+					customerInsert.state = data.state;
+				}
+				if (
+					data.pincode !== undefined &&
+					data.pincode !== null &&
+					data.pincode.trim() !== ""
+				) {
+					customerInsert.pincode = data.pincode;
+				}
+
 				const { data: createdCustomer, error } = await supabase
 					.from("customers")
-					.insert({
-						name: data.name,
-						phone: data.phone,
-						email: data.email || null,
-						gstin: data.gstin || null,
-						billing_address: data.billing_address || null,
-						city: data.city || null,
-						state: data.state || null,
-						pincode: data.pincode || null,
-						user_id: userId,
-						store_id: currentStoreId || null, // Store-scoped isolation
-						created_at: new Date().toISOString(),
-						updated_at: new Date().toISOString(),
-					})
+					.insert(customerInsert)
 					.select()
 					.single();
 
-				if (error) throw error;
-				if (!createdCustomer) throw new Error("Failed to create customer");
+				if (error) {
+					// Collect detailed diagnostics for RLS errors
+					let diagnostics: any = {};
+					const isRLSError =
+						error.code === "42501" ||
+						error.message?.toLowerCase().includes("row-level security") ||
+						error.message?.toLowerCase().includes("policy");
+
+					if (isRLSError) {
+						// Get auth.uid() for comparison
+						const {
+							data: { user: authUser },
+						} = await supabase.auth.getUser();
+						diagnostics.authUid = authUser?.id || null;
+
+						if (authType === "employee") {
+							// Check employee and store details
+							const empSession = localStorage.getItem("employeeSession");
+							if (empSession) {
+								try {
+									const session = JSON.parse(empSession);
+									const sessionStoreId = session.storeId;
+
+									if (sessionStoreId) {
+										// Check if store exists and get admin_user_id
+										const { data: store } = await supabase
+											.from("stores")
+											.select("admin_user_id")
+											.eq("id", sessionStoreId)
+											.maybeSingle();
+
+										diagnostics.storeExists = !!store;
+										diagnostics.storeAdminUserId = store?.admin_user_id || null;
+										diagnostics.employeeStoreId = sessionStoreId;
+
+										// Check if employee exists
+										const { data: employee } = await supabase
+											.from("employees")
+											.select("id, store_id")
+											.eq("store_id", sessionStoreId)
+											.maybeSingle();
+
+										diagnostics.employeeExists = !!employee;
+									}
+								} catch (e) {
+									console.error(
+										"[InvoiceForm] Error parsing employee session:",
+										e
+									);
+								}
+							}
+						}
+					}
+
+					const errorDetails = {
+						errorCode: error.code,
+						errorMessage: error.message,
+						errorHint: error.hint,
+						errorDetails: error.details,
+						policyName: isRLSError
+							? "Store members insert customers"
+							: undefined,
+						userId,
+						storeId: currentStoreId,
+						authType,
+						attemptedValues: {
+							user_id: userId,
+							store_id: currentStoreId,
+							name: data.name,
+						},
+						diagnostics: isRLSError ? diagnostics : undefined,
+					};
+
+					console.error(
+						"[InvoiceForm] Customer creation error with diagnostics:",
+						errorDetails
+					);
+
+					// Show RLS error modal for RLS errors
+					if (isRLSError) {
+						setRlsErrorDetails(errorDetails);
+						setShowRLSErrorModal(true);
+						throw new Error(
+							error.message ||
+								error.hint ||
+								`RLS Policy Error: ${error.code || "Unknown error"}`
+						);
+					}
+
+					// For non-RLS errors, throw normally
+					throw new Error(
+						error.message ||
+							error.hint ||
+							`Failed to create customer: ${error.code || "Unknown error"}`
+					);
+				}
+				if (!createdCustomer)
+					throw new Error("Failed to create customer - no data returned");
 
 				newCustomer = { id: createdCustomer.id, name: createdCustomer.name };
 			}
@@ -875,14 +1005,20 @@ export function InvoiceForm({
 					description: `New customer ${newCustomer.name} has been added`,
 				});
 			} catch (error) {
-				toast({
-					title: "Error",
-					description:
-						error instanceof Error
-							? error.message
-							: "Failed to create customer",
-					variant: "destructive",
-				});
+				// Check if it's an RLS error - if so, the modal is already shown
+				const errorMessage =
+					error instanceof Error ? error.message : "Failed to create customer";
+				const isRLSError =
+					errorMessage.includes("RLS") || errorMessage.includes("42501");
+
+				if (!isRLSError) {
+					// For non-RLS errors, show toast
+					toast({
+						title: "Error",
+						description: errorMessage,
+						variant: "destructive",
+					});
+				}
 				setIsLoading(false);
 				return;
 			}
@@ -1039,7 +1175,8 @@ export function InvoiceForm({
 			if (!storeId) {
 				toast({
 					title: "Error",
-					description: "Store ID is required. Please select a store or contact your administrator.",
+					description:
+						"Store ID is required. Please select a store or contact your administrator.",
 					variant: "destructive",
 				});
 				setIsLoading(false);
@@ -1402,14 +1539,20 @@ export function InvoiceForm({
 				finalCustomerId = newCustomer.id;
 				setCustomerId(finalCustomerId);
 			} catch (error) {
-				toast({
-					title: "Error",
-					description:
-						error instanceof Error
-							? error.message
-							: "Failed to create customer",
-					variant: "destructive",
-				});
+				// Check if it's an RLS error - if so, the modal is already shown
+				const errorMessage =
+					error instanceof Error ? error.message : "Failed to create customer";
+				const isRLSError =
+					errorMessage.includes("RLS") || errorMessage.includes("42501");
+
+				if (!isRLSError) {
+					// For non-RLS errors, show toast
+					toast({
+						title: "Error",
+						description: errorMessage,
+						variant: "destructive",
+					});
+				}
 				setIsSharing(false);
 				return;
 			}
@@ -1463,7 +1606,8 @@ export function InvoiceForm({
 			if (!storeId) {
 				toast({
 					title: "Error",
-					description: "Store ID is required. Please select a store or contact your administrator.",
+					description:
+						"Store ID is required. Please select a store or contact your administrator.",
 					variant: "destructive",
 				});
 				setIsSharing(false);
@@ -1868,6 +2012,15 @@ export function InvoiceForm({
 				error={r2UploadError}
 				onRetry={handleRetryR2Upload}
 			/>
+			<RLSErrorModal
+				open={showRLSErrorModal}
+				onOpenChange={setShowRLSErrorModal}
+				errorDetails={rlsErrorDetails || {}}
+				onRetry={() => {
+					setShowRLSErrorModal(false);
+					// Retry customer creation - this will be handled by the form submission
+				}}
+			/>
 			<div
 				className={
 					isFullscreen
@@ -2027,7 +2180,17 @@ export function InvoiceForm({
 														onCustomersUpdate?.(nextList);
 													}}
 													onCustomerDataChange={(data) => {
-														setCustomerData(data);
+														setCustomerData({
+															name: data.name,
+															phone: data.phone,
+															email: data.email,
+															gstin: data.gstin || "",
+															billing_address: data.billing_address || "",
+															city: data.city || "",
+															state: data.state || "",
+															pincode: data.pincode || "",
+															isNewCustomer: data.isNewCustomer,
+														});
 														if (data.isNewCustomer) {
 															setCustomerId("");
 														}

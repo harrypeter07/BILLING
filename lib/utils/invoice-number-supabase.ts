@@ -80,19 +80,23 @@ export async function generateInvoiceNumberSupabase(storeId: string, employeeId:
     
     if (!sequence) {
       // First invoice of the day - create sequence
+      // Use upsert to handle race conditions (multiple requests trying to create same sequence)
       const { data: newSequence, error: insertError } = await supabase
         .from("invoice_sequences")
-        .insert({
+        .upsert({
           id: sequenceKey,
           store_id: storeId,
           date: dateStr,
           sequence: 0,
+        }, {
+          onConflict: 'id',
+          ignoreDuplicates: false, // Update if exists
         })
         .select()
         .single()
       
       if (insertError) {
-        console.error("[generateInvoiceNumberSupabase] Sequence insert error:", {
+        console.error("[generateInvoiceNumberSupabase] Sequence upsert error:", {
           error: insertError,
           message: insertError.message,
           code: insertError.code,
@@ -102,17 +106,36 @@ export async function generateInvoiceNumberSupabase(storeId: string, employeeId:
           storeId
         })
         
-        // If RLS blocks, use fallback sequence
-        if (insertError.code === '42501' || insertError.message.includes('row-level security')) {
+        // If duplicate key error (race condition), retry by fetching existing sequence
+        if (insertError.code === '23505' || insertError.message.includes('duplicate key')) {
+          console.warn("[generateInvoiceNumberSupabase] Duplicate key detected (race condition), fetching existing sequence")
+          const { data: existingSeq, error: fetchError } = await supabase
+            .from("invoice_sequences")
+            .select("*")
+            .eq("id", sequenceKey)
+            .single()
+          
+          if (fetchError || !existingSeq) {
+            // If fetch also fails, use timestamp fallback
+            console.warn("[generateInvoiceNumberSupabase] Failed to fetch sequence after duplicate key, using timestamp fallback")
+            const timestampSeq = Date.now() % 1000
+            const seqStr = String(timestampSeq).padStart(3, "0")
+            return `${storeCode}-${empId}-${dateStr}${timeStr}-${seqStr}`
+          }
+          
+          sequence = existingSeq
+        } else if (insertError.code === '42501' || insertError.message.includes('row-level security')) {
+          // If RLS blocks, use fallback sequence
           console.warn("[generateInvoiceNumberSupabase] RLS blocking sequence insert, using timestamp fallback")
           const timestampSeq = Date.now() % 1000
           const seqStr = String(timestampSeq).padStart(3, "0")
           return `${storeCode}-${empId}-${dateStr}${timeStr}-${seqStr}`
+        } else {
+          throw new Error(`Failed to create invoice sequence: ${insertError.message} (Code: ${insertError.code || 'unknown'})`)
         }
-        
-        throw new Error(`Failed to create invoice sequence: ${insertError.message} (Code: ${insertError.code || 'unknown'})`)
+      } else {
+        sequence = newSequence
       }
-      sequence = newSequence
     }
   
     // Increment sequence

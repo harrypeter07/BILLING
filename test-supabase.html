@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supabase Upload Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #3b82f6;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 6px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 14px;
+        }
+        .success {
+            background: #d1fae5;
+            border: 1px solid #10b981;
+            color: #065f46;
+        }
+        .error {
+            background: #fee2e2;
+            border: 1px solid #ef4444;
+            color: #991b1b;
+        }
+        .info {
+            background: #dbeafe;
+            border: 1px solid #3b82f6;
+            color: #1e40af;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Supabase Storage Upload Test</h1>
+        <p>This test will upload a small text file to your Supabase bucket and provide access URLs.</p>
+        
+        <button id="testBtn" onclick="testUpload()">🚀 Test Upload</button>
+        <button id="bucketBtn" onclick="checkBucket()">🔍 Check Bucket Info</button>
+        <button id="clearBtn" onclick="clearResults()">🗑️ Clear Results</button>
+        
+        <div id="results"></div>
+    </div>
+
+    <script type="module">
+        // Import Supabase client from the existing setup
+        import { createClient } from './lib/supabase/client.js';
+        
+        const supabase = createClient();
+        const results = document.getElementById('results');
+        
+        function log(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `result ${type}`;
+            div.textContent = message;
+            results.appendChild(div);
+            console.log(message);
+        }
+        
+        window.clearResults = function() {
+            results.innerHTML = '';
+        };
+        
+        window.checkBucket = async function() {
+            try {
+                log('🔍 Checking bucket information...', 'info');
+                
+                const { data, error } = await supabase.storage.getBucket('invoice-pdfs');
+                
+                if (error) {
+                    log(`❌ Bucket check failed: ${error.message}`, 'error');
+                    log(`Details: ${JSON.stringify(error, null, 2)}`, 'error');
+                } else {
+                    log('✅ Bucket information retrieved successfully!', 'success');
+                    log(`Bucket Name: ${data.name}`, 'info');
+                    log(`Public Access: ${data.public}`, 'info');
+                    log(`File Size Limit: ${data.file_size_limit || 'Not set'}`, 'info');
+                    log(`Allowed MIME Types: ${data.allowed_mime_types?.join(', ') || 'All types'}`, 'info');
+                }
+            } catch (error) {
+                log(`❌ Unexpected error: ${error.message}`, 'error');
+            }
+        };
+        
+        window.testUpload = async function() {
+            const testBtn = document.getElementById('testBtn');
+            testBtn.disabled = true;
+            testBtn.textContent = '⏳ Testing...';
+            
+            try {
+                log('🚀 Starting Supabase upload test...', 'info');
+                
+                // Create test content
+                const testContent = `Test file uploaded at ${new Date().toISOString()}\n\nThis is a test file to verify Supabase storage upload functionality.\n\nFile size: ${new Blob([testContent]).size} bytes`;
+                const testFileName = `test-${Date.now()}.txt`;
+                
+                log(`📝 Creating test file: ${testFileName}`, 'info');
+                log(`📊 File size: ${new Blob([testContent]).size} bytes`, 'info');
+                
+                // Upload to invoice-pdfs bucket
+                const { data, error } = await supabase.storage
+                    .from('invoice-pdfs')
+                    .upload(testFileName, testContent, {
+                        contentType: 'text/plain',
+                        upsert: false
+                    });
+                
+                if (error) {
+                    log(`❌ Upload failed: ${error.message}`, 'error');
+                    log(`Error details: ${JSON.stringify(error, null, 2)}`, 'error');
+                    return;
+                }
+                
+                log('✅ Upload successful!', 'success');
+                log(`Upload data: ${JSON.stringify(data, null, 2)}`, 'info');
+                
+                // Get public URL
+                const { data: { publicUrl } } = supabase.storage
+                    .from('invoice-pdfs')
+                    .getPublicUrl(testFileName);
+                
+                log(`🔗 Public URL: ${publicUrl}`, 'success');
+                log('⚠️  Note: This URL may not work if public access is disabled', 'info');
+                
+                // Create signed URL (should work even with private bucket)
+                const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+                    .from('invoice-pdfs')
+                    .createSignedUrl(testFileName, 3600); // 1 hour expiry
+                
+                if (signedUrlError) {
+                    log(`❌ Failed to create signed URL: ${signedUrlError.message}`, 'error');
+                } else {
+                    log('🔑 Signed URL created (valid for 1 hour):', 'success');
+                    log(signedUrlData.signedUrl, 'success');
+                    log('📋 You can copy this URL to access the file', 'info');
+                }
+                
+                // Test download
+                log('📥 Testing file download...', 'info');
+                const { data: downloadData, error: downloadError } = await supabase.storage
+                    .from('invoice-pdfs')
+                    .download(testFileName);
+                
+                if (downloadError) {
+                    log(`❌ Download failed: ${downloadError.message}`, 'error');
+                } else {
+                    const text = await downloadData.text();
+                    log('✅ Download successful!', 'success');
+                    log(`Downloaded content:\n${text}`, 'info');
+                }
+                
+                // List files in bucket
+                log('📋 Listing files in bucket...', 'info');
+                const { data: files, error: listError } = await supabase.storage
+                    .from('invoice-pdfs')
+                    .list();
+                
+                if (listError) {
+                    log(`❌ Failed to list files: ${listError.message}`, 'error');
+                } else {
+                    log(`✅ Found ${files.length} files in bucket:`, 'success');
+                    files.forEach(file => {
+                        log(`- ${file.name} (${file.size} bytes, created: ${file.created_at})`, 'info');
+                    });
+                }
+                
+                log('🎉 Test completed successfully!', 'success');
+                
+            } catch (error) {
+                log(`❌ Unexpected error: ${error.message}`, 'error');
+            } finally {
+                testBtn.disabled = false;
+                testBtn.textContent = '🚀 Test Upload';
+            }
+        };
+    </script>
+</body>
+</html>

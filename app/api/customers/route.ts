@@ -32,7 +32,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { name, email, phone, gstin, user_id, store_id } = body
+    const { name, email, phone, gstin, user_id, store_id, city, state, pincode, billing_address } = body
 
     if (!name || !name.trim()) {
       return NextResponse.json({ error: "Customer name is required" }, { status: 400 })
@@ -92,19 +92,33 @@ export async function POST(request: Request) {
       }
     }
 
+    // Build insert object - only include fields that exist in schema
+    const customerInsert: any = {
+      user_id: targetUserId,
+      store_id: targetStoreId, // Store-scoped isolation
+      name: name.trim(),
+      email: email?.trim() || null,
+      phone: phone?.trim() || null,
+      gstin: gstin?.trim() || null,
+      billing_address: billing_address?.trim() || null,
+      shipping_address: null,
+      notes: null,
+    };
+
+    // Add B2B fields from request body if provided (only if they have values)
+    if (city !== undefined && city !== null && city.trim() !== '') {
+      customerInsert.city = city.trim()
+    }
+    if (state !== undefined && state !== null && state.trim() !== '') {
+      customerInsert.state = state.trim()
+    }
+    if (pincode !== undefined && pincode !== null && pincode.trim() !== '') {
+      customerInsert.pincode = pincode.trim()
+    }
+
     const { data: customer, error } = await supabase
       .from("customers")
-      .insert({
-        user_id: targetUserId,
-        store_id: targetStoreId, // Store-scoped isolation
-        name: name.trim(),
-        email: email?.trim() || null,
-        phone: phone?.trim() || null,
-        gstin: gstin?.trim() || null,
-        billing_address: null,
-        shipping_address: null,
-        notes: null,
-      })
+      .insert(customerInsert)
       .select()
       .single()
 

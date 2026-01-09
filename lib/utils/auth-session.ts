@@ -3,6 +3,7 @@
 import { db } from "@/lib/db/dexie";
 import type { AuthSession } from "@/lib/db/dexie";
 import CryptoJS from "crypto-js";
+import { getActiveDbMode } from "./db-mode";
 
 // Get session duration from env (default: 24 hours)
 const SESSION_DURATION_MS =
@@ -201,6 +202,14 @@ export async function saveAuthSession(data: {
 	role: string;
 	storeId?: string | null;
 }): Promise<void> {
+	// In Supabase mode, we don't need to save custom sessions
+	// Supabase handles its own session persistence
+	const dbMode = getActiveDbMode();
+	if (dbMode === 'supabase') {
+		console.log("[AuthSession] Skipping custom session save in Supabase mode");
+		return;
+	}
+
 	const now = Date.now();
 	const expiresAt = now + SESSION_DURATION_MS;
 
@@ -460,6 +469,40 @@ async function validateSessionWithServer(
 }
 
 /**
+ * Get Supabase session only - bypasses all custom validation
+ * This is the recommended approach for Supabase mode since Supabase already handles session security
+ */
+async function getSupabaseSessionOnly(): Promise<AuthSession | null> {
+	try {
+		const { createClient } = await import("@/lib/supabase/client");
+		const supabase = createClient();
+		
+		const { data: { session }, error } = await supabase.auth.getSession();
+		
+		if (error || !session) {
+			return null;
+		}
+
+		// Convert Supabase session to our AuthSession format
+		const authSession: AuthSession = {
+			id: SESSION_ID,
+			userId: session.user.id,
+			email: session.user.email || "",
+			role: "admin", // Supabase users are admins by default
+			storeId: null, // Will be set by store selection logic
+			issuedAt: new Date(session.user.created_at).getTime(),
+			expiresAt: session.expires_at ? session.expires_at * 1000 : Date.now() + SESSION_DURATION_MS,
+			createdAt: session.user.created_at,
+		};
+
+		return authSession;
+	} catch (error) {
+		console.error("[AuthSession] Error getting Supabase session:", error);
+		return null;
+	}
+}
+
+/**
  * Get current authentication session from IndexedDB with validation
  *
  * SECURITY LAYERS:
@@ -469,6 +512,15 @@ async function validateSessionWithServer(
  * 4. Expiry check with server time
  */
 export async function getAuthSession(): Promise<AuthSession | null> {
+	// RULE #1: In Supabase mode, let Supabase handle session security
+	// Skip all custom validation that breaks with multi-auth scenarios
+	const dbMode = getActiveDbMode();
+	if (dbMode === 'supabase') {
+		console.log("[AuthSession] Using Supabase session only (skipping custom validation)");
+		return getSupabaseSessionOnly();
+	}
+
+	// Original validation logic for IndexedDB mode
 	try {
 		const session = (await db.auth_session.get(SESSION_ID)) as
 			| SecureAuthSession
@@ -632,11 +684,23 @@ export async function isSessionValid(): Promise<boolean> {
  */
 export async function clearAuthSession(): Promise<void> {
 	try {
-		await db.auth_session.delete(SESSION_ID);
+		const dbMode = getActiveDbMode();
+		
+		if (dbMode === 'supabase') {
+			// In Supabase mode, use Supabase signOut
+			const { createClient } = await import("@/lib/supabase/client");
+			const supabase = createClient();
+			await supabase.auth.signOut();
+			console.log("[AuthSession] Supabase session signed out");
+		} else {
+			// In IndexedDB mode, clear custom session
+			await db.auth_session.delete(SESSION_ID);
+			console.log("[AuthSession] Session cleared from IndexedDB");
+		}
+		
 		// Clear caches when session is cleared
 		serverTimeCache = null;
 		serverValidationCache = null;
-		console.log("[AuthSession] Session cleared from IndexedDB");
 	} catch (error) {
 		console.error("[AuthSession] Error clearing session:", error);
 	}

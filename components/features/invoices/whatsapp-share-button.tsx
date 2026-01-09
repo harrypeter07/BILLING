@@ -24,6 +24,12 @@ import { Label } from "@/components/ui/label";
 import { getInvoiceStorage } from "@/lib/utils/save-invoice-storage";
 import { executeInvoiceAction } from "@/lib/invoice-document-engine";
 import { R2UploadErrorModal } from "@/components/features/invoices/r2-upload-error-modal";
+import { uploadInvoicePDFToSupabase } from "@/lib/utils/invoice-supabase-client";
+import { generateInvoiceSlipPDF } from "@/lib/utils/invoice-slip-pdf";
+import { prepareInvoiceDocumentData } from "@/lib/invoice-document-engine";
+import { generateWhatsAppBillMessage, shareOnWhatsApp } from "@/lib/utils/whatsapp-bill";
+import { createClient } from "@/lib/supabase/client";
+import { RLSErrorModal } from "@/components/features/customers/rls-error-modal";
 
 interface WhatsAppShareButtonProps {
 	invoice: {
@@ -78,11 +84,14 @@ export function WhatsAppShareButton({
 	const { toast } = useToast();
 	const [isOnline, setIsOnline] = useState(true);
 	const [isSharing, setIsSharing] = useState(false);
+	const [isSharingSupabase, setIsSharingSupabase] = useState(false);
 	const [uploadedUrl, setUploadedUrl] = useState<string | null>(null);
 	const [showLinkModal, setShowLinkModal] = useState(false);
 	const [linkCopied, setLinkCopied] = useState(false);
 	const [showErrorModal, setShowErrorModal] = useState(false);
 	const [uploadError, setUploadError] = useState<string | null>(null);
+	const [showStorageRLSErrorModal, setShowStorageRLSErrorModal] = useState(false);
+	const [storageRLSErrorDetails, setStorageRLSErrorDetails] = useState<any>(null);
 	const [useServerSide, setUseServerSide] = useState(() => {
 		// Default to server-side for faster WhatsApp sharing
 		if (typeof window !== "undefined") {
@@ -224,6 +233,171 @@ export function WhatsAppShareButton({
 		handleShare();
 	};
 
+	// Supabase WhatsApp share handler (completely isolated from R2 flow)
+	const handleShareSupabase = async () => {
+		// Prevent double-clicks
+		if (isSharingSupabase) {
+			console.warn("[WhatsAppShareSupabase] Share already in progress, ignoring duplicate click");
+			return;
+		}
+
+		if (!isOnline) {
+			toast({
+				title: "Internet Required",
+				description: "Internet connection is required to share invoice on WhatsApp",
+				variant: "destructive",
+			});
+			return;
+		}
+
+		setIsSharingSupabase(true);
+
+		try {
+			// Step 1: Prepare invoice document data
+			const source = {
+				invoice,
+				items,
+				customer,
+				profile,
+				storeName,
+			};
+
+			const pdfData = await prepareInvoiceDocumentData(source);
+
+			// Step 2: Generate PDF
+			toast({
+				title: "Generating PDF...",
+				description: "Please wait while we generate your invoice PDF",
+				duration: 2000,
+			});
+
+			const pdfBlob = await generateInvoiceSlipPDF(pdfData, {
+				useServerSide: false, // Use client-side for consistency
+			});
+
+			// Step 3: Get userId (admin's ID for employees)
+			const supabase = createClient();
+			const authType = localStorage.getItem("authType");
+			let userId: string | null = null;
+
+			if (authType === "employee") {
+				const empSession = localStorage.getItem("employeeSession");
+				if (empSession) {
+					const session = JSON.parse(empSession);
+					const sessionStoreId = session.storeId;
+					if (sessionStoreId) {
+						const { data: store } = await supabase
+							.from("stores")
+							.select("admin_user_id")
+							.eq("id", sessionStoreId)
+							.single();
+						if (store?.admin_user_id) {
+							userId = store.admin_user_id;
+						}
+					}
+				}
+			} else {
+				const { data: { user } } = await supabase.auth.getUser();
+				if (user) userId = user.id;
+			}
+
+			if (!userId) {
+				throw new Error("Could not determine user ID. Please ensure you're logged in.");
+			}
+
+			// Step 4: Upload to Supabase Storage
+			toast({
+				title: "Uploading to Supabase...",
+				description: "Uploading PDF to cloud storage",
+				duration: 2000,
+			});
+
+			const uploadResult = await uploadInvoicePDFToSupabase(
+				pdfBlob,
+				userId,
+				invoice.id,
+				invoice.invoice_number
+			);
+
+			if (!uploadResult.success || !uploadResult.publicUrl) {
+				// Check if it's an RLS error from the API response
+				const errorMessage = uploadResult.error || "Failed to upload PDF to Supabase";
+				const isRLSError = errorMessage.toLowerCase().includes("row-level security") ||
+								   errorMessage.toLowerCase().includes("policy") ||
+								   errorMessage.toLowerCase().includes("rls");
+
+				// If the error response includes errorDetails, use it
+				if (isRLSError && (uploadResult as any).errorDetails) {
+					setStorageRLSErrorDetails({
+						errorCode: (uploadResult as any).errorDetails.errorCode || "STORAGE_RLS_ERROR",
+						errorMessage: errorMessage,
+						policyName: "Storage bucket RLS policy",
+						bucket: (uploadResult as any).errorDetails.bucket || "invoice-pdfs",
+						storagePath: (uploadResult as any).errorDetails.storagePath,
+						userId,
+						diagnostics: (uploadResult as any).errorDetails.diagnostics,
+						attemptedValues: {
+							user_id: userId,
+							storage_path: (uploadResult as any).errorDetails.storagePath,
+						},
+					});
+					setShowStorageRLSErrorModal(true);
+				}
+				
+				throw new Error(errorMessage);
+			}
+
+			// Step 5: Generate WhatsApp message with Supabase URL
+			const whatsappMessage = generateWhatsAppBillMessage({
+				storeName: pdfData.businessName || storeName,
+				invoiceNumber: invoice.invoice_number,
+				invoiceDate: invoice.invoice_date,
+				items: items.map((item) => ({
+					name: item.description,
+					quantity: item.quantity,
+					unitPrice: item.unit_price,
+				})),
+				totalAmount: invoice.total_amount,
+				pdfR2Url: uploadResult.publicUrl, // Reuse same key for compatibility
+			});
+
+			// Step 6: Open WhatsApp immediately (inside click handler to preserve user gesture)
+			const shareResult = await shareOnWhatsApp(whatsappMessage);
+
+			if (!shareResult.success) {
+				throw new Error("Failed to open WhatsApp. Please check your popup blocker settings.");
+			}
+
+			toast({
+				title: "✅ WhatsApp Opened",
+				description: "PDF uploaded to Supabase and WhatsApp opened with PDF link.",
+				duration: 3000,
+			});
+		} catch (error) {
+			console.error("[WhatsAppShareSupabase] Error:", error);
+			const errorMessage =
+				error instanceof Error
+					? error.message
+					: "Failed to prepare WhatsApp message. Please try again.";
+
+			// Check if RLS modal is already shown
+			const isRLSError = errorMessage.toLowerCase().includes("row-level security") ||
+							   errorMessage.toLowerCase().includes("policy") ||
+							   errorMessage.toLowerCase().includes("rls");
+
+			if (!isRLSError || !showStorageRLSErrorModal) {
+				toast({
+					title: "Error",
+					description: errorMessage,
+					variant: "destructive",
+					duration: 5000,
+				});
+			}
+		} finally {
+			setIsSharingSupabase(false);
+		}
+	};
+
 	const handleCopyLink = async () => {
 		if (uploadedUrl) {
 			try {
@@ -256,19 +430,28 @@ export function WhatsAppShareButton({
 			<R2UploadErrorModal
 				open={showErrorModal}
 				onOpenChange={setShowErrorModal}
-				error={uploadError}
+				error={uploadError ?? ""}
 				onRetry={handleRetryUpload}
+			/>
+			<RLSErrorModal
+				open={showStorageRLSErrorModal}
+				onOpenChange={setShowStorageRLSErrorModal}
+				errorDetails={storageRLSErrorDetails || {}}
+				onRetry={() => {
+					setShowStorageRLSErrorModal(false);
+					handleShareSupabase();
+				}}
 			/>
 			<div className="flex items-center gap-2">
 				<Button
 					onClick={handleShare}
-					disabled={!isOnline || isSharing}
+					disabled={!isOnline || isSharing || isSharingSupabase}
 					variant="outline"
 					className="gap-2"
 					title={
 						!isOnline
 							? "Internet required to share invoice"
-							: "Share invoice on WhatsApp"
+							: "Share invoice on WhatsApp (R2)"
 					}
 				>
 					{!isOnline ? (
@@ -281,6 +464,31 @@ export function WhatsAppShareButton({
 							<MessageCircle className="h-4 w-4" />
 							<span className="hidden sm:inline">
 								{isSharing ? "Opening..." : "Share on WhatsApp"}
+							</span>
+						</>
+					)}
+				</Button>
+				<Button
+					onClick={handleShareSupabase}
+					disabled={!isOnline || isSharing || isSharingSupabase}
+					variant="outline"
+					className="gap-2"
+					title={
+						!isOnline
+							? "Internet required to share invoice"
+							: "Share invoice on WhatsApp (Supabase)"
+					}
+				>
+					{!isOnline ? (
+						<>
+							<WifiOff className="h-4 w-4" />
+							<span className="hidden sm:inline">Offline</span>
+						</>
+					) : (
+						<>
+							<MessageCircle className="h-4 w-4" />
+							<span className="hidden sm:inline">
+								{isSharingSupabase ? "Opening..." : "Share via Supabase"}
 							</span>
 						</>
 					)}
